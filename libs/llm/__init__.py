@@ -7,6 +7,7 @@ from libs.llm.base import (
     LLMStreamChunk,
     ToolDefinition,
     ToolCall,
+    MessageRole,
 )
 from libs.llm.anthropic import AnthropicProvider
 from libs.llm.openai import OpenAIProvider
@@ -20,6 +21,7 @@ __all__ = [
     "LLMStreamChunk",
     "ToolDefinition",
     "ToolCall",
+    "MessageRole",
     # Providers
     "AnthropicProvider",
     "OpenAIProvider",

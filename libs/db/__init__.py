@@ -3,6 +3,7 @@
 from libs.db.session import (
     get_async_session,
     get_session_factory,
+    get_session_context,
     init_db,
     close_db,
     AsyncSessionLocal,
@@ -23,6 +24,7 @@ __all__ = [
     # Session
     "get_async_session",
     "get_session_factory",
+    "get_session_context",
     "init_db",
     "close_db",
     "AsyncSessionLocal",

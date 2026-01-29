@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy shared libraries
 COPY libs/ /app/libs/
 
-# Copy service code
-COPY services/tool-workers/ /app/services/tool-workers/
+# Copy service code (rename to valid Python module name)
+COPY services/tool-workers/ /app/services/tool_workers/
 
 # Set Python path
 ENV PYTHONPATH=/app
