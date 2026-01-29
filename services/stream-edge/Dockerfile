@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy shared libraries
 COPY libs/ /app/libs/
 
-# Copy service code
-COPY services/stream-edge/ /app/services/stream-edge/
+# Copy service code (rename to valid Python module name)
+COPY services/stream-edge/ /app/services/stream_edge/
 
 # Set Python path
 ENV PYTHONPATH=/app

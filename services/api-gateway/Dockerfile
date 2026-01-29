@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy shared libraries
 COPY libs/ /app/libs/
 
-# Copy service code
-COPY services/api-gateway/ /app/services/api-gateway/
+# Copy service code (rename to valid Python module name)
+COPY services/api-gateway/ /app/services/api_gateway/
 
 # Set Python path
 ENV PYTHONPATH=/app

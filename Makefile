@@ -39,35 +39,35 @@ help:
 # ===================
 
 up:
-	docker-compose up -d
+	docker compose up -d
 	@echo "Waiting for services to be healthy..."
 	@sleep 10
-	@docker-compose ps
+	@docker compose ps
 
 down:
-	docker-compose down
+	docker compose down
 
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 logs-api:
-	docker-compose logs -f api-gateway
+	docker compose logs -f api-gateway
 
 logs-stream:
-	docker-compose logs -f stream-edge
+	docker compose logs -f stream-edge
 
 logs-orchestrator:
-	docker-compose logs -f orchestrator
+	docker compose logs -f orchestrator
 
 clean:
-	docker-compose down -v --rmi local
+	docker compose down -v --rmi local
 	docker system prune -f
 
 restart: down up
 
 # Infrastructure only (for local development)
 infra:
-	docker-compose up -d postgres redis zookeeper kafka kafka-init
+	docker compose up -d postgres redis zookeeper kafka kafka-init
 	@echo "Infrastructure services started"
 
 # ===================
@@ -90,19 +90,19 @@ dev: infra
 	@echo "  make frontend"
 
 api:
-	cd services/api-gateway && uvicorn src.main:app --reload --port 8000
+	PYTHONPATH=$(PWD) uvicorn services.api-gateway.src.main:app --reload --port 8000 --host 94.16.119.44
 
 stream:
-	cd services/stream-edge && uvicorn src.main:app --reload --port 8001
+	PYTHONPATH=$(PWD) uvicorn services.stream-edge.src.main:app --reload --port 8001 --host 94.16.119.44
 
 orchestrator:
-	cd services/orchestrator && python -m src.main
+	PYTHONPATH=$(PWD) python -m services.orchestrator.src.main
 
 workers:
-	cd services/tool-workers && python -m src.main
+	PYTHONPATH=$(PWD) python -m services.tool-workers.src.main
 
 archiver:
-	cd services/archiver && python -m src.main
+	PYTHONPATH=$(PWD) python -m services.archiver.src.main
 
 frontend:
 	cd frontend && npm run dev
@@ -112,18 +112,18 @@ frontend:
 # ===================
 
 migrate:
-	alembic upgrade head
+	PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
 
 migrate-new:
 	@read -p "Migration name: " name; \
-	alembic revision --autogenerate -m "$$name"
+	PYTHONPATH=. alembic -c migrations/alembic.ini revision --autogenerate -m "$$name"
 
 migrate-down:
-	alembic downgrade -1
+	PYTHONPATH=. alembic -c migrations/alembic.ini downgrade -1
 
 migrate-reset:
-	alembic downgrade base
-	alembic upgrade head
+	PYTHONPATH=. alembic -c migrations/alembic.ini downgrade base
+	PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
 
 # ===================
 # TESTING
@@ -166,25 +166,25 @@ check: lint typecheck test
 # ===================
 
 shell-db:
-	docker-compose exec postgres psql -U agent -d agent_db
+	docker compose exec postgres psql -U agent -d agent_db
 
 shell-redis:
-	docker-compose exec redis redis-cli
+	docker compose exec redis redis-cli
 
 kafka-topics:
-	docker-compose exec kafka kafka-topics --list --bootstrap-server localhost:9092
+	docker compose exec kafka kafka-topics --list --bootstrap-server localhost:9092
 
 kafka-consume:
 	@read -p "Topic name: " topic; \
-	docker-compose exec kafka kafka-console-consumer \
+	docker compose exec kafka kafka-console-consumer \
 		--bootstrap-server localhost:9092 \
 		--topic $$topic \
 		--from-beginning
 
 # Build all Docker images
 build:
-	docker-compose build
+	docker compose build
 
 # Push images to registry
 push:
-	docker-compose push
+	docker compose push

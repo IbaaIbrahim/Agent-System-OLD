@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -109,7 +110,7 @@ async def init_db() -> None:
     engine = get_engine()
     # Test connection
     async with engine.begin() as conn:
-        await conn.execute("SELECT 1")
+        await conn.execute(text("SELECT 1"))
     logger.info("Database connection verified")
 
 
@@ -136,5 +137,5 @@ async def execute_raw(sql: str, params: dict[str, Any] | None = None) -> Any:
     """
     engine = get_engine()
     async with engine.begin() as conn:
-        result = await conn.execute(sql, params or {})
+        result = await conn.execute(text(sql), params or {})
         return result

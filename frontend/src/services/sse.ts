@@ -32,10 +32,10 @@ export class SSEClient {
   constructor(url: string, options: SSEClientOptions = {}) {
     this.url = url
     this.options = {
-      onEvent: options.onEvent || (() => {}),
+      onEvent: options.onEvent || (() => { }),
       onError: options.onError || console.error,
-      onOpen: options.onOpen || (() => {}),
-      onClose: options.onClose || (() => {}),
+      onOpen: options.onOpen || (() => { }),
+      onClose: options.onClose || (() => { }),
       lastEventId: options.lastEventId || '',
       reconnect: options.reconnect ?? true,
       reconnectDelay: options.reconnectDelay ?? 3000,
@@ -62,7 +62,7 @@ export class SSEClient {
       this.options.onOpen()
     }
 
-    this.eventSource.onerror = (event) => {
+    this.eventSource.onerror = (_event) => {
       const error = new Error('SSE connection error')
       this.options.onError(error)
 

@@ -59,8 +59,7 @@ class KafkaProducer:
             value_serializer=serialize_message,
             key_serializer=serialize_key,
             acks="all",
-            retries=3,
-            retry_backoff_ms=100,
+            request_timeout_ms=30000,
             max_request_size=10 * 1024 * 1024,  # 10MB
         )
         await self._producer.start()
