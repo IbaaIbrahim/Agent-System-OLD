@@ -1,0 +1,119 @@
+.cb-composer {
+    padding: var(--cb-space-4);
+    background-color: var(--cb-bg-primary);
+    position: relative;
+}
+
+.cb-composer-input-wrapper {
+    background-color: var(--cb-bg-secondary);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    padding: var(--cb-space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--cb-space-2);
+    transition: border-color var(--cb-transition-fast);
+}
+
+.cb-composer-input-wrapper:focus-within {
+    border-color: var(--cb-border-focus);
+}
+
+.cb-composer-textarea {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-primary);
+    resize: none;
+    font-family: inherit;
+    font-size: var(--cb-text-base);
+    outline: none;
+    min-height: 40px;
+    max-height: 150px;
+    width: 100%;
+}
+
+.cb-composer-textarea::placeholder {
+    color: var(--cb-text-tertiary);
+}
+
+.cb-composer-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--cb-space-2);
+}
+
+.cb-actions-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cb-action-btn {
+    background: transparent;
+    border: none;
+    color: var(--cb-text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.cb-action-btn:hover {
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
+}
+
+.cb-action-btn.circle {
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
+}
+
+.cb-action-btn.circle:hover {
+    background-color: #444;
+}
+
+.cb-action-btn.active-state {
+    background-color: #444;
+}
+
+.cb-action-btn.active-icon {
+    color: var(--cb-accent-primary);
+}
+
+.cb-send-btn {
+    background-color: var(--cb-bg-tertiary);
+    border: none;
+    color: var(--cb-text-tertiary);
+    width: 32px;
+    height: 32px;
+    border-radius: var(--cb-radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: not-allowed;
+    transition: all var(--cb-transition-fast);
+}
+
+.cb-send-btn.active {
+    background-color: #444;
+    color: white;
+    cursor: pointer;
+}
+
+.cb-send-btn.active:hover {
+    background-color: #555;
+}
+
+.cb-composer-footer {
+    text-align: center;
+    margin-top: var(--cb-space-2);
+    font-size: 11px;
+    color: #666;
+}

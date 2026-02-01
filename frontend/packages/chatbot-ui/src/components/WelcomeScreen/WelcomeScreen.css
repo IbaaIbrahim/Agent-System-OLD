@@ -1,0 +1,67 @@
+.cb-welcome-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: var(--cb-space-6);
+    text-align: center;
+    animation: cb-fade-in 0.5s ease-out;
+}
+
+.cb-welcome-logo {
+    color: var(--cb-accent-primary);
+    margin-bottom: var(--cb-space-4);
+    /* Optional: Add a subtle glow or gradient background */
+}
+
+.cb-welcome-title {
+    font-size: 2rem;
+    font-weight: 600;
+    margin-bottom: var(--cb-space-8);
+    background: linear-gradient(to right, #fff, #9ca3af);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.cb-quick-actions-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--cb-space-2);
+    width: 100%;
+    max-width: 400px;
+}
+
+.cb-quick-action-card {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-3);
+    padding: var(--cb-space-3) var(--cb-space-4);
+    background-color: var(--cb-bg-secondary);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+    color: var(--cb-text-secondary);
+    cursor: pointer;
+    transition: all var(--cb-transition-fast);
+    text-align: left;
+}
+
+.cb-quick-action-card:hover {
+    background-color: var(--cb-bg-tertiary);
+    border-color: var(--cb-border-focus);
+    color: var(--cb-text-primary);
+    transform: translateY(-1px);
+}
+
+.cb-action-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--cb-accent-primary);
+}
+
+.cb-action-label {
+    font-size: var(--cb-text-sm);
+    font-weight: 500;
+}

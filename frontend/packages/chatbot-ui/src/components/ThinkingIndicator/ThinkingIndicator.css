@@ -1,0 +1,43 @@
+.cb-thinking-container {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-2) var(--cb-space-4);
+    color: var(--cb-text-tertiary);
+    font-size: var(--cb-text-sm);
+    animation: cb-fade-in 0.3s ease-out;
+}
+
+.cb-thinking-dots {
+    display: flex;
+    gap: 4px;
+}
+
+.cb-dot {
+    width: 6px;
+    height: 6px;
+    background-color: var(--cb-text-tertiary);
+    border-radius: 50%;
+    animation: cb-bounce 1.4s infinite ease-in-out both;
+}
+
+.cb-dot:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.cb-dot:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+@keyframes cb-bounce {
+
+    0%,
+    80%,
+    100% {
+        transform: scale(0);
+    }
+
+    40% {
+        transform: scale(1);
+    }
+}

@@ -1,0 +1,164 @@
+.cb-menu-overlay {
+    position: absolute;
+    bottom: 80px;
+    left: 12px;
+    z-index: 1000;
+}
+
+.cb-menu-content {
+    background-color: #1A1A1A;
+    /* Darker background */
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-lg);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    animation: cb-scale-in 0.15s ease-out;
+}
+
+.cb-menu-content.reasoning {
+    width: 340px;
+    max-width: 90vw;
+}
+
+.cb-menu-content.plus-menu {
+    width: 240px;
+    max-width: 90vw;
+}
+
+.cb-menu-header {
+    padding: 12px 16px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.cb-menu-section {
+    padding-bottom: 8px;
+}
+
+.cb-menu-section.compact {
+    padding: 8px 0;
+}
+
+.cb-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.1s;
+    color: var(--cb-text-secondary);
+}
+
+.cb-menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--cb-text-primary);
+}
+
+.cb-menu-item.active {
+    background-color: rgba(99, 102, 241, 0.15);
+    /* Indigo tint */
+}
+
+.cb-menu-icon-circle {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    color: #CCC;
+}
+
+.cb-menu-item.active .cb-menu-icon-circle {
+    border-color: var(--cb-accent-primary);
+    color: var(--cb-accent-primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.cb-menu-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.cb-menu-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #EEE;
+}
+
+.cb-menu-desc {
+    font-size: 11px;
+    color: #999;
+}
+
+.cb-check {
+    color: var(--cb-accent-primary);
+}
+
+.cb-menu-toggle-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    cursor: pointer;
+    color: #EEE;
+    font-size: 13px;
+}
+
+.cb-toggle {
+    margin-left: auto;
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    position: relative;
+    transition: background 0.2s;
+}
+
+.cb-toggle.on {
+    background-color: #84cc16;
+    /* Lime/Green match */
+}
+
+.cb-toggle.on::after {
+    content: '';
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-radius: 50%;
+}
+
+.cb-toggle.off {
+    background-color: #444;
+}
+
+.cb-toggle.off::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-radius: 50%;
+}
+
+@keyframes cb-scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}

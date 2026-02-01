@@ -1,0 +1,26 @@
+.cb-chat-launcher {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--cb-accent-gradient);
+    border: none;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--cb-shadow-lg);
+    transition: transform var(--cb-transition-fast);
+    z-index: 9999;
+}
+
+.cb-chat-launcher:hover {
+    transform: scale(1.05);
+}
+
+.cb-chat-launcher:active {
+    transform: scale(0.95);
+}
