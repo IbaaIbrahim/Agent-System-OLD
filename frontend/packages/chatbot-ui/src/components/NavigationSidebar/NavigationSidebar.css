@@ -1,0 +1,93 @@
+.cb-nav-sidebar {
+    width: 100%;
+    height: 100%;
+    background-color: var(--cb-bg-primary);
+    border-right: 1px solid var(--cb-border-subtle);
+    display: flex;
+    flex-direction: column;
+    padding: var(--cb-space-2);
+}
+
+.cb-nav-header {
+    padding: var(--cb-space-2);
+    margin-bottom: var(--cb-space-2);
+}
+
+.cb-new-chat-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-2);
+    padding: var(--cb-space-2) var(--cb-space-3);
+    background: transparent;
+    border: none;
+    color: var(--cb-text-secondary);
+    border-radius: var(--cb-radius-md);
+    cursor: pointer;
+    font-size: var(--cb-text-sm);
+    transition: background var(--cb-transition-fast);
+}
+
+.cb-new-chat-btn:hover {
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
+}
+
+.cb-nav-section {
+    margin-bottom: var(--cb-space-6);
+}
+
+.cb-nav-title {
+    padding: 0 var(--cb-space-3);
+    margin-bottom: var(--cb-space-1);
+    font-size: var(--cb-text-xs);
+    font-weight: 600;
+    color: var(--cb-text-tertiary);
+    text-transform: uppercase;
+}
+
+.cb-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--cb-space-3);
+    padding: var(--cb-space-2) var(--cb-space-3);
+    border-radius: var(--cb-radius-md);
+    cursor: pointer;
+    color: var(--cb-text-secondary);
+    font-size: var(--cb-text-sm);
+    transition: all var(--cb-transition-fast);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cb-nav-item:hover {
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
+}
+
+.cb-nav-item.active {
+    background-color: var(--cb-bg-tertiary);
+    color: var(--cb-text-primary);
+}
+
+.cb-item-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    flex-shrink: 0;
+}
+
+.cb-item-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cb-nav-item.action {
+    color: var(--cb-text-tertiary);
+}
+
+.cb-nav-item.action:hover {
+    color: var(--cb-text-secondary);
+}
