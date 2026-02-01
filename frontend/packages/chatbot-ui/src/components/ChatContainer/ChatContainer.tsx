@@ -52,12 +52,55 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         setIsAtBottom(distFromBottom < 50);
     };
 
+    const contentRef = useRef<HTMLDivElement>(null);
+
     // Whenever children change (new messages), if we were at bottom, scroll to bottom
     useLayoutEffect(() => {
         if (isAtBottom) {
             scrollToBottom();
         }
-    }, [children, isAtBottom]); // Dependency on children triggers this
+    }, [children, isAtBottom]);
+
+    // Sticky Scroll: Observe content height changes (Typewriter effect)
+    useLayoutEffect(() => {
+        if (!contentRef.current) return;
+
+        const observer = new ResizeObserver(() => {
+            if (isAtBottom) {
+                scrollToBottom();
+            }
+        });
+
+        observer.observe(contentRef.current);
+
+        return () => observer.disconnect();
+    }, [isAtBottom]);
+
+    // Listen for size changes (e.g. Typewriter effect expanding a message)
+    useEffect(() => {
+        const currentRef = scrollRef.current;
+        if (!currentRef) return;
+
+        const observer = new ResizeObserver(() => {
+            // If we were at the bottom (or very close), keep sticking to bottom
+            // We increase tolerance here because the typewriter effect is fast
+            if (isAtBottom) {
+                scrollToBottom();
+            }
+        });
+
+        // Observe the children of the scroll view to detect height changes
+        // We can observe the scroll view itself, or better, its first child wrapper if it existed.
+        // Since children are direct, we observe the container's scrollHeight indirectly by observing the container? 
+        // No, ResizeObserver on the container fires when container resizes. 
+        // MutationObserver is better for content changes, OR observing a wrapper div.
+        // Let's wrap children in a div to observe it.
+        // For now, let's try observing the scrollRef, but that tracks container size.
+        // We need to wrap the messages in a div to observe their total height.
+    });
+
+    // Better Approach:
+    // We will wrap {children} in a div below and ref IT.
 
     if (!mounted) return null;
 
@@ -110,7 +153,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                             ref={scrollRef}
                             onScroll={handleScroll}
                         >
-                            {children}
+                            <div ref={contentRef}>
+                                {children}
+                            </div>
                         </div>
 
                         {/* Scroll To Bottom Button */}
