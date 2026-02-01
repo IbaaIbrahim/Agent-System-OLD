@@ -39,6 +39,23 @@ help:
 # INFRASTRUCTURE
 # ===================
 
+# up:
+# 	docker compose up -d
+
+# down:
+# 	docker compose down --rmi local
+
+# build:
+# 	docker compose build
+
+# redeploy: down build up
+
+# clean-volumes:
+# 	docker compose down --volumes --remove-orphans --rmi local
+
+# clean-all: clean-volumes
+# 	docker system prune -f
+
 up:
 	docker compose up -d
 	@echo "Waiting for services to be healthy..."
