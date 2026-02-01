@@ -97,12 +97,14 @@ class UserRole(str, Enum):
 
 
 class User(Base, TimestampMixin):
-    """User model within a tenant."""
+    """User model within a tenant (virtual users for B2B2B)."""
 
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
+        UniqueConstraint("tenant_id", "external_id", name="uq_users_tenant_external_id"),
         Index("ix_users_email", "email"),
+        Index("ix_users_external_id", "external_id"),
         {"schema": "tenants"},
     )
 
@@ -116,6 +118,11 @@ class User(Base, TimestampMixin):
         ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
         nullable=False,
     )
+    external_id: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Tenant's own user identifier",
+    )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(
@@ -127,6 +134,10 @@ class User(Base, TimestampMixin):
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, default=dict
     )
+
+    # Custom rate limits (NULL = inherit from tenant)
+    custom_rpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    custom_tpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Relationships
     tenant: Mapped["Tenant"] = relationship(back_populates="users")

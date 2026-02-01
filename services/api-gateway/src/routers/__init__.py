@@ -1,5 +1,5 @@
 """API Gateway routers."""
 
-from . import chat, jobs, health
+from . import admin, auth, chat, health, jobs, users
 
-__all__ = ["chat", "jobs", "health"]
+__all__ = ["admin", "auth", "chat", "health", "jobs", "users"]

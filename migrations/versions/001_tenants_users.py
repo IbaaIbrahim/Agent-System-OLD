@@ -73,6 +73,12 @@ def upgrade() -> None:
             sa.ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
             nullable=False,
         ),
+        sa.Column(
+            "external_id",
+            sa.String(255),
+            nullable=False,
+            comment="Tenant's own user identifier for B2B2B multi-tenancy",
+        ),
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column(
@@ -89,6 +95,18 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column(
+            "custom_rpm_limit",
+            sa.Integer(),
+            nullable=True,
+            comment="Custom requests per minute (NULL = inherit from tenant)",
+        ),
+        sa.Column(
+            "custom_tpm_limit",
+            sa.Integer(),
+            nullable=True,
+            comment="Custom tokens per minute (NULL = inherit from tenant)",
+        ),
+        sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("now()"),
@@ -101,12 +119,19 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
+        sa.UniqueConstraint("tenant_id", "external_id", name="uq_users_tenant_external_id"),
         schema="tenants",
     )
     op.create_index(
         "ix_users_email",
         "users",
         ["email"],
+        schema="tenants",
+    )
+    op.create_index(
+        "ix_users_external_id",
+        "users",
+        ["external_id"],
         schema="tenants",
     )
 
