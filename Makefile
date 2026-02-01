@@ -21,6 +21,7 @@ help:
 	@echo "  make test        - Run all tests"
 	@echo "  make test-unit   - Run unit tests only"
 	@echo "  make test-int    - Run integration tests"
+	@echo "  make test-phase1 - Run Phase 1 authentication tests"
 	@echo "  make test-cov    - Run tests with coverage"
 	@echo ""
 	@echo "Code Quality:"
@@ -60,7 +61,7 @@ logs-orchestrator:
 	docker compose logs -f orchestrator
 
 clean:
-	docker compose down -v --rmi local
+	docker compose down --volumes --rmi local
 	docker system prune -f
 
 restart: down up
@@ -90,10 +91,10 @@ dev: infra
 	@echo "  make frontend"
 
 api:
-	PYTHONPATH=$(PWD) uvicorn services.api-gateway.src.main:app --reload --port 8000 --host 94.16.119.44
+	PYTHONPATH=$(PWD) uvicorn services.api-gateway.src.main:app --reload --port 8000
 
 stream:
-	PYTHONPATH=$(PWD) uvicorn services.stream-edge.src.main:app --reload --port 8001 --host 94.16.119.44
+	PYTHONPATH=$(PWD) uvicorn services.stream-edge.src.main:app --reload --port 8001
 
 orchestrator:
 	PYTHONPATH=$(PWD) python -m services.orchestrator.src.main
@@ -137,6 +138,9 @@ test-unit:
 
 test-int:
 	pytest tests/integration/ -v
+
+test-phase1:
+	pytest tests/integration/test_phase1_auth_flow.py -v
 
 test-cov:
 	pytest tests/ -v --cov=libs --cov=services --cov-report=html --cov-report=term

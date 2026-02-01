@@ -55,9 +55,24 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(
         default="change_in_production",
         min_length=16,
+        description="Secret key for user JWT tokens",
     )
     jwt_algorithm: str = "HS256"
     jwt_expiration: int = Field(default=3600, ge=60)
+
+    # Platform Admin Authentication
+    master_admin_key: str = Field(
+        default="change_in_production_use_long_random_string",
+        min_length=32,
+        description="Master admin key for platform owner (create tenants, manage system)",
+    )
+
+    # Internal Service Authentication
+    internal_jwt_secret: str = Field(
+        default="change_in_production_internal_secret_different_from_jwt",
+        min_length=32,
+        description="Secret key for internal transaction tokens (Kafka payloads)",
+    )
 
     # Rate Limiting
     rate_limit_rpm: int = Field(default=60, ge=1)

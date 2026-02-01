@@ -13,7 +13,7 @@ from libs.messaging.kafka import create_producer
 from libs.messaging.redis import get_redis_client
 
 from .config import get_config
-from .routers import chat, jobs, health
+from .routers import admin, auth, chat, health, jobs, users
 from .middleware.auth import AuthMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 from .middleware.tenant import TenantMiddleware
@@ -113,6 +113,17 @@ def create_app() -> FastAPI:
 
     # Include routers
     app.include_router(health.router, tags=["Health"])
+
+    # Admin endpoints (platform owner only)
+    app.include_router(admin.router, prefix="/api", tags=["Admin"])
+
+    # Authentication endpoints
+    app.include_router(auth.router, prefix="/api", tags=["Auth"])
+
+    # User management endpoints (tenant API key required)
+    app.include_router(users.router, prefix="/api", tags=["Users"])
+
+    # Chat and job endpoints
     app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
     app.include_router(jobs.router, prefix="/api/v1", tags=["Jobs"])
 
