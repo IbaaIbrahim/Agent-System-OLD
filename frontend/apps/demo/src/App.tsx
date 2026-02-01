@@ -1,68 +1,35 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
     ChatContainer,
     Composer,
     ChatMode,
     MessageBubble,
-    MessageProps,
     ThinkingIndicator,
     ToolInvocation,
     WelcomeScreen,
     NavigationSidebar,
-    SidebarItem
+    SidebarItem,
+    MessageProps
 } from '@chatbot-ui/core'
+import { MockChatClient } from './api/MockChatClient';
+import { ChatState } from './api/types';
 
 function App() {
     const [mode, setMode] = useState<ChatMode>('sidebar');
     const [isOpen, setIsOpen] = useState(true);
-    const [messages, setMessages] = useState<MessageProps[]>([]);
-    const [isThinking, setIsThinking] = useState(false);
 
-    const handleSend = (text: string) => {
-        const newUserMsg: MessageProps = { id: Date.now().toString(), role: 'user', content: text };
-        setMessages(prev => [...prev, newUserMsg]);
-        setIsThinking(true);
+    // State managed by Client
+    const [chatState, setChatState] = useState<ChatState>({ messages: [], isThinking: false });
 
-        // Simulate flow
-        setTimeout(() => {
-            setIsThinking(false);
+    // Initialize Client (Memoized to persist across renders)
+    const client = useMemo(() => new MockChatClient(), []);
 
-            // Add Tool Invocation Message
-            const toolMsgId = Date.now().toString();
-            const toolMsg: MessageProps = {
-                id: toolMsgId,
-                role: 'assistant',
-                content: '',
-                toolInvocation: {
-                    toolName: 'search_web',
-                    args: { query: 'relevant info' },
-                    status: 'running'
-                }
-            };
-            setMessages(prev => [...prev, toolMsg]);
-
-            setTimeout(() => {
-                // Update Tool to Completed
-                setMessages(prev => prev.map(m =>
-                    m.id === toolMsgId
-                        ? { ...m, toolInvocation: { ...m.toolInvocation!, status: 'completed' as const } }
-                        : m
-                ));
-
-                // Add Answer
-                const aiMsg: MessageProps = {
-                    id: (Date.now() + 1).toString(),
-                    role: 'assistant',
-                    content: 'Based on your request, I found some relevant information...'
-                };
-                setMessages(prev => [...prev, aiMsg]);
-            }, 2000);
-        }, 1500);
+    const handleSend = async (text: string) => {
+        await client.sendMessage(text, setChatState);
     };
 
     const startNewChat = () => {
-        setMessages([]);
-        setIsThinking(false);
+        client.reset(setChatState);
     };
 
     const agents: SidebarItem[] = [
@@ -111,15 +78,15 @@ function App() {
                 footer={<Composer onSend={handleSend} />}
             >
                 {/* Content is now handled by ChatContainer's scroll view */}
-                {messages.length === 0 ? (
+                {chatState.messages.length === 0 ? (
                     <WelcomeScreen userName="Ibaa" actions={quickActions} />
                 ) : (
                     <>
-                        {messages.map((msg, index) => (
+                        {chatState.messages.map((msg, index) => (
                             <MessageBubble key={msg.id} {...msg} />
                         ))}
 
-                        {isThinking && (
+                        {chatState.isThinking && (
                             <div style={{ paddingLeft: '16px' }}>
                                 <ThinkingIndicator />
                             </div>
