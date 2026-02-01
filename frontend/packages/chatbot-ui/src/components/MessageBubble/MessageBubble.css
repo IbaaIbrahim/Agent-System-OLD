@@ -59,8 +59,11 @@
     background: transparent;
     color: var(--cb-text-primary);
     padding-left: 0;
-    font-weight: 300;
-    /* Lighter weight for modern feel */
+    padding-top: 4px;
+    /* Align text cap-height with avatar */
+    font-weight: 400;
+    /* Better readability than 300 */
+    letter-spacing: 0.01em;
 }
 
 .cb-markdown-content {

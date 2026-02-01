@@ -24,11 +24,13 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
                     {status === 'running' ? (
                         <div className="cb-spinner-sm" />
                     ) : (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><Polyline points="9 18 15 12 9 6" /></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="cb-icon-check">
+                            <polyline points="20 6 9 17 4 12" />
+                        </svg>
                     )}
                 </div>
                 <span className="cb-tool-name">
-                    {status === 'running' ? `Calling ` : `Called `}
+                    <span style={{ opacity: 0.7 }}>{status === 'running' ? 'Calling' : 'Used tool'}</span>
                     <strong>{toolName}</strong>
                 </span>
                 <span className="cb-tool-chevron">

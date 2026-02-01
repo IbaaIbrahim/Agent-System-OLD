@@ -1,42 +1,60 @@
 .cb-tool-invocation {
     border: 1px solid var(--cb-border-subtle);
     border-radius: var(--cb-radius-md);
-    margin-bottom: var(--cb-space-2);
-    background-color: var(--cb-bg-secondary);
+    margin-bottom: var(--cb-space-3);
+    background-color: rgba(255, 255, 255, 0.02);
+    /* Glassy/Subtle - Assuming dark mode base */
     font-size: var(--cb-text-sm);
     overflow: hidden;
+    transition: background-color 0.2s;
+    width: 100%;
+    /* Ensure full width in message flow */
 }
 
 .cb-tool-header {
     display: flex;
     align-items: center;
-    padding: var(--cb-space-2) var(--cb-space-3);
+    padding: var(--cb-space-3);
     cursor: pointer;
-    gap: var(--cb-space-2);
+    gap: var(--cb-space-3);
+    user-select: none;
 }
 
 .cb-tool-header:hover {
-    background-color: var(--cb-bg-tertiary);
+    background-color: rgba(255, 255, 255, 0.05);
 }
 
 .cb-tool-name {
     flex: 1;
     color: var(--cb-text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
 }
 
 .cb-tool-name strong {
-    color: var(--cb-text-primary);
+    color: var(--cb-accent-primary);
+    /* Highlight the function name */
+    font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+    /* Monospace for function name */
     font-weight: 500;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 6px;
+    border-radius: 4px;
 }
 
 .cb-tool-chevron {
-    color: var(--cb-text-secondary);
+    color: var(--cb-text-tertiary);
     transition: transform var(--cb-transition-fast);
+    display: flex;
+    /* Fix vertical alignment */
 }
 
 .cb-spinner-sm {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     border: 2px solid var(--cb-border-subtle);
     border-top-color: var(--cb-accent-primary);
     border-radius: 50%;
@@ -44,16 +62,18 @@
 }
 
 .cb-tool-details {
-    background-color: var(--cb-bg-primary);
+    background-color: rgba(0, 0, 0, 0.2);
+    /* Darker background for code */
     border-top: 1px solid var(--cb-border-subtle);
-    padding: var(--cb-space-2);
+    padding: var(--cb-space-3);
 }
 
 .cb-code-block {
-    font-family: monospace;
-    font-size: var(--cb-text-xs);
+    font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
     color: var(--cb-text-secondary);
     white-space: pre-wrap;
+    line-height: 1.5;
 }
 
 @keyframes cb-spin {
