@@ -70,11 +70,13 @@ class TenantResponse(BaseModel):
     @classmethod
     def from_model(cls, tenant: Tenant) -> "TenantResponse":
         """Create response from database model."""
+        # Handle both string and enum status (SQLAlchemy may return either)
+        status = tenant.status.value if hasattr(tenant.status, 'value') else tenant.status
         return cls(
             id=str(tenant.id),
             name=tenant.name,
             slug=tenant.slug,
-            status=tenant.status.value,
+            status=status,
             rate_limit_rpm=tenant.rate_limit_rpm,
             rate_limit_tpm=tenant.rate_limit_tpm,
             settings=tenant.settings or {},

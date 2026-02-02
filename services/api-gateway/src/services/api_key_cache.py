@@ -83,7 +83,7 @@ class ApiKeyCacheEntry:
             tenant_id=tenant.id,
             tenant_name=tenant.name,
             tenant_slug=tenant.slug,
-            tenant_status=tenant.status.value,
+            tenant_status=tenant.status.value if hasattr(tenant.status, 'value') else tenant.status,
             tenant_rate_limit_rpm=tenant.rate_limit_rpm,
             tenant_rate_limit_tpm=tenant.rate_limit_tpm,
             key_scopes=api_key.scopes or [],

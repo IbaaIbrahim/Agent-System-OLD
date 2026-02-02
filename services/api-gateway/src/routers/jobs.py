@@ -66,7 +66,7 @@ async def get_job_status(
 
         return JobStatusResponse(
             job_id=str(job.id),
-            status=job.status.value,
+            status=job.status.value if hasattr(job.status, 'value') else job.status,
             provider=job.provider,
             model=job.model_id,
             created_at=job.created_at.isoformat(),
@@ -125,7 +125,7 @@ async def get_job_messages(
                 {
                     "id": str(msg.id),
                     "sequence_num": msg.sequence_num,
-                    "role": msg.role.value,
+                    "role": msg.role.value if hasattr(msg.role, 'value') else msg.role,
                     "content": msg.content,
                     "tool_calls": msg.tool_calls,
                     "tool_call_id": msg.tool_call_id,
@@ -161,9 +161,10 @@ async def cancel_job(
             )
 
         # Only pending or running jobs can be cancelled
-        if job.status.value not in ("pending", "running"):
+        status_str = job.status.value if hasattr(job.status, 'value') else job.status
+        if status_str not in ("pending", "running"):
             return {
-                "message": f"Job is already {job.status.value}",
+                "message": f"Job is already {status_str}",
                 "job_id": str(job_id),
             }
 

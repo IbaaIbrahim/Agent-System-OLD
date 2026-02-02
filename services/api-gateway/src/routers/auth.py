@@ -158,7 +158,7 @@ async def exchange_token(
 
         # Define scopes based on user role
         scopes = ["job:create", "stream:read"]
-        if user.role.value in ("admin", "owner"):
+        if user.role in ("admin", "owner"):
             scopes.append("admin")
 
         # Create JWT token
