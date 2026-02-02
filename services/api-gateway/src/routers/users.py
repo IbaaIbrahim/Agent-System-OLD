@@ -97,7 +97,7 @@ class UserResponse(BaseModel):
             external_id=user.external_id,
             email=user.email,
             name=user.name,
-            role=user.role.value,
+            role=user.role.value if hasattr(user.role, 'value') else user.role,
             is_active=user.is_active,
             custom_rpm_limit=user.custom_rpm_limit,
             custom_tpm_limit=user.custom_tpm_limit,
@@ -170,7 +170,7 @@ async def create_user(
             tenant_id=str(tenant_id),
             external_id=user.external_id,
             email=user.email,
-            role=user.role.value,
+            role=user.role.value if hasattr(user.role, 'value') else user.role,
         )
 
         return UserResponse.from_model(user)

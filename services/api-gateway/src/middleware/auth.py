@@ -99,10 +99,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         api_key_record, tenant = row
 
-        # Check expiration
-        if api_key_record.expires_at:
+        # Check expiration (handle both cache entry and database model)
+        expires_at = api_key_record.key_expires_at if hasattr(api_key_record, "key_expires_at") else api_key_record.expires_at
+        if expires_at:
             # Handle both datetime objects and ISO strings (from cache)
-            expires_at = api_key_record.expires_at
             if isinstance(expires_at, str):
                 from datetime import datetime as dt
                 expires_at = dt.fromisoformat(expires_at)
@@ -110,8 +110,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if expires_at < datetime.now(UTC):
                 raise AuthenticationError("API key has expired")
 
-        # Check if key is active (from cache entry)
-        if not api_key_record.key_is_active:
+        # Check if key is active (handle both cache entry and database model)
+        is_active = api_key_record.key_is_active if hasattr(api_key_record, "key_is_active") else api_key_record.is_active
+        if not is_active:
             raise AuthenticationError("API key has been revoked")
 
         # Check tenant status (from cache entry)
