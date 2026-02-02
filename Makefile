@@ -1,4 +1,8 @@
-.PHONY: help install dev up down logs clean test migrate lint format
+# Include .env file if it exists (loads environment variables like API_HOST)
+-include .env
+export
+
+.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator workers archiver frontend
 
 # Default target
 help:
@@ -108,7 +112,7 @@ dev: infra
 	@echo "  make frontend"
 
 api:
-	PYTHONPATH=$(PWD) uvicorn services.api-gateway.src.main:app --reload --port 8000
+	PYTHONPATH=$(PWD) uvicorn services.api-gateway.src.main:app --reload --port 8000 --host $(or $(API_HOST),localhost)
 
 stream:
 	PYTHONPATH=$(PWD) uvicorn services.stream-edge.src.main:app --reload --port 8001
@@ -123,7 +127,7 @@ archiver:
 	PYTHONPATH=$(PWD) python -m services.archiver.src.main
 
 frontend:
-	cd frontend && npm run dev
+	cd frontend/apps/demo && npm run dev
 
 # ===================
 # DATABASE

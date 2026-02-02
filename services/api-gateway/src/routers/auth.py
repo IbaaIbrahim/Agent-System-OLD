@@ -15,7 +15,7 @@ from libs.db.models import User
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/v1/auth", tags=["auth"])
+router = APIRouter(prefix="/v1/Auth")
 
 
 # ============================================================================
