@@ -7,4 +7,5 @@ export * from './components/ThinkingIndicator/ThinkingIndicator';
 export * from './components/WelcomeScreen/WelcomeScreen';
 export * from './components/NavigationSidebar/NavigationSidebar';
 export * from './components/ChatLauncher/ChatLauncher';
+export * from './components/PendingMessageList/PendingMessageList';
 

@@ -1,7 +1,6 @@
 """Redis stream reader for consuming events."""
 
 import asyncio
-from typing import Any
 from uuid import UUID
 
 from libs.common import get_logger
@@ -37,9 +36,6 @@ class RedisStreamReader:
             consumer_group=self.consumer_group,
             consumer_name=self.consumer_name,
         )
-
-        # Discover active event streams
-        redis = await get_redis_client()
 
         while self._running:
             try:

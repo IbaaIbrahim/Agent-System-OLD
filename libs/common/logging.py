@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -13,7 +13,7 @@ def add_timestamp(
     logger: logging.Logger, method_name: str, event_dict: EventDict
 ) -> EventDict:
     """Add ISO 8601 timestamp to log events."""
-    event_dict["timestamp"] = datetime.now(timezone.utc).isoformat()
+    event_dict["timestamp"] = datetime.now(UTC).isoformat()
     return event_dict
 
 

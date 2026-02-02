@@ -3,7 +3,7 @@
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -18,7 +18,7 @@ class SSEConnection:
 
     connection_id: str
     job_id: UUID
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_event_id: str | None = None
     queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=1000))
     is_active: bool = True
@@ -123,7 +123,7 @@ class ConnectionManager:
                         timeout=1.0,
                     )
                     sent_count += 1
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         "Event queue full, dropping event",
                         connection_id=conn_id,

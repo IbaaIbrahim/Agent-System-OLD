@@ -6,8 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from libs.common import get_logger
-from libs.messaging.redis import RedisStreams, get_redis_client
-
+from libs.messaging.redis import RedisStreams
 from services.stream_edge.src.config import get_config
 
 logger = get_logger(__name__)
@@ -124,9 +123,10 @@ class CatchupHandler:
         """
         # For cold catch-up, we'd typically query the database
         # This is a simplified implementation that could be extended
+        from sqlalchemy import select
+
         from libs.db import get_session_context
         from libs.db.models import ChatMessage
-        from sqlalchemy import select
 
         try:
             # Parse sequence number from event ID if possible

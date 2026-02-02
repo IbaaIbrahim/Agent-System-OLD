@@ -2,15 +2,13 @@
 
 import asyncio
 from typing import Any
-from uuid import UUID
 
 from libs.common import get_logger
-from libs.llm import LLMProvider, ToolDefinition
 
 from ..config import get_config
-from .state import AgentState, AgentStatus
-from ..services.llm_service import LLMService
 from ..handlers.tool_handler import ToolHandler
+from ..services.llm_service import LLMService
+from .state import AgentState
 
 logger = get_logger(__name__)
 
@@ -89,7 +87,7 @@ class AgentExecutor:
                     )
 
                     # Add tool results to messages
-                    for tc, result in zip(response.tool_calls, tool_results):
+                    for tc, result in zip(response.tool_calls, tool_results, strict=True):
                         state.add_tool_result(tc.id, result)
                         await self._emit_event(state, "tool_result", {
                             "tool_call_id": tc.id,
@@ -209,7 +207,7 @@ class AgentExecutor:
                                 tool_calls,
                             )
 
-                            for tc, result in zip(tool_calls, results):
+                            for tc, result in zip(tool_calls, results, strict=True):
                                 state.add_tool_result(tc.id, result)
                                 await self._emit_event(state, "tool_result", {
                                     "tool_call_id": tc.id,

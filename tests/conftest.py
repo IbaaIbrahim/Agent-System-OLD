@@ -1,7 +1,7 @@
 """Shared pytest fixtures for all tests."""
 
 import os
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest

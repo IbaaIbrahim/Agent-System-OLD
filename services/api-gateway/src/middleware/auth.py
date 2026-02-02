@@ -1,6 +1,6 @@
 """Authentication middleware for API key and JWT validation."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import Request
@@ -107,7 +107,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 from datetime import datetime as dt
                 expires_at = dt.fromisoformat(expires_at)
 
-            if expires_at < datetime.now(timezone.utc):
+            if expires_at < datetime.now(UTC):
                 raise AuthenticationError("API key has expired")
 
         # Check if key is active (from cache entry)

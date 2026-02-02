@@ -1,7 +1,6 @@
 """PostgreSQL batch writer for archiving events."""
 
 import asyncio
-from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 

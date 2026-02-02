@@ -4,7 +4,7 @@ import asyncio
 import signal
 from typing import Any
 
-from libs.common import setup_logging, get_logger
+from libs.common import get_logger, setup_logging
 from libs.messaging.kafka import create_consumer
 from libs.messaging.redis import get_redis_client
 

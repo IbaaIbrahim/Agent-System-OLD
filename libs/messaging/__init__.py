@@ -1,10 +1,10 @@
 """Messaging utilities for Kafka and Redis."""
 
 from libs.messaging.kafka import (
-    KafkaProducer,
     KafkaConsumer,
-    create_producer,
+    KafkaProducer,
     create_consumer,
+    create_producer,
 )
 from libs.messaging.redis import (
     RedisClient,

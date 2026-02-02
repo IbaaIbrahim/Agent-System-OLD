@@ -7,8 +7,8 @@ from libs.common import get_logger
 from libs.messaging.redis import RedisPubSub
 
 from ..config import get_config
-from ..engine.state import StateManager
 from ..engine.agent import AgentExecutor
+from ..engine.state import StateManager
 from ..services.llm_service import LLMService
 from ..services.snapshot_service import SnapshotService
 from .tool_handler import ToolHandler
@@ -117,7 +117,7 @@ class JobHandler:
             event_type: Event type
             data: Event payload
         """
-        from libs.messaging.redis import RedisPubSub, RedisStreams
+        from libs.messaging.redis import RedisStreams
 
         # Publish to pub/sub for real-time delivery
         pubsub = RedisPubSub()

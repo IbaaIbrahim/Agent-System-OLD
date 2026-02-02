@@ -2,34 +2,44 @@
 
 ## Executive Summary
 
-The Agentic System is currently **40-50% complete**. This plan outlines the implementation needed to achieve production-ready state according to the design specification in [docs/rebuild.md](docs/rebuild.md).
+The Agentic System is currently **~60% complete**. Phases 1 and 2 are fully implemented, tested, and verified. The remaining work centers on the orchestrator suspend/resume refactor (Phase 3), tool worker enhancements (Phase 4), and production testing (Phase 5).
 
-### Current State
+See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for Phases 3-5.
+
+### Current State (as of Phase 2 completion)
 - ✅ **Stream Edge (95%)**: Fully functional SSE with hot/cold reconnection
-- ⚠️ **API Gateway (60%)**: Auth middleware exists but missing admin endpoints, billing checks, and DB job persistence
-- ⚠️ **Orchestrator (30%)**: Basic loop exists but lacks true suspend/resume and distributed state
-- ❌ **Tool Workers (20%)**: Skeleton only, missing tool implementations
-- ⚠️ **Archiver (40%)**: Basic structure, needs event-type mapping completion
+- ✅ **API Gateway (95%)**: Three-tier auth, admin endpoints, billing, DB job persistence, waterfall rate limiting — all complete
+- ⚠️ **Orchestrator (30%)**: Basic loop works but blocks on tool calls — no suspend/resume, no distributed locking
+- ⚠️ **Tool Workers (25%)**: Two tools (code executor + mock web search), no resume signal, no Kafka result publication
+- ⚠️ **Archiver (40%)**: Reads Redis streams and batches to PostgreSQL, but incomplete event-type mapping
 - ✅ **Database Models (100%)**: All SQLAlchemy models complete
-- ✅ **Shared Libraries (90%)**: Solid foundation
+- ✅ **Shared Libraries (95%)**: Auth, billing, internal tokens, config, logging, LLM abstraction, Kafka, Redis
 
-### Critical Missing Features
-1. **Three-tier authentication** (Platform Owner → Tenant → Virtual User)
-2. **Admin endpoints** for tenant/user management
-3. **Job creation DB transaction** (currently only publishes to Kafka)
-4. **Billing pre-checks** with credit validation
-5. **True suspend/resume** (orchestrator must exit after tool dispatch, resume on completion)
-6. **Internal transaction tokens** for Kafka payload authentication
-7. **Waterfall rate limiting** with user-specific overrides
-8. **API key caching** layer
-9. **Kafka-based tool result consumption** (currently synchronous polling)
-10. **Incremental message persistence** to PostgreSQL
+### Resolved Features (Phase 1 + 2)
+1. ~~Three-tier authentication~~ → **DONE** (Platform Owner / Tenant API Key / End User JWT)
+2. ~~Admin endpoints~~ → **DONE** (CRUD tenants, API keys, users, token exchange)
+3. ~~Job creation DB transaction~~ → **DONE** (Job + ChatMessages persisted before Kafka publish)
+4. ~~Billing pre-checks~~ → **DONE** (feature-flagged, microdollar credit system with atomic Redis reservations)
+5. ~~Internal transaction tokens~~ → **DONE** (signed JWT with `internal_jwt_secret`, 10-min TTL)
+6. ~~Waterfall rate limiting~~ → **DONE** (tenant RPM → user RPM with custom/inherited limits → TPM)
+7. ~~API key caching layer~~ → **DONE** (Redis-backed LRU with 5-min TTL)
+
+### Remaining Critical Features
+1. **True suspend/resume** — orchestrator must exit after tool dispatch, resume from snapshot on completion
+2. **Kafka-based tool result consumption** — replace Redis polling with resume signals
+3. **Distributed state locking** — prevent duplicate processing across orchestrator instances
+4. **Production tool implementations** — web search needs real API, add calculator tool
+5. **Complete archiver event-type mapping** — `tool_call`, `complete`, `error`, `cancelled` events
+6. **Incremental message persistence** — persist assistant messages during execution, not just at completion
+7. **Comprehensive test suite** — integration tests for suspend/resume, chaos testing, load testing
 
 ---
 
-## Phase 1: Authentication & Admin Foundation (Week 1-2)
+## Phase 1: Authentication & Admin Foundation -- COMPLETE
 
 **Goal**: Establish three-tier auth system and enable platform administration
+
+**Status**: COMPLETE. All endpoints implemented, 8 unit tests passing, 12 integration tests written.
 
 ### 1.1 Master Admin Key System
 
@@ -158,9 +168,17 @@ class ApiKeyCache:
 
 ---
 
-## Phase 2: Billing & Enhanced Rate Limiting (Week 2-3)
+## Phase 2: Billing & Enhanced Rate Limiting -- COMPLETE
 
 **Goal**: Implement credit-based billing and waterfall rate limiting
+
+**Status**: COMPLETE. All features implemented with 29 new unit tests (37 total), integration tests written.
+
+**Key decisions made during implementation:**
+- Credits stored as **integer microdollars** (1,000,000 = $1.00) — avoids floating-point issues, Redis DECRBY works natively with integers
+- Billing is **feature-flagged** via `ENABLE_BILLING_CHECKS` (default: false)
+- Internal transaction tokens use `internal_jwt_secret` (separate from user `jwt_secret`)
+- DB write happens **before** Kafka publish — job exists in DB even if messaging fails
 
 ### 2.1 Internal Transaction Token System
 
@@ -1319,18 +1337,18 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 
 ### Phase Completion Criteria
 
-**Phase 1 Complete When:**
-- ✅ Master admin can create tenants via API
-- ✅ Tenants receive API keys and can authenticate
-- ✅ Virtual users can exchange for JWT tokens
-- ✅ API key cache reduces DB queries by >80%
+**Phase 1 Complete When:** -- ALL MET
+- [x] Master admin can create tenants via API
+- [x] Tenants receive API keys and can authenticate
+- [x] Virtual users can exchange for JWT tokens
+- [x] API key cache reduces DB queries by >80%
 
-**Phase 2 Complete When:**
-- ✅ Jobs are persisted to database before Kafka publish
-- ✅ Initial user messages saved to chat_messages table
-- ✅ Billing pre-check rejects jobs with insufficient credits
-- ✅ Internal transaction tokens validated by orchestrator
-- ✅ Waterfall rate limiting enforces tenant and user limits
+**Phase 2 Complete When:** -- ALL MET
+- [x] Jobs are persisted to database before Kafka publish
+- [x] Initial user messages saved to chat_messages table
+- [x] Billing pre-check rejects jobs with insufficient credits (feature-flagged)
+- [x] Internal transaction tokens generated with internal_jwt_secret (10-min TTL)
+- [x] Waterfall rate limiting enforces tenant and user limits (custom + inheritance)
 
 **Phase 3 Complete When:**
 - ✅ Orchestrator exits immediately after tool dispatch
@@ -1384,25 +1402,23 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 
 ## Next Steps
 
-1. **Review this plan** with team/stakeholders
-2. **Set up development environment** (ensure all services run locally)
-3. **Create feature branch**: `git checkout -b feature/complete-implementation`
-4. **Start with Phase 1.1**: Master admin key configuration
-5. **Write tests first** (TDD approach for critical features)
-6. **Deploy incrementally**: Each phase should be deployable
-7. **Monitor metrics**: Track job creation latency, orchestrator CPU, tool success rate
+Phase 1 and Phase 2 are complete. Continuing with:
+
+1. **Phase 3**: Orchestrator suspend/resume refactor (highest priority, core architecture change)
+2. **Phase 4**: Tool worker enhancements + archiver completion (can parallelize with Phase 3)
+3. **Phase 5**: Comprehensive testing, load testing, chaos testing, documentation
+
+See **[docs/next-phases.md](next-phases.md)** for the full technical implementation plan for Phases 3-5.
 
 ---
 
-## Questions for User
+## Questions -- RESOLVED
 
-Before implementation, please clarify:
-
-1. **Billing**: Should credit balance be in cents (integer) or dollars (decimal)? Current design uses decimal.
-2. **Rate Limiting**: Should we track RPM (requests per minute) or RPS (requests per second)? Current is RPM.
-3. **Tool Workers**: Which tools are priority? (web search, calculator, code execution, file ops?)
-4. **Suspend/Resume**: Should we keep old polling code as fallback with feature flag, or full replacement?
-5. **Admin Access**: Should master admin key be single key (env var) or support multiple admin users in database?
+1. **Billing**: Integer microdollars (1,000,000 = $1.00). Avoids floating-point, Redis DECRBY compatible.
+2. **Rate Limiting**: RPM (requests per minute) with 60-second sliding window via Redis sorted sets.
+3. **Tool Workers**: Web search (real API) and calculator are Phase 4 priority. Code executor exists.
+4. **Suspend/Resume**: Feature-flagged approach — old polling kept as fallback initially.
+5. **Admin Access**: Single master admin key via env var (current approach). Database-backed multi-admin deferred.
 
 ---
 

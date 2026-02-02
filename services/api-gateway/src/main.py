@@ -1,22 +1,22 @@
 """API Gateway - Control Plane entry point."""
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from libs.common import setup_logging, get_logger, AgentSystemError
-from libs.db import init_db, close_db
+from libs.common import AgentSystemError, get_logger, setup_logging
+from libs.db import close_db, init_db
 from libs.messaging.kafka import create_producer
 from libs.messaging.redis import get_redis_client
 
 from .config import get_config
-from .routers import admin, auth, chat, health, jobs, users
 from .middleware.auth import AuthMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 from .middleware.tenant import TenantMiddleware
+from .routers import admin, auth, chat, health, jobs, users
 
 logger = get_logger(__name__)
 

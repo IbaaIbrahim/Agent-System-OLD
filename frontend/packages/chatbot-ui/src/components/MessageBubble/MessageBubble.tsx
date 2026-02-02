@@ -20,38 +20,50 @@ export interface MessageProps {
         args: any;
         status: 'running' | 'completed' | 'failed';
     };
+    onAnimationComplete?: () => void;
 }
 
-export const MessageBubble: React.FC<MessageProps> = ({
-    role,
-    content,
-    attachments,
-    toolInvocation
-}) => {
+export const MessageBubble: React.FC<MessageProps> = (props) => {
+    const {
+        role,
+        content,
+        attachments,
+        toolInvocation
+    } = props;
     // Typewriter effect state
     const [displayContent, setDisplayContent] = useState('');
 
     // Only animate if it's an assistant message AND there is content to animate.
-    // If it's a tool call (empty content usually), don't animate.
     useEffect(() => {
         if (role !== 'assistant' || !content) {
             setDisplayContent(content || '');
+            // Signal completion immediately for non-animated messages
+            props.onAnimationComplete?.();
             return;
         }
 
-        let currentIndex = 0;
+        let animationFrameId: number;
+        const startTime = Date.now();
         const speed = 15; // ms per char
 
-        const interval = setInterval(() => {
-            if (currentIndex < content.length) {
-                setDisplayContent(prev => content.substring(0, currentIndex + 1));
-                currentIndex++;
-            } else {
-                clearInterval(interval);
-            }
-        }, speed);
+        const animate = () => {
+            const now = Date.now();
+            const elapsed = now - startTime;
+            // Calculate how many characters should be shown based on elapsed time
+            const charsToShow = Math.floor(elapsed / speed);
 
-        return () => clearInterval(interval);
+            if (charsToShow < content.length) {
+                setDisplayContent(content.substring(0, charsToShow + 1));
+                animationFrameId = requestAnimationFrame(animate);
+            } else {
+                setDisplayContent(content);
+                props.onAnimationComplete?.(); // Animation finished
+            }
+        };
+
+        animationFrameId = requestAnimationFrame(animate);
+
+        return () => cancelAnimationFrame(animationFrameId);
     }, [content, role]);
 
     if (toolInvocation) {

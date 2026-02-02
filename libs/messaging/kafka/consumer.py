@@ -189,14 +189,7 @@ class KafkaConsumer:
         if not self.dlq_topic:
             return
 
-        # Add error info to message
-        dlq_message = {
-            "original_message": message,
-            "error": error,
-            "headers": headers,
-        }
-
-        # In practice, you'd use a producer here
+        # In practice, you'd use a producer to send to DLQ topic
         logger.error(
             "Message sent to DLQ",
             dlq_topic=self.dlq_topic,

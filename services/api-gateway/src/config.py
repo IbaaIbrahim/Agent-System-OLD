@@ -17,6 +17,10 @@ class APIGatewayConfig(Settings):
     # Request timeout (seconds)
     request_timeout: int = 30
 
+    # Billing feature flag (disabled by default)
+    enable_billing_checks: bool = False
+    default_credit_balance_micros: int = 100_000_000  # $100.00 in microdollars
+
 
 @lru_cache
 def get_config() -> APIGatewayConfig:

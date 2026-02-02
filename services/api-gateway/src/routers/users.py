@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from libs.common import get_logger
-from libs.common.exceptions import ValidationError
 from libs.db import get_session_context
 from libs.db.models import User, UserRole
 

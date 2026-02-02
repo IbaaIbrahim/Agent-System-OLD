@@ -2,10 +2,9 @@
 
 import asyncio
 import signal
-from typing import Any
 
-from libs.common import setup_logging, get_logger
-from libs.db import init_db, close_db
+from libs.common import get_logger, setup_logging
+from libs.db import close_db, init_db
 from libs.messaging.kafka import create_consumer
 from libs.messaging.redis import get_redis_client
 
