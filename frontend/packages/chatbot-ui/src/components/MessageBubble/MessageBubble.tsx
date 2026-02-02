@@ -21,6 +21,7 @@ export interface MessageProps {
         status: 'running' | 'completed' | 'failed';
     };
     onAnimationComplete?: () => void;
+    shouldAnimate?: boolean;
 }
 
 export const MessageBubble: React.FC<MessageProps> = (props) => {
@@ -28,14 +29,15 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         role,
         content,
         attachments,
-        toolInvocation
+        toolInvocation,
+        shouldAnimate = true
     } = props;
     // Typewriter effect state
     const [displayContent, setDisplayContent] = useState('');
 
-    // Only animate if it's an assistant message AND there is content to animate.
+    // Only animate if it's an assistant message AND there is content to animate AND shouldAnimate is true.
     useEffect(() => {
-        if (role !== 'assistant' || !content) {
+        if (role !== 'assistant' || !content || shouldAnimate === false) {
             setDisplayContent(content || '');
             // Signal completion immediately for non-animated messages
             props.onAnimationComplete?.();
@@ -64,7 +66,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         animationFrameId = requestAnimationFrame(animate);
 
         return () => cancelAnimationFrame(animationFrameId);
-    }, [content, role]);
+    }, [content, role, shouldAnimate]);
 
     if (toolInvocation) {
         return (

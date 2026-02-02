@@ -104,6 +104,27 @@ function App() {
         prevMsgCountRef.current = 0;
     };
 
+    // When chat is closed, mark all messages as finished animating
+    // so they display immediately when re-opened.
+    useEffect(() => {
+        if (!isOpen) {
+            chatState.messages.forEach(msg => {
+                finishedMessageIdsRef.current.add(msg.id);
+            });
+            // Also ensure typing state is reset if we force finish
+            if (isTyping) setIsTyping(false);
+        }
+    }, [isOpen, chatState.messages, isTyping]);
+
+    const handleRemoveQueueItem = (index: number) => {
+        console.log('Removing item at index:', index);
+        setMessageQueue(prev => {
+            const newQueue = [...prev];
+            newQueue.splice(index, 1);
+            return newQueue;
+        });
+    };
+
     const agents: SidebarItem[] = [
         { id: '1', label: 'Bug Report Assistant', icon: '🐞' },
         { id: '2', label: 'Comms Crafter', icon: '📝' },
@@ -148,7 +169,10 @@ function App() {
                 drawerContent={navContent}
                 footer={
                     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                        <PendingMessageList queue={messageQueue} />
+                        <PendingMessageList
+                            queue={messageQueue}
+                            onDelete={handleRemoveQueueItem}
+                        />
                         <Composer
                             onSend={handleSend}
                             disabled={false}
@@ -165,6 +189,7 @@ function App() {
                             <MessageBubble
                                 key={msg.id}
                                 {...msg}
+                                shouldAnimate={!finishedMessageIdsRef.current.has(msg.id)}
                                 onAnimationComplete={() => handleAnimationComplete(msg.id)}
                             />
                         ))}

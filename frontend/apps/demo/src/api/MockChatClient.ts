@@ -50,7 +50,7 @@ export class MockChatClient implements ChatClient {
         const aiMsg: MessageProps = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
-            content: 'Based on your request, I found some relevant information regarding your query. The analysis suggests we should proceed with the mock implementation first.'
+            content: 'Based on your request, I found some relevant information regarding your query. The analysis suggests we should proceed with the mock implementation first. Based on your request, I found some relevant information regarding your query. The analysis suggests we should proceed with the mock implementation first.  Based on your request, I found some relevant information regarding your query. The analysis suggests we should proceed with the mock implementation first. Based on your request, I found some relevant information regarding your query. The analysis suggests we should proceed with the mock implementation first.'
         };
         this.messages = [...this.messages, aiMsg];
         onUpdate({ messages: this.messages, isThinking: false });
