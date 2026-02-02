@@ -16,7 +16,7 @@ from libs.db.models import ApiKey, Tenant, TenantStatus
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
 # ============================================================================

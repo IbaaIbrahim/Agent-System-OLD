@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './MessageBubble.css';
 import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
-import { ThinkingIndicator } from '../ThinkingIndicator/ThinkingIndicator'; // Assumed export
 
 export interface Attachment {
     id: string;
@@ -13,29 +12,23 @@ export interface Attachment {
 export type MessageStepType = 'text' | 'thinking' | 'tool-call';
 
 export interface MessageStep {
-    id: string; // unique within message
+    id: string;
     type: MessageStepType;
-    content?: string; // for text
-    toolName?: string; // for tool
-    toolArgs?: any;    // for tool
+    content?: string;
+    toolName?: string;
+    toolArgs?: any;
     toolStatus?: 'running' | 'completed' | 'failed';
-    isFinished?: boolean; // animation finished?
+    isFinished?: boolean;
+    thoughts?: string[];
 }
 
 export interface MessageProps {
     id: string;
     role: 'user' | 'assistant' | 'system';
-
-    // Legacy / Computed single content (for backward compat if needed)
     content?: string;
-
-    // New: Sequence of steps
     steps?: MessageStep[];
-
     timestamp?: Date;
     attachments?: Attachment[];
-
-    // Legacy single tool usage (can be mapped to a step)
     toolInvocation?: {
         toolName: string;
         args: any;
@@ -56,75 +49,70 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         shouldAnimate = true
     } = props;
 
-    // Use internal state or just render? 
-    // If we want Typewriter effect for text steps, we need state for them.
-    // For simplicity: We will render Steps. 
-    // If 'steps' isn't present, we fall back to legacy rendering (content + single tool).
+    // If steps are present, use steps rendering
+    if (steps && steps.length > 0) {
+        return (
+            <div className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
+                {role === 'assistant' && (
+                    <div className="cb-avatar-container">
+                        <div className="cb-avatar-assistant">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.524-4.476 10-10 10S2 17.524 2 12 6.476 2 12 2z" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+                        </div>
+                    </div>
+                )}
 
-    if (!steps || steps.length === 0) {
-        // --- LEGACY RENDER PATH ---
-        return <LegacyMessageBubble {...props} />;
-    }
+                <div className="cb-message-content-wrapper" style={{ width: '100%' }}>
+                    {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
 
-    // --- STEPS RENDER PATH ---
-    return (
-        <div className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
-            {role === 'assistant' && (
-                <div className="cb-avatar-container">
-                    <div className="cb-avatar-assistant">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.524-4.476 10-10 10S2 17.524 2 12 6.476 2 12 2z" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+                    <div className="cb-steps-container">
+                        {steps.map((step, index) => {
+                            const isLast = index === steps.length - 1;
+
+                            if (step.type === 'thinking') {
+                                return (
+                                    <ThinkingBlock
+                                        key={step.id}
+                                        step={step}
+                                    />
+                                );
+                            }
+
+                            if (step.type === 'tool-call') {
+                                return (
+                                    <div key={step.id} className="cb-step-tool" style={{ marginBottom: 8 }}>
+                                        <ToolInvocation
+                                            toolName={step.toolName || 'Tool'}
+                                            args={step.toolArgs}
+                                            status={step.toolStatus as any}
+                                        />
+                                    </div>
+                                );
+                            }
+
+                            if (step.type === 'text') {
+                                return (
+                                    <div key={step.id} className={`cb-message-bubble ${role}`} style={{ marginBottom: 8, maxWidth: '100%' }}>
+                                        <TypewriterText
+                                            content={step.content || ''}
+                                            shouldAnimate={shouldAnimate && isLast}
+                                            onComplete={isLast ? props.onAnimationComplete : undefined}
+                                        />
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })}
                     </div>
                 </div>
-            )}
-
-            <div className="cb-message-content-wrapper" style={{ width: '100%' }}>
-                {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
-
-                <div className="cb-steps-container">
-                    {steps.map((step, index) => {
-                        const isLast = index === steps.length - 1;
-
-                        if (step.type === 'thinking') {
-                            return (
-                                <ThinkingBlock
-                                    key={step.id}
-                                    step={step}
-                                />
-                            );
-                        }
-
-                        if (step.type === 'tool-call') {
-                            return (
-                                <div key={step.id} className="cb-step-tool" style={{ marginBottom: 8 }}>
-                                    <ToolInvocation
-                                        toolName={step.toolName || 'Tool'}
-                                        args={step.toolArgs}
-                                        status={step.toolStatus as any}
-                                    />
-                                </div>
-                            );
-                        }
-
-                        if (step.type === 'text') {
-                            return (
-                                <div key={step.id} className={`cb-message-bubble ${role}`} style={{ marginBottom: 8, maxWidth: '100%' }}>
-                                    <TypewriterText
-                                        content={step.content || ''}
-                                        shouldAnimate={shouldAnimate && isLast}
-                                        onComplete={isLast ? props.onAnimationComplete : undefined}
-                                    />
-                                </div>
-                            );
-                        }
-                        return null;
-                    })}
-                </div>
             </div>
-        </div>
-    );
+        );
+    }
+
+    // --- LEGACY RENDER PATH (simple content) ---
+    return <LegacyMessageBubble {...props} />;
 };
 
-// New Collapsible Thinking Block
+// Collapsible Thinking Block
 const ThinkingBlock = ({ step }: { step: MessageStep }) => {
     const [isOpen, setIsOpen] = useState(false);
     const isFinished = step.isFinished;
@@ -145,7 +133,6 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
                     color: isFinished ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.9)'
                 }}
             >
-                {/* Icon */}
                 {isFinished ? (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
                 ) : (
@@ -158,7 +145,6 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
                     <span style={{ fontSize: '11px', opacity: 0.5 }}>{step.thoughts.length} logs</span>
                 )}
 
-                {/* Chevron */}
                 <svg
                     width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                     style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
@@ -183,31 +169,32 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
     );
 };
 
-// Extracted Typewriter for reuse in steps
+// Typewriter with DUAL-TIMER strategy for background resilience
 const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: string, shouldAnimate: boolean, onComplete?: () => void }) => {
     const [displayContent, setDisplayContent] = useState(shouldAnimate ? '' : content);
+    const hasFiredCompleteRef = useRef(false);
 
     useEffect(() => {
-        if (!shouldAnimate) {
+        // Reset for new content
+        hasFiredCompleteRef.current = false;
+
+        if (!shouldAnimate || !content) {
             setDisplayContent(content);
-            onComplete?.();
+            if (!hasFiredCompleteRef.current) {
+                hasFiredCompleteRef.current = true;
+                onComplete?.();
+            }
             return;
         }
 
-        // If content grew, we might need to continue animating
-        if (displayContent.length === content.length) return;
-
         let animationFrameId: number;
+        let timeoutId: NodeJS.Timeout;
         const startTime = Date.now();
-        const speed = 15;
+        const speed = 15; // ms per char
+        const duration = content.length * speed;
 
-        // We need to account for already displayed characters if we are appending? 
-        // For simplicity, let's assume content is replaced or we restart animation if content changes significantly?
-        // Actually, usually in these systems, content grows. 
-        // Let's stick to the previous simple implementation logic.
-
+        // 1. VISUAL TIMER (requestAnimationFrame) - Smooth, but pauses in background
         const animate = () => {
-            // ... logic from original ...
             const now = Date.now();
             const elapsed = now - startTime;
             const charsToShow = Math.floor(elapsed / speed);
@@ -217,24 +204,41 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
                 animationFrameId = requestAnimationFrame(animate);
             } else {
                 setDisplayContent(content);
-                onComplete?.();
+                if (!hasFiredCompleteRef.current) {
+                    hasFiredCompleteRef.current = true;
+                    onComplete?.();
+                }
             }
         };
+
         animationFrameId = requestAnimationFrame(animate);
-        return () => cancelAnimationFrame(animationFrameId);
+
+        // 2. LOGICAL TIMER (setTimeout) - Throttled in background, but GUARANTEED to run
+        timeoutId = setTimeout(() => {
+            if (!hasFiredCompleteRef.current) {
+                setDisplayContent(content);
+                hasFiredCompleteRef.current = true;
+                onComplete?.();
+            }
+        }, duration + 100);
+
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+            clearTimeout(timeoutId);
+        };
     }, [content, shouldAnimate]);
 
     return (
         <div className="cb-markdown-content">
             {displayContent}
-            {shouldAnimate && displayContent.length < content.length && (
+            {shouldAnimate && content && displayContent.length < content.length && (
                 <span className="cb-cursor">|</span>
             )}
         </div>
     );
-}
+};
 
-// --- LEGACY COMPONENT (Original Logic) ---
+// Legacy path for simple content without steps
 const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
     const {
         role,
@@ -243,6 +247,60 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
         toolInvocation,
         shouldAnimate = true
     } = props;
+
+    const [displayContent, setDisplayContent] = useState('');
+    const hasFiredCompleteRef = useRef(false);
+
+    useEffect(() => {
+        hasFiredCompleteRef.current = false;
+
+        if (role !== 'assistant' || !content || !shouldAnimate) {
+            setDisplayContent(content || '');
+            if (!hasFiredCompleteRef.current) {
+                hasFiredCompleteRef.current = true;
+                props.onAnimationComplete?.();
+            }
+            return;
+        }
+
+        let animationFrameId: number;
+        let timeoutId: NodeJS.Timeout;
+        const startTime = Date.now();
+        const speed = 15;
+        const duration = content.length * speed;
+
+        const animate = () => {
+            const now = Date.now();
+            const elapsed = now - startTime;
+            const charsToShow = Math.floor(elapsed / speed);
+
+            if (charsToShow < content.length) {
+                setDisplayContent(content.substring(0, charsToShow + 1));
+                animationFrameId = requestAnimationFrame(animate);
+            } else {
+                setDisplayContent(content);
+                if (!hasFiredCompleteRef.current) {
+                    hasFiredCompleteRef.current = true;
+                    props.onAnimationComplete?.();
+                }
+            }
+        };
+
+        animationFrameId = requestAnimationFrame(animate);
+
+        timeoutId = setTimeout(() => {
+            if (!hasFiredCompleteRef.current) {
+                setDisplayContent(content);
+                hasFiredCompleteRef.current = true;
+                props.onAnimationComplete?.();
+            }
+        }, duration + 100);
+
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+            clearTimeout(timeoutId);
+        };
+    }, [content, role, shouldAnimate]);
 
     if (toolInvocation) {
         return (
@@ -276,14 +334,15 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
             <div className="cb-message-content-wrapper">
                 {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
                 <div className={`cb-message-bubble ${role}`}>
-                    <TypewriterText
-                        content={content || ''}
-                        shouldAnimate={shouldAnimate && role === 'assistant'}
-                        onComplete={props.onAnimationComplete}
-                    />
+                    <div className="cb-markdown-content">
+                        {displayContent}
+                        {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
+                            <span className="cb-cursor">|</span>
+                        )}
+                    </div>
                     {attachments && attachments.length > 0 && (
                         <div className="cb-attachments-grid">
-                            {/* Attachment logic */}
+                            {/* Attachment rendering logic here */}
                         </div>
                     )}
                 </div>

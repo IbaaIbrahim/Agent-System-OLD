@@ -2,7 +2,7 @@
  * React hook for chat state management.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { create } from 'zustand'
 import { getClient, ChatMessage as ApiMessage, ChatCompletionRequest } from '../services/api'
 import { useSSE } from './useSSE'
@@ -92,94 +92,112 @@ export const useChatStore = create<ChatStore>((set) => ({
 export function useChat() {
   const store = useChatStore()
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  // Track the last processed event index to ensure all events are processed
+  // even when the browser tab is in the background
+  const lastProcessedIndexRef = useRef<number>(-1)
 
   const { events, isConnected, error: sseError } = useSSE(store.streamUrl, {
     enabled: !!store.streamUrl,
   })
 
-  // Handle SSE events
+  // Handle SSE events - process ALL pending events, not just the latest
+  // This fixes the issue where streaming stops when browser tab is not focused
   useEffect(() => {
     if (events.length === 0) return
 
-    const latestEvent = events[events.length - 1]
+    // Process all events that haven't been processed yet
+    const startIndex = lastProcessedIndexRef.current + 1
+    if (startIndex >= events.length) return
 
-    switch (latestEvent.type) {
-      case 'open':
-        // Connection opened
-        break
+    for (let i = startIndex; i < events.length; i++) {
+      const event = events[i]
 
-      case 'delta':
-        // Streaming content
-        if (streamingMessageId) {
-          store.appendToMessage(
-            streamingMessageId,
-            (latestEvent.data.content as string) || ''
-          )
-        }
-        break
+      switch (event.type) {
+        case 'open':
+          // Connection opened
+          break
 
-      case 'message':
-        // Complete message
-        if (latestEvent.data.content) {
+        case 'delta':
+          // Streaming content
           if (streamingMessageId) {
+            store.appendToMessage(
+              streamingMessageId,
+              (event.data.content as string) || ''
+            )
+          }
+          break
+
+        case 'message':
+          // Complete message
+          if (event.data.content) {
+            if (streamingMessageId) {
+              store.updateMessage(streamingMessageId, {
+                content: event.data.content as string,
+                isStreaming: false,
+              })
+            }
+          }
+          break
+
+        case 'tool_call':
+          // Tool invocation
+          const toolCalls = event.data.tool_calls as Array<{
+            id: string
+            name: string
+            arguments: Record<string, unknown>
+          }>
+          if (streamingMessageId && toolCalls) {
             store.updateMessage(streamingMessageId, {
-              content: latestEvent.data.content as string,
+              toolCalls,
               isStreaming: false,
             })
           }
-        }
-        break
+          break
 
-      case 'tool_call':
-        // Tool invocation
-        const toolCalls = latestEvent.data.tool_calls as Array<{
-          id: string
-          name: string
-          arguments: Record<string, unknown>
-        }>
-        if (streamingMessageId && toolCalls) {
-          store.updateMessage(streamingMessageId, {
-            toolCalls,
-            isStreaming: false,
+        case 'tool_result':
+          // Tool result - add as tool message
+          store.addMessage({
+            role: 'tool',
+            content: (event.data.result as string) || '',
+            toolCallId: event.data.tool_call_id as string,
           })
-        }
-        break
+          break
 
-      case 'tool_result':
-        // Tool result - add as tool message
-        store.addMessage({
-          role: 'tool',
-          content: (latestEvent.data.result as string) || '',
-          toolCallId: latestEvent.data.tool_call_id as string,
-        })
-        break
+        case 'complete':
+          // Job complete
+          store.setLoading(false)
+          store.setJob(null, null)
+          if (streamingMessageId) {
+            store.updateMessage(streamingMessageId, { isStreaming: false })
+          }
+          setStreamingMessageId(null)
+          break
 
-      case 'complete':
-        // Job complete
-        store.setLoading(false)
-        store.setJob(null, null)
-        if (streamingMessageId) {
-          store.updateMessage(streamingMessageId, { isStreaming: false })
-        }
-        setStreamingMessageId(null)
-        break
+        case 'error':
+          // Error occurred
+          store.setError((event.data.error as string) || 'Unknown error')
+          store.setLoading(false)
+          store.setJob(null, null)
+          setStreamingMessageId(null)
+          break
 
-      case 'error':
-        // Error occurred
-        store.setError((latestEvent.data.error as string) || 'Unknown error')
-        store.setLoading(false)
-        store.setJob(null, null)
-        setStreamingMessageId(null)
-        break
-
-      case 'cancelled':
-        // Job cancelled
-        store.setLoading(false)
-        store.setJob(null, null)
-        setStreamingMessageId(null)
-        break
+        case 'cancelled':
+          // Job cancelled
+          store.setLoading(false)
+          store.setJob(null, null)
+          setStreamingMessageId(null)
+          break
+      }
     }
+
+    // Update the last processed index
+    lastProcessedIndexRef.current = events.length - 1
   }, [events, streamingMessageId, store])
+
+  // Reset the processed index when events are cleared or stream URL changes
+  useEffect(() => {
+    lastProcessedIndexRef.current = -1
+  }, [store.streamUrl])
 
   // Handle SSE errors
   useEffect(() => {
