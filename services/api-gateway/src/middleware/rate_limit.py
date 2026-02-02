@@ -55,11 +55,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return response
 
     async def _check_rate_limit(self, request: Request, tenant_id: UUID) -> None:
-        """Check rate limits using sliding window algorithm.
+        """Check rate limits using waterfall strategy.
 
-        Implements a waterfall rate limiting strategy:
-        1. Check requests per minute (RPM)
-        2. Check tokens per minute (TPM) - estimated from request
+        Waterfall order:
+        1. Tenant-level RPM check (hard cap for entire tenant)
+        2. User-level RPM check (custom limit or inherit tenant default)
+        3. TPM check for chat endpoints
         """
         settings = get_settings()
         redis = await get_redis_client()
@@ -69,34 +70,77 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Get tenant-specific limits (from tenant object if available)
         tenant = getattr(request.state, "tenant", None)
-        rpm_limit = (
+        tenant_rpm = (
             tenant.rate_limit_rpm if tenant and tenant.rate_limit_rpm
             else settings.rate_limit_rpm
         )
-        tpm_limit = (
+        tenant_tpm = (
             tenant.rate_limit_tpm if tenant and tenant.rate_limit_tpm
             else settings.rate_limit_tpm
         )
 
-        # Keys for rate limiting
-        rpm_key = f"rate:rpm:{tenant_id}"
-        tpm_key = f"rate:tpm:{tenant_id}"
+        # --- Step 1: Tenant-level RPM check ---
+        tenant_rpm_key = f"rate:rpm:tenant:{tenant_id}"
+        await self._check_rpm(
+            redis, tenant_rpm_key, tenant_rpm, now, window_start, "tenant"
+        )
 
-        # Check RPM using sorted set with timestamps
+        # Record tenant request
+        await redis.client.zadd(tenant_rpm_key, {str(now): now})
+        await redis.expire(tenant_rpm_key, 120)
+
+        # --- Step 2: User-level RPM check (waterfall) ---
+        user_id = getattr(request.state, "user_id", None)
+        if user_id:
+            user = getattr(request.state, "user", None)
+
+            # User custom limit overrides tenant default; NULL = inherit
+            user_rpm = tenant_rpm  # default: inherit from tenant
+            if user and getattr(user, "custom_rpm_limit", None) is not None:
+                user_rpm = user.custom_rpm_limit
+
+            user_rpm_key = f"rate:rpm:user:{user_id}"
+            await self._check_rpm(
+                redis, user_rpm_key, user_rpm, now, window_start, "user"
+            )
+
+            # Record user request
+            await redis.client.zadd(user_rpm_key, {str(now): now})
+            await redis.expire(user_rpm_key, 120)
+
+        # --- Step 3: TPM check for chat endpoints ---
+        if request.url.path.endswith("/chat/completions"):
+            tpm_key = f"rate:tpm:tenant:{tenant_id}"
+            await self._check_token_rate(
+                redis, tenant_id, tpm_key, tenant_tpm, now, window_start
+            )
+
+    async def _check_rpm(
+        self,
+        redis: object,
+        rpm_key: str,
+        rpm_limit: int,
+        now: float,
+        window_start: float,
+        limit_scope: str,
+    ) -> None:
+        """Check RPM against a specific key (tenant or user).
+
+        Args:
+            redis: Redis client
+            rpm_key: Redis sorted set key
+            rpm_limit: Maximum requests per minute
+            now: Current timestamp
+            window_start: Start of sliding window
+            limit_scope: "tenant" or "user" (for error messages)
+        """
         pipe = redis.pipeline()
-
-        # Remove old entries
         pipe.zremrangebyscore(rpm_key, 0, window_start)
-
-        # Count current entries
         pipe.zcard(rpm_key)
-
-        # Execute pipeline
         results = await pipe.execute()
         current_rpm = results[1]
 
         if current_rpm >= rpm_limit:
-            # Calculate retry time based on oldest request
             oldest = await redis.client.zrange(rpm_key, 0, 0, withscores=True)
             if oldest:
                 retry_after = int(oldest[0][1] + 60 - now) + 1
@@ -104,23 +148,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 retry_after = 60
 
             raise RateLimitError(
-                message=f"Rate limit exceeded: {current_rpm}/{rpm_limit} requests per minute",
+                message=(
+                    f"{limit_scope.title()} rate limit exceeded: "
+                    f"{current_rpm}/{rpm_limit} requests per minute"
+                ),
                 retry_after=retry_after,
                 details={
                     "limit_type": "rpm",
+                    "limit_scope": limit_scope,
                     "current": current_rpm,
                     "limit": rpm_limit,
                 },
-            )
-
-        # Add current request to RPM counter
-        await redis.client.zadd(rpm_key, {str(now): now})
-        await redis.expire(rpm_key, 120)  # Expire after 2 minutes
-
-        # For chat endpoints, also check TPM (estimate tokens from content length)
-        if request.url.path.endswith("/chat/completions"):
-            await self._check_token_rate(
-                redis, tenant_id, tpm_key, tpm_limit, now, window_start
             )
 
     async def _check_token_rate(

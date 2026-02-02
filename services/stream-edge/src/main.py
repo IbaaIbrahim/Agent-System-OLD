@@ -1,19 +1,19 @@
 """Stream Edge - Data Plane entry point for SSE streaming."""
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from libs.common import setup_logging, get_logger, AgentSystemError
-from libs.db import init_db, close_db
+from libs.common import AgentSystemError, get_logger, setup_logging
+from libs.db import close_db, init_db
 from libs.messaging.redis import get_redis_client
 
 from .config import get_config
-from .routers import events
 from .handlers.connection import ConnectionManager
+from .routers import events
 
 logger = get_logger(__name__)
 

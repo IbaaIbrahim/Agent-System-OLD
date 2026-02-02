@@ -1,6 +1,6 @@
 """Admin endpoints for platform owner (tenant and API key management)."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from libs.common import get_logger
 from libs.common.auth import generate_api_key
-from libs.common.exceptions import AuthenticationError, ValidationError
+from libs.common.exceptions import ValidationError
 from libs.db import get_session_context
 from libs.db.models import ApiKey, Tenant, TenantStatus
 
@@ -207,7 +207,7 @@ async def list_tenants(
             except ValueError:
                 raise ValidationError(
                     message="Invalid status value",
-                    errors=[{"field": "status", "message": f"Must be one of: active, suspended, deleted"}],
+                    errors=[{"field": "status", "message": "Must be one of: active, suspended, deleted"}],
                 )
 
         query = query.order_by(Tenant.created_at.desc()).offset(skip).limit(limit)

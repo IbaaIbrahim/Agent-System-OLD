@@ -1,7 +1,7 @@
 """Archiver configuration."""
 
-from functools import lru_cache
 import os
+from functools import lru_cache
 
 from libs.common.config import Settings
 

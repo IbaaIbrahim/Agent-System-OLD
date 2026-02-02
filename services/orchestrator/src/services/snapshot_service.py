@@ -1,6 +1,5 @@
 """Snapshot service for persisting agent state."""
 
-from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -9,8 +8,8 @@ from libs.common import get_logger
 from libs.db import get_session_context
 from libs.db.models import Job, JobSnapshot, JobStatus
 
-from ..engine.state import AgentState, AgentStatus
 from ..engine.serializer import StateSerializer
+from ..engine.state import AgentState, AgentStatus
 
 logger = get_logger(__name__)
 

@@ -1,7 +1,7 @@
 """Agent state management."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
@@ -91,7 +91,7 @@ class AgentState:
     def mark_running(self) -> None:
         """Mark agent as running."""
         self.status = AgentStatus.RUNNING
-        self.started_at = datetime.now(timezone.utc)
+        self.started_at = datetime.now(UTC)
 
     def mark_waiting_tool(self, tool_calls: list[ToolCall]) -> None:
         """Mark agent as waiting for tool results."""
@@ -101,13 +101,13 @@ class AgentState:
     def mark_completed(self) -> None:
         """Mark agent as completed."""
         self.status = AgentStatus.COMPLETED
-        self.completed_at = datetime.now(timezone.utc)
+        self.completed_at = datetime.now(UTC)
         self.pending_tool_calls = []
 
     def mark_failed(self, error: str, details: dict[str, Any] | None = None) -> None:
         """Mark agent as failed."""
         self.status = AgentStatus.FAILED
-        self.completed_at = datetime.now(timezone.utc)
+        self.completed_at = datetime.now(UTC)
         self.error = error
         self.error_details = details
         self.pending_tool_calls = []
@@ -115,7 +115,7 @@ class AgentState:
     def mark_cancelled(self) -> None:
         """Mark agent as cancelled."""
         self.status = AgentStatus.CANCELLED
-        self.completed_at = datetime.now(timezone.utc)
+        self.completed_at = datetime.now(UTC)
         self.pending_tool_calls = []
 
     def increment_tokens(self, input_tokens: int, output_tokens: int) -> None:

@@ -3,13 +3,13 @@
 import asyncio
 import signal
 
-from libs.common import setup_logging, get_logger
-from libs.db import init_db, close_db
+from libs.common import get_logger, setup_logging
+from libs.db import close_db, init_db
 from libs.messaging.redis import get_redis_client
 
 from .config import get_config
-from .services.redis_reader import RedisStreamReader
 from .services.postgres_writer import PostgresWriter
+from .services.redis_reader import RedisStreamReader
 
 logger = get_logger(__name__)
 

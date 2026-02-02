@@ -1,9 +1,6 @@
 """Web search tool implementation."""
 
-import json
 from typing import Any
-
-import httpx
 
 from libs.common import get_logger
 

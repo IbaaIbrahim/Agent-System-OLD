@@ -3,8 +3,9 @@
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID, uuid4
 
 import jwt
 from pydantic import BaseModel
@@ -43,7 +44,7 @@ def create_access_token(
     """
     settings = get_settings()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if expires_delta:
         expire = now + expires_delta
     else:
@@ -58,8 +59,13 @@ def create_access_token(
         scopes=scopes or [],
     )
 
+    data = payload.model_dump()
+    # JWT requires exp/iat as integer timestamps, not datetime objects
+    data["exp"] = int(payload.exp.timestamp())
+    data["iat"] = int(payload.iat.timestamp())
+
     return jwt.encode(
-        payload.model_dump(mode="json"),
+        data,
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
@@ -197,4 +203,82 @@ def extract_api_key(authorization: str | None) -> str:
         raise AuthenticationError(
             message="Invalid API key format",
             details={"reason": "invalid_format"},
+        )
+
+
+# --- Internal Transaction Tokens ---
+# These tokens travel with Kafka payloads so downstream workers
+# can verify job legitimacy without access to the HTTP request context.
+
+
+def create_internal_transaction_token(
+    job_id: UUID,
+    tenant_id: UUID,
+    credit_check_passed: bool,
+    max_tokens: int,
+) -> str:
+    """Create an internal JWT for Kafka payload authentication.
+
+    Signed with internal_jwt_secret (separate from user JWT secret).
+    Short-lived (10 min TTL) to limit replay window.
+
+    Args:
+        job_id: Job identifier
+        tenant_id: Tenant identifier
+        credit_check_passed: Whether billing pre-check succeeded
+        max_tokens: Maximum tokens allowed for this job
+
+    Returns:
+        Encoded JWT string
+    """
+    settings = get_settings()
+    now = datetime.now(UTC)
+
+    payload: dict[str, Any] = {
+        "ver": 1,
+        "trace_id": str(uuid4()),
+        "job_id": str(job_id),
+        "tenant_id": str(tenant_id),
+        "credit_check_passed": credit_check_passed,
+        "limits": {"max_tokens": max_tokens},
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=10)).timestamp()),
+    }
+
+    return jwt.encode(
+        payload,
+        settings.internal_jwt_secret,
+        algorithm="HS256",
+    )
+
+
+def verify_internal_transaction_token(token: str) -> dict[str, Any]:
+    """Verify and decode an internal transaction token.
+
+    Args:
+        token: JWT token string
+
+    Returns:
+        Decoded token payload dict
+
+    Raises:
+        AuthenticationError: If token is expired, tampered, or invalid
+    """
+    settings = get_settings()
+
+    try:
+        return jwt.decode(
+            token,
+            settings.internal_jwt_secret,
+            algorithms=["HS256"],
+        )
+    except jwt.ExpiredSignatureError:
+        raise AuthenticationError(
+            message="Internal transaction token expired",
+            details={"reason": "expired"},
+        )
+    except jwt.InvalidTokenError as e:
+        raise AuthenticationError(
+            message="Invalid internal transaction token",
+            details={"reason": str(e)},
         )

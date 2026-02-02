@@ -7,6 +7,9 @@ requires-python = ">=3.12"
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+exclude = ["migrations/"]
+
+[tool.ruff.lint]
 select = [
     "E",      # pycodestyle errors
     "W",      # pycodestyle warnings
@@ -22,13 +25,32 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
     "B904",   # allow raise without from in except
+    "SIM102", # nested if → combined (often less readable)
+    "SIM105", # try-except-pass → contextlib.suppress (style preference)
+    "SIM108", # if-else → ternary (often less readable)
+    "E712",   # SQLAlchemy requires == True/False for boolean column comparisons
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "migrations/*" = ["ARG001"]
+# structlog processors require (logger, method_name, event_dict) signature
+"libs/common/logging.py" = ["ARG001"]
+# FastAPI lifespan/exception handlers require specific signatures
+"services/*/src/main.py" = ["ARG001"]
+# LLM providers use **kwargs for extensibility
+"libs/llm/anthropic.py" = ["ARG002"]
+"libs/llm/openai.py" = ["ARG002"]
+# Kafka handlers require (message, headers) signature per MessageHandler type
+"libs/messaging/kafka/consumer.py" = ["ARG002"]
+"services/*/src/handlers/*.py" = ["ARG002"]
+"services/tool-workers/src/main.py" = ["ARG001"]
+# FastAPI route handlers may have unused `request` param needed for Depends()
+"services/*/src/routers/*.py" = ["ARG001"]
+# Rate limit middleware passes context params for future use
+"services/*/src/middleware/*.py" = ["ARG002"]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["libs", "services"]
 
 [tool.mypy]

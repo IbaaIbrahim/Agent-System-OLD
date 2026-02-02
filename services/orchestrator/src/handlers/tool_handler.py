@@ -1,9 +1,7 @@
 """Tool invocation handler."""
 
 import asyncio
-import json
-from typing import Any
-from uuid import UUID
+from datetime import UTC
 
 from libs.common import get_logger
 from libs.llm import ToolCall
@@ -42,7 +40,7 @@ class ToolHandler:
             try:
                 result = await self._execute_single_tool(state, tc)
                 results.append(result)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 results.append(f"Error: Tool '{tc.name}' timed out")
             except Exception as e:
                 logger.error(
@@ -80,8 +78,8 @@ class ToolHandler:
 
         # Check for built-in simple tools
         if tool_call.name == "get_current_time":
-            from datetime import datetime, timezone
-            return datetime.now(timezone.utc).isoformat()
+            from datetime import datetime
+            return datetime.now(UTC).isoformat()
 
         # For other tools, dispatch to tool workers
         return await self._dispatch_to_worker(state, tool_call)
@@ -164,7 +162,7 @@ class ToolHandler:
 
             await asyncio.sleep(0.1)
 
-        raise asyncio.TimeoutError(f"Tool {tool_call_id} timed out after {timeout}s")
+        raise TimeoutError(f"Tool {tool_call_id} timed out after {timeout}s")
 
     async def receive_result(
         self,

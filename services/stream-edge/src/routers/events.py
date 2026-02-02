@@ -5,15 +5,15 @@ import json
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from libs.common import get_logger
 from libs.messaging.redis import RedisPubSub
 
 from ..config import get_config
-from ..handlers.connection import ConnectionManager
 from ..handlers.catchup import CatchupHandler
+from ..handlers.connection import ConnectionManager
 
 logger = get_logger(__name__)
 
@@ -115,7 +115,7 @@ async def event_generator(
         )
 
         try:
-            async for event_channel, event_data in pubsub.listen():
+            async for _event_channel, event_data in pubsub.listen():
                 if not connection.is_active:
                     break
 

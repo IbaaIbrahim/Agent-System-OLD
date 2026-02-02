@@ -3,14 +3,13 @@
 import asyncio
 import json
 import sys
-import tempfile
 from io import StringIO
 from typing import Any
 
 from libs.common import get_logger
 
-from .base import BaseTool
 from ..config import get_config
+from .base import BaseTool
 
 logger = get_logger(__name__)
 
@@ -77,7 +76,7 @@ class CodeExecutorTool(BaseTool):
             result = await self._execute_sandboxed(code, timeout)
             return result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return f"Error: Code execution timed out after {timeout} seconds"
         except Exception as e:
             logger.error(
