@@ -166,6 +166,20 @@ class ApiKeyCache:
 - Security: Attempt to access admin endpoints without master key (should 401)
 - Cache: Verify cache hit/miss behavior, TTL expiration
 
+### Phase 1 Implementation Log
+
+**Unit tests**: 8 passing (`tests/unit/test_auth_utils.py`)
+- `TestJWTTokens`: create/decode access token, invalid token, malformed token
+- `TestAPIKeyGeneration`: generate, uniqueness, hash, verify valid, verify invalid
+
+**Integration tests**: 12 tests (`tests/integration/test_phase1_auth_flow.py`)
+- Health check, tenant CRUD, API key generation, user creation, upsert logic, token exchange (external_id + UUID), JWT auth, tenant isolation, API key auth, invalid admin key, missing auth header
+
+**Bug fixes applied during verification:**
+- Fixed JWT `iat` serialization: `model_dump(mode="json")` converted datetime to ISO string; JWT requires integer timestamps. Changed to `int(payload.iat.timestamp())`
+- Fixed 104 ruff lint errors: auto-fixed 77, added `[tool.ruff.lint]` migration from deprecated config, added per-file ignores for interface-required arguments
+- Fixed real bugs: F841 unused variable in archiver, B905 `zip()` without `strict=True` in orchestrator, B007 unused loop variable in stream-edge
+
 ---
 
 ## Phase 2: Billing & Enhanced Rate Limiting -- COMPLETE
@@ -407,6 +421,34 @@ async def create_chat_completion(body: ChatCompletionRequest, request: Request):
 - Integration: Job creation flow (DB insert + Kafka publish)
 - Integration: Insufficient credits rejection (should return 402)
 - Security: Internal token generation and verification
+
+### Phase 2 Implementation Log
+
+**Files created:**
+| File | Purpose |
+|------|---------|
+| `services/api-gateway/src/services/billing.py` | `BillingService` — credit check, atomic reservation (Redis DECRBY), release with refund. `MICRODOLLARS_PER_DOLLAR = 1_000_000` |
+| `tests/unit/test_internal_token.py` | 10 tests: JWT creation, payload fields, secret isolation, TTL, expiry, tampering |
+| `tests/unit/test_billing.py` | 13 tests: token estimation, balance check, reservation, race condition, release/refund |
+| `tests/unit/test_rate_limiting.py` | 6 tests: tenant RPM, user custom limit, inheritance, waterfall ordering |
+| `tests/integration/test_phase2_billing_flow.py` | Job persistence, JWT auth, validation, rate limiting, billing disabled |
+
+**Files modified:**
+| File | Change |
+|------|--------|
+| `libs/common/auth.py` | Added `create_internal_transaction_token()` + `verify_internal_transaction_token()` |
+| `libs/common/__init__.py` | Exported new internal token functions |
+| `services/api-gateway/src/config.py` | Added `enable_billing_checks: bool = False`, `default_credit_balance_micros: int = 100_000_000` |
+| `services/api-gateway/src/middleware/rate_limit.py` | Rewrote `_check_rate_limit()` with 3-step waterfall: tenant RPM → user RPM (custom/inherited) → TPM |
+| `services/api-gateway/src/routers/chat.py` | Full rewrite: billing pre-check → DB persist (Job + ChatMessages) → internal token → Kafka publish |
+| `services/api-gateway/src/services/__init__.py` | Added `BillingService` export |
+| `.env.example` | Added `ENABLE_BILLING_CHECKS`, `DEFAULT_CREDIT_BALANCE_MICROS` |
+| `pyproject.toml` | Migrated to `[tool.ruff.lint]`, added per-file ignores, excluded `migrations/` |
+| `tests/conftest.py` | Fixed `AsyncGenerator` import (`typing` → `collections.abc`) |
+
+**Test import workaround:** Service directories use hyphens (`api-gateway`) which aren't valid Python package names. Test files use `sys.path.insert(0, "services/api-gateway")` then import from `src.*` directly.
+
+**Total unit tests after Phase 2: 37 (all passing)**
 
 ---
 
@@ -1173,20 +1215,21 @@ class MetricsCollector:
 
 ### Critical Path
 ```
-Phase 1 (Auth) → Phase 2 (Billing + Internal Tokens) → Phase 3 (Suspend/Resume) → Phase 5 (Testing)
+Phase 1 (Auth) ✅ → Phase 2 (Billing) ✅ → Phase 3 (Suspend/Resume) ⬜ → Phase 5 (Testing) ⬜
+                                                     ↑
+                                    Phase 4 (Tools) ⬜ (parallel)
 ```
 
-### Parallel Tracks
-- **Track A**: Phase 1 → Phase 2 → Phase 3 (API Gateway + Orchestrator)
-- **Track B**: Phase 4 (Tool Workers - can develop in parallel with Phase 3)
+### Current Position
+- **Phase 1**: COMPLETE
+- **Phase 2**: COMPLETE
+- **Phase 3**: NEXT — orchestrator suspend/resume (highest priority, core architecture)
+- **Phase 4**: Can start in parallel — tool workers are independent services
+- **Phase 5**: After Phase 3+4 — integration/chaos/load testing needs working suspend/resume
 
-### Must Complete First
-1. Phase 1.1-1.3: Auth system (blocks all other phases)
-2. Phase 2.1: Internal transaction tokens (required for Phase 3)
-
-### Can Parallelize
-- Phase 1.5 (API key caching) + Phase 2.2 (Billing) - independent features
-- Phase 4.1 (Tool implementations) + Phase 3 (Orchestrator refactor) - independent services
+### Parallelizable Now
+- Phase 3 (orchestrator refactor) + Phase 4.1-4.3 (tool implementations + registry) — independent services
+- Phase 3.5 (tool worker resume signal) bridges Phase 3 and Phase 4 — small change to `main.py`
 
 ---
 
@@ -1302,34 +1345,31 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 
 ## Critical Files Summary
 
-**Top 5 Most Critical Files for Implementation:**
+### Completed (Phase 1 + 2)
 
-1. **[services/api-gateway/src/routers/chat.py](services/api-gateway/src/routers/chat.py)**
-   - Add DB transaction (Job + ChatMessage persistence)
-   - Add billing pre-check
-   - Generate internal transaction token
-   - Most impactful change
+| File | What was done |
+|------|---------------|
+| `services/api-gateway/src/routers/admin.py` | Tenant CRUD, API key generation, user management |
+| `services/api-gateway/src/routers/auth.py` | Token exchange endpoint (API key → JWT) |
+| `services/api-gateway/src/routers/users.py` | Virtual user CRUD with upsert logic |
+| `services/api-gateway/src/routers/chat.py` | Full rewrite: billing → DB persist → internal token → Kafka |
+| `services/api-gateway/src/services/billing.py` | Credit checks, atomic reservations, release with refund |
+| `services/api-gateway/src/middleware/rate_limit.py` | Waterfall: tenant RPM → user RPM → TPM |
+| `libs/common/auth.py` | Internal transaction tokens (create + verify) |
 
-2. **[services/orchestrator/src/engine/agent.py](services/orchestrator/src/engine/agent.py)**
-   - Refactor to exit on tool dispatch (suspend)
-   - Remove blocking tool result polling
-   - Core architectural change
+### Remaining (Phase 3-5) — most critical first
 
-3. **[services/orchestrator/src/handlers/resume_handler.py](services/orchestrator/src/handlers/resume_handler.py)** *(new file)*
-   - Handle job resumption from snapshots
-   - Fetch tool results from Redis
-   - Continue execution
-   - Enables true suspend/resume
-
-4. **[services/api-gateway/src/routers/admin.py](services/api-gateway/src/routers/admin.py)** *(new file)*
-   - Tenant creation and management
-   - API key generation
-   - Foundation for multi-tier auth
-
-5. **[services/tool-workers/src/main.py](services/tool-workers/src/main.py)**
-   - Publish resume signal to Kafka (not just Redis)
-   - Enable orchestrator resumption
-   - Critical for suspend/resume workflow
+| File | What needs to happen |
+|------|---------------------|
+| `services/orchestrator/src/engine/agent.py` | Refactor to exit on tool dispatch (suspend) instead of blocking Redis poll |
+| `services/orchestrator/src/handlers/resume_handler.py` | **Create**: load snapshot, fetch tool results, resume execution |
+| `services/orchestrator/src/services/state_lock.py` | **Create**: distributed lock via Redis SETNX |
+| `services/orchestrator/src/main.py` | Add second Kafka consumer for `agent.job-resume` topic |
+| `services/tool-workers/src/main.py` | Publish resume signal to Kafka after tool completion |
+| `services/tool-workers/src/tools/calculator.py` | **Create**: safe math expression evaluator |
+| `services/tool-workers/src/tools/web_search.py` | Replace mock with real Brave/DDG API |
+| `services/archiver/src/services/postgres_writer.py` | Handle all event types (currently only message/delta/tool_result) |
+| `infrastructure/docker/kafka/create-topics.sh` | Add `agent.job-resume` topic |
 
 ---
 
@@ -1350,23 +1390,25 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 - [x] Internal transaction tokens generated with internal_jwt_secret (10-min TTL)
 - [x] Waterfall rate limiting enforces tenant and user limits (custom + inheritance)
 
-**Phase 3 Complete When:**
-- ✅ Orchestrator exits immediately after tool dispatch
-- ✅ Job snapshot saved to PostgreSQL
-- ✅ Tool completion triggers Kafka resume signal
-- ✅ Different orchestrator instance can resume job
-- ✅ Distributed locking prevents duplicate processing
+**Phase 3 Complete When:** -- PENDING
+- [ ] Orchestrator exits immediately after tool dispatch (currently blocks with 100ms Redis polling)
+- [ ] Job snapshot saved to PostgreSQL before exit (snapshot service exists but not used mid-execution)
+- [ ] Tool completion triggers Kafka resume signal (workers only store to Redis currently)
+- [ ] Different orchestrator instance can resume job from snapshot
+- [ ] Distributed locking prevents duplicate processing (no lock mechanism exists)
+- [ ] `agent.job-resume` Kafka topic created and consumed
 
-**Phase 4 Complete When:**
-- ✅ At least 3 tools implemented (web search, calculator, file ops)
-- ✅ Tool timeout handling works correctly
-- ✅ Archiver persists all event types to PostgreSQL
+**Phase 4 Complete When:** -- PENDING
+- [ ] Web search tool calls real API (currently mock/placeholder)
+- [ ] Calculator tool implemented with safe AST-based evaluation
+- [ ] Archiver handles all event types: `start`, `tool_call`, `complete`, `error`, `cancelled`, `suspended`
+- [ ] Tool timeout handling works correctly
 
-**Phase 5 Complete When:**
-- ✅ All tests pass (unit + integration + e2e)
-- ✅ Load test: 100 concurrent jobs complete successfully
-- ✅ Chaos test: Service kills don't cause data loss
-- ✅ Documentation complete (API, deployment, admin, developer)
+**Phase 5 Complete When:** -- PENDING
+- [ ] All tests pass (unit + integration + e2e) — target 60+ tests
+- [ ] Load test: 100 concurrent jobs complete successfully
+- [ ] Chaos test: Service kills don't cause data loss
+- [ ] Documentation complete (API, deployment, admin, developer)
 
 ### Production Readiness Checklist
 
