@@ -40,13 +40,17 @@ function App() {
             // 2. Strict Typing Lock
             // Check if the very last message is an assistant message that hasn't finished typing.
             const lastMsg = chatState.messages[chatState.messages.length - 1];
-            if (lastMsg?.role === 'assistant' && lastMsg?.content) {
-                if (!finishedMessageIdsRef.current.has(lastMsg.id)) {
-                    // It hasn't finished typing (or maybe hasn't even started).
-                    // We must wait.
-                    // Ensure visual state matches
-                    if (!isTyping) setIsTyping(true);
-                    return;
+            if (lastMsg?.role === 'assistant') {
+                // Check if it has content EITHER in legacy .content OR in the last step .content
+                const hasContent = lastMsg.content || (lastMsg.steps && lastMsg.steps.length > 0 && lastMsg.steps[lastMsg.steps.length - 1].type === 'text');
+
+                if (hasContent) {
+                    if (!finishedMessageIdsRef.current.has(lastMsg.id)) {
+                        // It hasn't finished typing.
+                        // We must wait.
+                        if (!isTyping) setIsTyping(true);
+                        return;
+                    }
                 }
             }
 
@@ -71,9 +75,10 @@ function App() {
     useEffect(() => {
         if (chatState.messages.length > prevMsgCountRef.current) {
             const lastMsg = chatState.messages[chatState.messages.length - 1];
-            // If it's an assistant message with content, it will trigger typewriter, so we lock.
-            // But we primarily rely on the check in processQueue.
-            if (lastMsg.role === 'assistant' && lastMsg.content) {
+            // If it's an assistant message with content (legacy or steps), it will trigger typewriter, so we lock.
+            const hasContent = lastMsg.role === 'assistant' && (lastMsg.content || (lastMsg.steps && lastMsg.steps.length > 0 && lastMsg.steps[lastMsg.steps.length - 1].type === 'text'));
+
+            if (hasContent) {
                 setIsTyping(true);
             }
         }
@@ -195,9 +200,13 @@ function App() {
                         ))}
 
                         {(chatState.isThinking || isProcessing) && (
-                            <div style={{ paddingLeft: '16px' }}>
-                                <ThinkingIndicator />
-                            </div>
+                            /* Only show global thinking if we don't have an assistant message at the end yet.
+                               If we DO have one, it likely has its own internal thinking indicator. */
+                            (!chatState.messages.length || chatState.messages[chatState.messages.length - 1].role !== 'assistant') && (
+                                <div style={{ paddingLeft: '16px' }}>
+                                    <ThinkingIndicator />
+                                </div>
+                            )
                         )}
                     </>
                 )}
