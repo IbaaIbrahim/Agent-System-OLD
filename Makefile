@@ -188,13 +188,13 @@ test-reset-db:
 # Start test services, run tests, stop services
 test-isolated: test-services-up test-isolated-migrate
 	@echo "Running integration tests against isolated environment..."
-	TEST_API_BASE_URL=http://localhost:8100 pytest tests/integration/ -v || ($(MAKE) test-services-down && exit 1)
+	TEST_API_BASE_URL=http://localhost:8100 pytest tests/ -v || ($(MAKE) test-services-down && exit 1)
 	$(MAKE) test-services-down
 
 # Start test services, run tests, keep services running
 test-isolated-keep: test-services-up test-isolated-migrate
 	@echo "Running integration tests against isolated environment..."
-	TEST_API_BASE_URL=http://localhost:8100 pytest tests/integration/ -v
+	TEST_API_BASE_URL=http://localhost:8100 pytest tests/ -v
 	@echo "Test services still running on port 8100. Use 'make test-services-down' to stop."
 
 # Start test infrastructure and API

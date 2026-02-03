@@ -29,18 +29,24 @@ Frontend (React) → API Gateway (Control Plane, 8000) → Kafka → Orchestrato
 
 ## Multi-Tenancy & Auth Model
 
-Three authentication tiers:
-- **Platform Owner** (Super Admin): Master Admin Key (env var) — creates tenants and partner admins
-- **Tenant Backend** (Machine): API Key (`sk_live_...`) stored hashed in `api_keys` table — creates jobs and users
-- **End User** (Virtual): Short-lived JWT minted via tenant's API Key — connects to SSE streams
+Four authentication tiers (B2B2B white-label/partner model):
 
-Rate limiting uses **waterfall inheritance**: check tenant limits first, then user-specific overrides (falling back to tenant defaults if none set). Limits tracked in Redis atomic counters.
+| Priority | Tier | Auth Method | Token Format | Access Scope |
+|----------|------|-------------|--------------|--------------|
+| 1 | **Platform Owner** (Super Admin) | Master Admin Key (env var) | `Bearer {MASTER_ADMIN_KEY}` | Full system — creates partners, tenants, manages everything |
+| 2 | **Partner** (White-label Owner) | Partner API Key | `Bearer pk-agent-*` | Own tenants only — creates/manages tenants, generates tenant API keys |
+| 3 | **Tenant Backend** (Machine) | Tenant API Key | `Bearer sk-agent-*` | Tenant resources — creates users, manages settings, creates jobs |
+| 4 | **End User** (Virtual) | Short-lived JWT (1hr) | `Bearer {jwt}` | User-scoped — creates jobs, streams events |
 
-An **Internal Transaction Token** (signed JWT) travels with Kafka payloads so workers can verify job legitimacy without access to the original HTTP request.
+`partner_id` is nullable on Tenant for backward compatibility — existing tenants without a partner continue working unchanged.
+
+Rate limiting uses a **four-tier waterfall**: Partner RPM → Tenant RPM → User RPM → TPM (partner + tenant levels). Tenant limits inherit from partner, then system defaults. Limits tracked in Redis sorted sets with sliding windows.
+
+An **Internal Transaction Token v2** (signed JWT, HS256, 10-minute TTL) travels with Kafka payloads so workers can verify job legitimacy. Includes `partner_id`, `tenant_id`, `job_id`, `credit_check_passed`, `limits`, and `trace_id`.
 
 ## Shared Libraries (`libs/`)
 
-- `libs/common/` — Base config (`pydantic-settings`), structured logging (`structlog`), auth (JWT/HS256), exceptions
+- `libs/common/` — Base config (`pydantic-settings`), structured logging (`structlog`), auth (JWT/HS256, partner/tenant API key generation), exceptions
 - `libs/db/` — SQLAlchemy 2.0 async models, session management. Three PostgreSQL schemas: `tenants`, `billing`, `jobs`
 - `libs/llm/` — Provider-agnostic LLM abstraction. `get_provider("anthropic"|"openai")`. `ToolDefinition` with `.to_anthropic()`/`.to_openai()` format conversion
 - `libs/messaging/` — Kafka async producer/consumer (with DLQ support) and Redis Pub/Sub client
@@ -97,8 +103,9 @@ All backend `make` targets set `PYTHONPATH=$(PWD)` for module resolution from re
 - **Multi-tenancy**: all operations require `tenant_id`, enforced via middleware.
 - **Config pattern**: service configs extend base `pydantic-settings` from `libs/common/config.py`. Base: `get_settings()`. Service-specific: `get_config()`.
 - **DB models**: SQLAlchemy 2.0 `Mapped[]` columns with `TimestampMixin`, organized into PostgreSQL schemas (`tenants`, `billing`, `jobs`).
-- **Migrations**: sequential numbering `001_`, `002_` in `migrations/versions/`.
-- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed.
+- **Migrations**: sequential numbering `001_`–`004_` in `migrations/versions/`. Current: `001_tenants_users`, `002_pricing_ledger`, `003_jobs_messages`, `004_partners`.
+- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. 62 unit tests, 4 integration test files.
+- **Test imports**: Hyphenated service directories (e.g. `services/api-gateway`) require `sys.path.insert(0, "services/api-gateway")` before importing `src.*` modules in unit tests.
 
 ## Adding New Tools
 
@@ -120,13 +127,24 @@ class MyTool(BaseTool):
 | Concept | Path |
 |---------|------|
 | Base config | `libs/common/config.py` |
-| DB models | `libs/db/models.py` |
+| Auth utilities (JWT, API keys) | `libs/common/auth.py` |
+| DB models (all entities) | `libs/db/models.py` |
 | LLM abstraction | `libs/llm/base.py` |
+| Auth middleware (4-tier) | `services/api-gateway/src/middleware/auth.py` |
+| Rate limiting middleware | `services/api-gateway/src/middleware/rate_limit.py` |
+| Partner admin endpoints | `services/api-gateway/src/routers/partners.py` |
+| Tenant admin endpoints | `services/api-gateway/src/routers/admin.py` |
+| Chat/job router | `services/api-gateway/src/routers/chat.py` |
+| Tenant API key cache | `services/api-gateway/src/services/api_key_cache.py` |
+| Partner API key cache | `services/api-gateway/src/services/partner_api_key_cache.py` |
+| Billing service | `services/api-gateway/src/services/billing.py` |
 | Agent execution loop | `services/orchestrator/src/engine/agent.py` |
 | Agent state machine | `services/orchestrator/src/engine/state.py` |
 | Tool base class | `services/tool-workers/src/tools/base.py` |
 | Kafka topic setup | `infrastructure/docker/kafka/create-topics.sh` |
 | DB init SQL | `infrastructure/docker/postgres/init.sql` |
+| Partner migration | `migrations/versions/004_partners.py` |
 | Frontend chat state | `frontend/src/hooks/useChat.ts` |
 | Architecture design doc | `docs/rebuild.md` |
+| Project plan | `docs/plan.md` |
 | Environment template | `.env.example` |
