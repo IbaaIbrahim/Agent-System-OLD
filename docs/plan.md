@@ -2,27 +2,28 @@
 
 ## Executive Summary
 
-The Agentic System is currently **~60% complete**. Phases 1 and 2 are fully implemented, tested, and verified. The remaining work centers on the orchestrator suspend/resume refactor (Phase 3), tool worker enhancements (Phase 4), and production testing (Phase 5).
+The Agentic System is currently **~65% complete**. Phases 1, 2, and the B2B2B partner layer (Phase 2.5) are fully implemented, tested, and verified. The remaining work centers on the orchestrator suspend/resume refactor (Phase 3), tool worker enhancements (Phase 4), and production testing (Phase 5).
 
 See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for Phases 3-5.
 
-### Current State (as of Phase 2 completion)
+### Current State (as of Phase 2.5 completion)
 - ✅ **Stream Edge (95%)**: Fully functional SSE with hot/cold reconnection
-- ✅ **API Gateway (95%)**: Three-tier auth, admin endpoints, billing, DB job persistence, waterfall rate limiting — all complete
+- ✅ **API Gateway (98%)**: Four-tier auth (super admin / partner / tenant / end user), partner management, admin endpoints, billing (tenant + partner pools), DB job persistence, waterfall rate limiting (partner → tenant → user → TPM) — all complete
 - ⚠️ **Orchestrator (30%)**: Basic loop works but blocks on tool calls — no suspend/resume, no distributed locking
 - ⚠️ **Tool Workers (25%)**: Two tools (code executor + mock web search), no resume signal, no Kafka result publication
 - ⚠️ **Archiver (40%)**: Reads Redis streams and batches to PostgreSQL, but incomplete event-type mapping
-- ✅ **Database Models (100%)**: All SQLAlchemy models complete
-- ✅ **Shared Libraries (95%)**: Auth, billing, internal tokens, config, logging, LLM abstraction, Kafka, Redis
+- ✅ **Database Models (100%)**: All SQLAlchemy models complete (including Partner, PartnerApiKey, tenant.partner_id FK)
+- ✅ **Shared Libraries (98%)**: Auth (tenant + partner keys), billing (tenant + partner pools), internal tokens v2, config, logging, LLM abstraction, Kafka, Redis
 
-### Resolved Features (Phase 1 + 2)
-1. ~~Three-tier authentication~~ → **DONE** (Platform Owner / Tenant API Key / End User JWT)
-2. ~~Admin endpoints~~ → **DONE** (CRUD tenants, API keys, users, token exchange)
-3. ~~Job creation DB transaction~~ → **DONE** (Job + ChatMessages persisted before Kafka publish)
-4. ~~Billing pre-checks~~ → **DONE** (feature-flagged, microdollar credit system with atomic Redis reservations)
-5. ~~Internal transaction tokens~~ → **DONE** (signed JWT with `internal_jwt_secret`, 10-min TTL)
-6. ~~Waterfall rate limiting~~ → **DONE** (tenant RPM → user RPM with custom/inherited limits → TPM)
-7. ~~API key caching layer~~ → **DONE** (Redis-backed LRU with 5-min TTL)
+### Resolved Features (Phase 1 + 2 + 2.5)
+1. ~~Three-tier authentication~~ → **DONE**, then upgraded to **four-tier** in Phase 2.5 (Super Admin / Partner `pk-agent-*` / Tenant `sk-agent-*` / End User JWT)
+2. ~~Admin endpoints~~ → **DONE** (CRUD tenants, API keys, users, token exchange, **partner CRUD + partner API keys**)
+3. ~~Job creation DB transaction~~ → **DONE** (Job + ChatMessages persisted before Kafka publish, includes `partner_id` in Kafka payload)
+4. ~~Billing pre-checks~~ → **DONE** (feature-flagged, microdollar credit system with atomic Redis reservations, **partner credit pool support**)
+5. ~~Internal transaction tokens~~ → **DONE** (v2 signed JWT with `internal_jwt_secret`, 10-min TTL, **includes `partner_id`**)
+6. ~~Waterfall rate limiting~~ → **DONE** (**partner RPM →** tenant RPM → user RPM with custom/inherited limits → **partner TPM →** tenant TPM)
+7. ~~API key caching layer~~ → **DONE** (Redis-backed LRU with 5-min TTL, **separate PartnerApiKeyCache**)
+8. ~~B2B2B multi-partner model~~ → **DONE** (Partner entity with own API keys, partner-scoped tenant management, tenant isolation across partners)
 
 ### Remaining Critical Features
 1. **True suspend/resume** — orchestrator must exit after tool dispatch, resume from snapshot on completion
@@ -199,20 +200,22 @@ class ApiKeyCache:
 **File to modify:**
 - [libs/common/auth.py](libs/common/auth.py)
 
-**New functions:**
+**New functions (updated to v2 in Phase 2.5 to include `partner_id`):**
 ```python
 def create_internal_transaction_token(
     job_id: UUID,
     tenant_id: UUID,
     credit_check_passed: bool,
-    max_tokens: int
+    max_tokens: int,
+    partner_id: UUID | None = None,  # Added in Phase 2.5
 ) -> str:
     """Create internal JWT for Kafka payload authentication (10 min TTL)"""
     payload = {
-        "ver": 1,
+        "ver": 2,  # Bumped from 1 to 2 when partner_id added
         "trace_id": str(uuid4()),  # For distributed tracing
         "job_id": str(job_id),
         "tenant_id": str(tenant_id),
+        "partner_id": str(partner_id) if partner_id else None,
         "credit_check_passed": credit_check_passed,
         "limits": {"max_tokens": max_tokens},
         "exp": int((datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp())
@@ -449,6 +452,87 @@ async def create_chat_completion(body: ChatCompletionRequest, request: Request):
 **Test import workaround:** Service directories use hyphens (`api-gateway`) which aren't valid Python package names. Test files use `sys.path.insert(0, "services/api-gateway")` then import from `src.*` directly.
 
 **Total unit tests after Phase 2: 37 (all passing)**
+
+---
+
+## Phase 2.5: B2B2B Multi-Partner Layer -- COMPLETE
+
+**Goal**: Transform the single-owner B2B platform into a true B2B2B (white-label/partner) architecture where multiple partners can each manage their own set of tenants.
+
+**Status**: COMPLETE. All features implemented with 25 new unit tests (62 total), integration test scaffolding written.
+
+**Key decisions made during implementation:**
+- Partners are a first-class entity in the `tenants` schema with their own API keys (`pk-agent-*` prefix)
+- Tenant's `partner_id` FK is nullable for backward compatibility — existing tenants without partners continue working
+- Partner API keys use a distinct `pk-agent-*` prefix (vs tenant's `sk-agent-*`) for unambiguous prefix-based routing in auth middleware
+- `PartnerApiKey` is a separate table (not reusing `api_keys`) for cleaner FK relationships
+- Rate limiting waterfall: Partner RPM → Tenant RPM → User RPM → TPM (partner + tenant levels)
+- Internal transaction token bumped to v2 with `partner_id` field
+- Partner credit pool billing with `credit_balance_micros` on the Partner model
+
+### Auth Hierarchy (Four Tiers)
+
+```
+Super Admin (MASTER_ADMIN_KEY)          — Full system access
+  └─ Partner (pk-agent-* API keys)      — Scoped to own tenants
+       └─ Tenant (sk-agent-* API keys)  — Scoped to own users/jobs
+            └─ End User (JWT)            — Scoped to own resources
+```
+
+### Rate Limiting Waterfall (Four Tiers)
+
+```
+Step 0: Partner RPM check  →  rate:rpm:partner:{partner_id}
+Step 1: Tenant RPM check   →  rate:rpm:tenant:{tenant_id}     (fallback: partner RPM → system default)
+Step 2: User RPM check     →  rate:rpm:user:{user_id}         (fallback: tenant RPM)
+Step 3: TPM checks         →  rate:tpm:partner:{partner_id}   (if partner exists)
+                              rate:tpm:tenant:{tenant_id}
+```
+
+### Phase 2.5 Implementation Log
+
+**Files created:**
+| File | Purpose |
+|------|---------|
+| `migrations/versions/004_partners.py` | DDL migration: partners table, partner_api_keys table, partner_id FK on tenants |
+| `services/api-gateway/src/routers/partners.py` | Full partner CRUD + partner API key management (7 endpoints) |
+| `services/api-gateway/src/services/partner_api_key_cache.py` | `PartnerApiKeyCache` — parallel to `ApiKeyCache` for `pk-agent-*` keys |
+| `tests/unit/test_partner_auth.py` | 11 tests: partner key generation, extraction, JWT with partner_id |
+| `tests/unit/test_internal_token_v2.py` | 5 tests: token v2 with partner_id, backward compat |
+| `tests/unit/test_partner_rate_limiting.py` | 6 tests: partner RPM waterfall, inheritance, legacy skip |
+| `tests/integration/test_partner_flow.py` | Partner lifecycle: create → key → tenant → isolation |
+| `tests/integration/test_partner_isolation.py` | Cross-partner isolation, platform owner visibility |
+
+**Files modified:**
+| File | Change |
+|------|--------|
+| `libs/db/models.py` | Added `PartnerStatus` enum, `Partner` model, `PartnerApiKey` model; added `partner_id` FK + relationship to `Tenant` |
+| `libs/common/auth.py` | Added `partner_id` to `TokenPayload`, `create_access_token()`, `generate_partner_api_key()`, updated `extract_api_key()` for `pk-agent-*`, bumped `create_internal_transaction_token()` to v2 with `partner_id` |
+| `libs/common/__init__.py` | Exported `generate_partner_api_key` |
+| `services/api-gateway/src/middleware/auth.py` | Added `pk-agent-*` detection, new `_authenticate_partner_api_key()` method, partner state on all auth paths |
+| `services/api-gateway/src/middleware/tenant.py` | Loads `request.state.partner` when tenant has `partner_id` |
+| `services/api-gateway/src/middleware/rate_limit.py` | Added partner RPM (Step 0), partner TPM, tenant limit inheritance from partner, `record_token_usage()` partner tracking |
+| `services/api-gateway/src/routers/admin.py` | Added `require_partner_or_owner()` dependency, partner-scoped tenant CRUD, `partner_id` on request/response models |
+| `services/api-gateway/src/routers/chat.py` | `partner_id` passed to internal token and Kafka payload/headers |
+| `services/api-gateway/src/services/api_key_cache.py` | Extended `ApiKeyCacheEntry` with partner fields, left-join Partner in `get_or_fetch()` |
+| `services/api-gateway/src/services/billing.py` | Added partner billing: `check_partner_credit_balance()`, `reserve_partner_credits()`, `release_partner_reservation()`, `_get_partner_balance()` |
+| `services/api-gateway/src/main.py` | Registered `partners.router`, added `PartnerApiKeyAuth` to OpenAPI security schemes |
+| `tests/unit/test_internal_token.py` | Updated `ver` assertion from 1 to 2 |
+| `tests/unit/test_rate_limiting.py` | Updated `_make_request()` with partner fields, updated `_check_rate_limit()` calls with `partner_id` arg |
+| `tests/conftest.py` | Added `partner_data` and `partner_client` fixtures |
+
+**Partner API endpoints created:**
+```
+POST   /api/admin/partners                         # Create partner (super admin only)
+GET    /api/admin/partners                         # List partners
+GET    /api/admin/partners/{partner_id}            # Get partner
+PUT    /api/admin/partners/{partner_id}            # Update partner
+POST   /api/admin/partners/{partner_id}/api-keys   # Generate partner API key
+GET    /api/admin/partners/{partner_id}/api-keys   # List partner API keys
+DELETE /api/admin/partner-api-keys/{key_id}        # Revoke partner API key
+```
+
+**Total unit tests after Phase 2.5: 62 (all passing)**
 
 ---
 
@@ -1215,14 +1299,15 @@ class MetricsCollector:
 
 ### Critical Path
 ```
-Phase 1 (Auth) ✅ → Phase 2 (Billing) ✅ → Phase 3 (Suspend/Resume) ⬜ → Phase 5 (Testing) ⬜
-                                                     ↑
-                                    Phase 4 (Tools) ⬜ (parallel)
+Phase 1 (Auth) ✅ → Phase 2 (Billing) ✅ → Phase 2.5 (B2B2B Partners) ✅ → Phase 3 (Suspend/Resume) ⬜ → Phase 5 (Testing) ⬜
+                                                                                      ↑
+                                                                     Phase 4 (Tools) ⬜ (parallel)
 ```
 
 ### Current Position
-- **Phase 1**: COMPLETE
-- **Phase 2**: COMPLETE
+- **Phase 1**: COMPLETE — Three-tier auth, admin endpoints, API key caching
+- **Phase 2**: COMPLETE — Billing, internal tokens, waterfall rate limiting, DB job persistence
+- **Phase 2.5**: COMPLETE — B2B2B multi-partner model, four-tier auth, partner billing, partner rate limiting
 - **Phase 3**: NEXT — orchestrator suspend/resume (highest priority, core architecture)
 - **Phase 4**: Can start in parallel — tool workers are independent services
 - **Phase 5**: After Phase 3+4 — integration/chaos/load testing needs working suspend/resume
@@ -1345,17 +1430,23 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 
 ## Critical Files Summary
 
-### Completed (Phase 1 + 2)
+### Completed (Phase 1 + 2 + 2.5)
 
 | File | What was done |
 |------|---------------|
-| `services/api-gateway/src/routers/admin.py` | Tenant CRUD, API key generation, user management |
+| `services/api-gateway/src/routers/admin.py` | Tenant CRUD, API key generation, user management, **partner-scoped tenant endpoints** |
 | `services/api-gateway/src/routers/auth.py` | Token exchange endpoint (API key → JWT) |
 | `services/api-gateway/src/routers/users.py` | Virtual user CRUD with upsert logic |
-| `services/api-gateway/src/routers/chat.py` | Full rewrite: billing → DB persist → internal token → Kafka |
-| `services/api-gateway/src/services/billing.py` | Credit checks, atomic reservations, release with refund |
-| `services/api-gateway/src/middleware/rate_limit.py` | Waterfall: tenant RPM → user RPM → TPM |
-| `libs/common/auth.py` | Internal transaction tokens (create + verify) |
+| `services/api-gateway/src/routers/chat.py` | Full rewrite: billing → DB persist → internal token → Kafka, **partner_id propagation** |
+| `services/api-gateway/src/routers/partners.py` | **Partner CRUD + partner API key management (7 endpoints)** |
+| `services/api-gateway/src/services/billing.py` | Credit checks, atomic reservations, release with refund, **partner credit pool** |
+| `services/api-gateway/src/services/partner_api_key_cache.py` | **PartnerApiKeyCache for pk-agent-* keys** |
+| `services/api-gateway/src/middleware/auth.py` | Four-tier auth: super admin, **partner (pk-agent-*)**, tenant (sk-agent-*), JWT |
+| `services/api-gateway/src/middleware/rate_limit.py` | Waterfall: **partner RPM →** tenant RPM → user RPM → **partner TPM →** tenant TPM |
+| `services/api-gateway/src/middleware/tenant.py` | Tenant loading, **partner loading onto request state** |
+| `libs/common/auth.py` | Internal transaction tokens v2 (create + verify), **partner key generation, partner_id in JWT** |
+| `libs/db/models.py` | All models complete: **Partner, PartnerApiKey, tenant.partner_id FK** |
+| `migrations/versions/004_partners.py` | **Partner tables + tenant FK migration** |
 
 ### Remaining (Phase 3-5) — most critical first
 
@@ -1390,6 +1481,19 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 - [x] Internal transaction tokens generated with internal_jwt_secret (10-min TTL)
 - [x] Waterfall rate limiting enforces tenant and user limits (custom + inheritance)
 
+**Phase 2.5 Complete When:** -- ALL MET
+- [x] Partner entity with CRUD endpoints (create, list, get, update)
+- [x] Partner API key generation with `pk-agent-*` prefix and cache
+- [x] Auth middleware routes `pk-agent-*` keys through partner authentication path
+- [x] Partners can create and manage only their own tenants (scoped isolation)
+- [x] Platform owner retains full access to all tenants and partners
+- [x] Partner RPM/TPM rate limits enforced as first tier in waterfall
+- [x] Tenant limits inherit from partner when not explicitly set
+- [x] Internal transaction token v2 includes `partner_id`
+- [x] `partner_id` propagated through Kafka payload and headers
+- [x] Partner billing pool methods implemented
+- [x] 62 unit tests passing (25 new partner tests)
+
 **Phase 3 Complete When:** -- PENDING
 - [ ] Orchestrator exits immediately after tool dispatch (currently blocks with 100ms Redis polling)
 - [ ] Job snapshot saved to PostgreSQL before exit (snapshot service exists but not used mid-execution)
@@ -1405,7 +1509,7 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 - [ ] Tool timeout handling works correctly
 
 **Phase 5 Complete When:** -- PENDING
-- [ ] All tests pass (unit + integration + e2e) — target 60+ tests
+- [ ] All tests pass (unit + integration + e2e) — target 100+ tests (currently 62 unit tests passing)
 - [ ] Load test: 100 concurrent jobs complete successfully
 - [ ] Chaos test: Service kills don't cause data loss
 - [ ] Documentation complete (API, deployment, admin, developer)
@@ -1444,7 +1548,7 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 
 ## Next Steps
 
-Phase 1 and Phase 2 are complete. Continuing with:
+Phases 1, 2, and 2.5 (B2B2B Partners) are complete. Continuing with:
 
 1. **Phase 3**: Orchestrator suspend/resume refactor (highest priority, core architecture change)
 2. **Phase 4**: Tool worker enhancements + archiver completion (can parallelize with Phase 3)
@@ -1456,11 +1560,11 @@ See **[docs/next-phases.md](next-phases.md)** for the full technical implementat
 
 ## Questions -- RESOLVED
 
-1. **Billing**: Integer microdollars (1,000,000 = $1.00). Avoids floating-point, Redis DECRBY compatible.
-2. **Rate Limiting**: RPM (requests per minute) with 60-second sliding window via Redis sorted sets.
+1. **Billing**: Integer microdollars (1,000,000 = $1.00). Avoids floating-point, Redis DECRBY compatible. Partner credit pool added in Phase 2.5.
+2. **Rate Limiting**: RPM (requests per minute) with 60-second sliding window via Redis sorted sets. Partner tier added as Step 0 in Phase 2.5.
 3. **Tool Workers**: Web search (real API) and calculator are Phase 4 priority. Code executor exists.
 4. **Suspend/Resume**: Feature-flagged approach — old polling kept as fallback initially.
-5. **Admin Access**: Single master admin key via env var (current approach). Database-backed multi-admin deferred.
+5. **Admin Access**: ~~Single master admin key via env var (current approach). Database-backed multi-admin deferred.~~ → **RESOLVED in Phase 2.5**: Super admin (master key) retains full access. Partners (`pk-agent-*` keys) manage their own tenants. True B2B2B hierarchy: Super Admin → Partners → Tenants → End Users.
 
 ---
 
@@ -1490,13 +1594,14 @@ See **[docs/next-phases.md](next-phases.md)** for the full technical implementat
 
 ### Why Waterfall Rate Limiting?
 
-**Problem**: Different users within same tenant may have different usage patterns (enterprise customer with VIP users).
+**Problem**: Different users within same tenant may have different usage patterns (enterprise customer with VIP users). Partners need aggregate caps across all their tenants.
 
-**Solution**: Check tenant-level limit first (hard cap), then check user-specific limit (if set) or inherit tenant default.
+**Solution**: Four-tier waterfall: check partner-level limit first (hard cap across all partner's tenants), then tenant-level limit, then user-specific limit (if set) or inherit tenant default. Tenant limits fall back to partner limits when not explicitly configured.
 
 **Benefit**:
 - Flexible: Per-user overrides without affecting tenant quota
 - Fair: Prevents single user from consuming entire tenant quota
+- Hierarchical: Partners can cap total usage across all their tenants
 - Scalable: Redis atomic counters handle high throughput
 
 ---

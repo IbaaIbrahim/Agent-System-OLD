@@ -4,7 +4,8 @@
 
 set -e
 
-KAFKA_BOOTSTRAP_SERVERS="kafka:29092"
+# Use environment variable if set, otherwise default to kafka:29092
+KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVER:-kafka:29092}"
 
 echo "Waiting for Kafka to be fully ready..."
 sleep 10
