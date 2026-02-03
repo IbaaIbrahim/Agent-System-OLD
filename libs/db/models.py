@@ -46,6 +46,90 @@ class TimestampMixin:
     )
 
 
+class PartnerStatus(str, Enum):
+    """Partner status enumeration."""
+
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    DELETED = "deleted"
+
+
+class Partner(Base, TimestampMixin):
+    """Partner (owner) model for B2B2B white-label support.
+
+    Each partner is a business that manages its own set of tenants.
+    Platform owner (super admin) manages partners.
+    """
+
+    __tablename__ = "partners"
+    __table_args__ = (
+        Index("ix_partners_status", "status"),
+        {"schema": "tenants"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(63), unique=True, nullable=False)
+    status: Mapped[PartnerStatus] = mapped_column(
+        String(20),
+        default=PartnerStatus.ACTIVE,
+        nullable=False,
+    )
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Partner-level rate limits (caps for all tenants under this partner)
+    rate_limit_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_limit_tpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Billing: total credit pool for the partner in microdollars
+    credit_balance_micros: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Relationships
+    tenants: Mapped[list["Tenant"]] = relationship(back_populates="partner")
+    api_keys: Mapped[list["PartnerApiKey"]] = relationship(back_populates="partner")
+
+
+class PartnerApiKey(Base, TimestampMixin):
+    """API key model for partner authentication (pk-agent-* prefix)."""
+
+    __tablename__ = "partner_api_keys"
+    __table_args__ = (
+        Index("ix_partner_api_keys_key_hash", "key_hash"),
+        Index("ix_partner_api_keys_partner_id", "partner_id"),
+        {"schema": "tenants"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.partners.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    scopes: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationships
+    partner: Mapped["Partner"] = relationship(back_populates="api_keys")
+
+
 class TenantStatus(str, Enum):
     """Tenant status enumeration."""
 
@@ -60,6 +144,7 @@ class Tenant(Base, TimestampMixin):
     __tablename__ = "tenants"
     __table_args__ = (
         Index("ix_tenants_status", "status"),
+        Index("ix_tenants_partner_id", "partner_id"),
         {"schema": "tenants"},
     )
 
@@ -77,11 +162,19 @@ class Tenant(Base, TimestampMixin):
     )
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
+    # Partner ownership (NULL = legacy/direct tenant managed by platform owner)
+    partner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.partners.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Rate limits (override defaults)
     rate_limit_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rate_limit_tpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Relationships
+    partner: Mapped["Partner | None"] = relationship(back_populates="tenants")
     users: Mapped[list["User"]] = relationship(back_populates="tenant")
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="tenant")
     usage_records: Mapped[list["UsageLedger"]] = relationship(back_populates="tenant")

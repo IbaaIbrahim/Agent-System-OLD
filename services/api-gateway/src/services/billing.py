@@ -32,10 +32,15 @@ class BillingService:
     """Manages credit checks, reservations, and balance tracking.
 
     All monetary values are in microdollars (int): 1,000,000 = $1.00.
+
+    Partners can use two billing modes (configured in partner.settings):
+    - "pool": Shared credit pool across all partner's tenants (default)
+    - "per_tenant": Each tenant manages its own credits independently
     """
 
     # Redis key patterns
     BALANCE_KEY = "tenant:{tenant_id}:balance"
+    PARTNER_BALANCE_KEY = "partner:{partner_id}:balance"
     RESERVATION_KEY = "reservation:{reservation_id}"
     BALANCE_CACHE_TTL = 60  # seconds
 
@@ -171,6 +176,198 @@ class BillingService:
                 "refund_micros": str(max(refund_micros, 0)),
             },
         )
+
+    # -----------------------------------------------------------------------
+    # Partner-level billing (pool mode)
+    # -----------------------------------------------------------------------
+
+    async def check_partner_credit_balance(
+        self,
+        partner_id: UUID,
+        estimated_tokens: int,
+        provider: str,
+        model_id: str,
+    ) -> bool:
+        """Check if partner has sufficient credits (pool mode).
+
+        Args:
+            partner_id: Partner identifier
+            estimated_tokens: Estimated input tokens
+            provider: LLM provider name
+            model_id: LLM model identifier
+
+        Returns:
+            True if sufficient credits are available
+        """
+        balance_micros = await self._get_partner_balance(partner_id)
+        estimated_cost_micros = await self._estimate_cost(
+            estimated_tokens, provider, model_id
+        )
+
+        has_sufficient = balance_micros >= estimated_cost_micros
+
+        logger.info(
+            "Partner credit balance check",
+            partner_id=str(partner_id),
+            balance_micros=balance_micros,
+            estimated_cost_micros=estimated_cost_micros,
+            sufficient=has_sufficient,
+        )
+
+        return has_sufficient
+
+    async def reserve_partner_credits(
+        self, partner_id: UUID, estimated_cost_micros: int
+    ) -> str:
+        """Reserve credits from partner's shared pool.
+
+        Args:
+            partner_id: Partner identifier
+            estimated_cost_micros: Estimated cost in microdollars
+
+        Returns:
+            Reservation ID for tracking/refund
+        """
+        redis = await get_redis_client()
+        balance_key = self.PARTNER_BALANCE_KEY.format(partner_id=partner_id)
+
+        new_balance = await redis.client.decrby(balance_key, estimated_cost_micros)
+
+        if new_balance < 0:
+            await redis.client.incrby(balance_key, estimated_cost_micros)
+            raise BillingError(
+                "Insufficient partner credits after reservation attempt",
+                details={
+                    "partner_id": str(partner_id),
+                    "estimated_cost_micros": estimated_cost_micros,
+                },
+            )
+
+        reservation_id = str(uuid4())
+        reservation_key = self.RESERVATION_KEY.format(reservation_id=reservation_id)
+
+        await redis.client.hset(
+            reservation_key,
+            mapping={
+                "partner_id": str(partner_id),
+                "amount_micros": str(estimated_cost_micros),
+                "timestamp": str(time.time()),
+                "status": "reserved",
+                "scope": "partner",
+            },
+        )
+        await redis.expire(reservation_key, 3600)
+
+        logger.info(
+            "Partner credits reserved",
+            partner_id=str(partner_id),
+            reservation_id=reservation_id,
+            amount_micros=estimated_cost_micros,
+            new_balance_micros=new_balance,
+        )
+
+        return reservation_id
+
+    async def release_partner_reservation(
+        self, reservation_id: str, actual_cost_micros: int
+    ) -> None:
+        """Settle a partner-level reservation.
+
+        Args:
+            reservation_id: Reservation ID from reserve_partner_credits()
+            actual_cost_micros: Actual cost after job completion
+        """
+        redis = await get_redis_client()
+        reservation_key = self.RESERVATION_KEY.format(reservation_id=reservation_id)
+
+        reservation = await redis.client.hgetall(reservation_key)
+        if not reservation:
+            logger.warning(
+                "Partner reservation not found (may have expired)",
+                reservation_id=reservation_id,
+            )
+            return
+
+        partner_id = reservation[b"partner_id"].decode()
+        reserved_micros = int(reservation[b"amount_micros"].decode())
+        balance_key = self.PARTNER_BALANCE_KEY.format(partner_id=partner_id)
+
+        refund_micros = reserved_micros - actual_cost_micros
+        if refund_micros > 0:
+            await redis.client.incrby(balance_key, refund_micros)
+            logger.info(
+                "Partner credits refunded",
+                partner_id=partner_id,
+                reservation_id=reservation_id,
+                refund_micros=refund_micros,
+            )
+
+        await redis.client.hset(
+            reservation_key,
+            mapping={
+                "status": "settled",
+                "actual_cost_micros": str(actual_cost_micros),
+                "refund_micros": str(max(refund_micros, 0)),
+            },
+        )
+
+    async def _get_partner_balance(self, partner_id: UUID) -> int:
+        """Get partner credit balance from Redis, falling back to DB.
+
+        Args:
+            partner_id: Partner identifier
+
+        Returns:
+            Balance in microdollars
+        """
+        redis = await get_redis_client()
+        balance_key = self.PARTNER_BALANCE_KEY.format(partner_id=partner_id)
+
+        cached = await redis.get(balance_key)
+        if cached is not None:
+            return int(cached)
+
+        # Cache miss — read from partner's credit_balance_micros column
+        balance_micros = await self._fetch_partner_balance_from_db(partner_id)
+        await redis.set(balance_key, str(balance_micros), ex=self.BALANCE_CACHE_TTL)
+
+        return balance_micros
+
+    async def _fetch_partner_balance_from_db(self, partner_id: UUID) -> int:
+        """Fetch partner credit balance from the database.
+
+        Uses the partner's credit_balance_micros column as the initial pool,
+        minus total usage from all tenant ledger entries belonging to this partner.
+
+        Args:
+            partner_id: Partner identifier
+
+        Returns:
+            Balance in microdollars
+        """
+        from libs.db.models import Partner, Tenant
+
+        async with get_session_context() as session:
+            # Get partner's configured balance
+            partner_result = await session.execute(
+                select(Partner.credit_balance_micros).where(Partner.id == partner_id)
+            )
+            initial_balance = partner_result.scalar_one_or_none()
+            if initial_balance is None:
+                initial_balance = 0
+
+            # Sum all costs across all partner's tenants
+            result = await session.execute(
+                select(func.coalesce(func.sum(UsageLedger.cost), 0))
+                .join(Tenant, UsageLedger.tenant_id == Tenant.id)
+                .where(Tenant.partner_id == partner_id)
+            )
+            total_cost_dollars = float(result.scalar_one())
+
+        total_cost_micros = int(total_cost_dollars * MICRODOLLARS_PER_DOLLAR)
+        balance_micros = initial_balance - total_cost_micros
+
+        return max(balance_micros, 0)
 
     async def estimate_cost(
         self, estimated_tokens: int, provider: str, model_id: str

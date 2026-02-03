@@ -75,3 +75,30 @@ async def user_data() -> dict:
         "role": "member",
         "custom_rpm_limit": 50,
     }
+
+
+@pytest.fixture
+async def partner_data() -> dict:
+    """Sample partner data for tests."""
+    import uuid
+
+    return {
+        "name": "Test Partner",
+        "slug": f"test-partner-{uuid.uuid4().hex[:8]}",
+        "contact_email": f"partner-{uuid.uuid4().hex[:8]}@example.com",
+        "rate_limit_rpm": 500,
+        "rate_limit_tpm": 50000,
+    }
+
+
+@pytest.fixture
+async def partner_client(
+    http_client: httpx.AsyncClient,
+) -> httpx.AsyncClient:
+    """HTTP client with a placeholder partner API key.
+
+    Integration tests should create a real partner + key first,
+    then update this client's Authorization header.
+    """
+    http_client.headers.update({"Authorization": "Bearer pk-agent-test-placeholder"})
+    return http_client

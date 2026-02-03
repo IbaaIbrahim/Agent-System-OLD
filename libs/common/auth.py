@@ -19,6 +19,7 @@ class TokenPayload(BaseModel):
 
     sub: str  # Subject (user_id)
     tenant_id: str
+    partner_id: str | None = None
     exp: datetime
     iat: datetime
     jti: str  # JWT ID for revocation
@@ -30,6 +31,7 @@ def create_access_token(
     tenant_id: str,
     scopes: list[str] | None = None,
     expires_delta: timedelta | None = None,
+    partner_id: str | None = None,
 ) -> str:
     """Create a JWT access token.
 
@@ -38,6 +40,7 @@ def create_access_token(
         tenant_id: Tenant identifier
         scopes: Permission scopes
         expires_delta: Custom expiration time
+        partner_id: Partner identifier (if tenant belongs to a partner)
 
     Returns:
         Encoded JWT token
@@ -53,6 +56,7 @@ def create_access_token(
     payload = TokenPayload(
         sub=user_id,
         tenant_id=tenant_id,
+        partner_id=partner_id,
         exp=expire,
         iat=now,
         jti=secrets.token_urlsafe(16),
@@ -116,6 +120,24 @@ def generate_api_key() -> tuple[str, str]:
     raw_key = f"{prefix}-{random_part}"
 
     # Hash the key for storage
+    hashed_key = hash_api_key(raw_key)
+
+    return raw_key, hashed_key
+
+
+def generate_partner_api_key() -> tuple[str, str]:
+    """Generate a new partner API key and its hash.
+
+    Partner keys use the 'pk-agent' prefix to distinguish them
+    from tenant API keys ('sk-agent').
+
+    Returns:
+        Tuple of (raw_key, hashed_key)
+    """
+    prefix = "pk-agent"
+    random_part = secrets.token_urlsafe(32)
+    raw_key = f"{prefix}-{random_part}"
+
     hashed_key = hash_api_key(raw_key)
 
     return raw_key, hashed_key
@@ -194,10 +216,11 @@ def extract_api_key(authorization: str | None) -> str:
             details={"reason": "missing_header"},
         )
 
-    # Support both "Bearer sk-agent-..." and "sk-agent-..." formats
+    # Support both "Bearer {key}" and raw key formats
+    # Handles both tenant keys (sk-agent-*) and partner keys (pk-agent-*)
     if authorization.startswith("Bearer "):
         return authorization[7:]
-    elif authorization.startswith("sk-agent-"):
+    elif authorization.startswith(("sk-agent-", "pk-agent-")):
         return authorization
     else:
         raise AuthenticationError(
@@ -216,6 +239,7 @@ def create_internal_transaction_token(
     tenant_id: UUID,
     credit_check_passed: bool,
     max_tokens: int,
+    partner_id: UUID | None = None,
 ) -> str:
     """Create an internal JWT for Kafka payload authentication.
 
@@ -227,6 +251,7 @@ def create_internal_transaction_token(
         tenant_id: Tenant identifier
         credit_check_passed: Whether billing pre-check succeeded
         max_tokens: Maximum tokens allowed for this job
+        partner_id: Partner identifier (if tenant belongs to a partner)
 
     Returns:
         Encoded JWT string
@@ -235,10 +260,11 @@ def create_internal_transaction_token(
     now = datetime.now(UTC)
 
     payload: dict[str, Any] = {
-        "ver": 1,
+        "ver": 2,
         "trace_id": str(uuid4()),
         "job_id": str(job_id),
         "tenant_id": str(tenant_id),
+        "partner_id": str(partner_id) if partner_id else None,
         "credit_check_passed": credit_check_passed,
         "limits": {"max_tokens": max_tokens},
         "iat": int(now.timestamp()),

@@ -30,19 +30,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        # Get tenant ID from request state (set by auth middleware)
+        # Get tenant and partner IDs from request state (set by auth middleware)
         tenant_id = getattr(request.state, "tenant_id", None)
-        if not tenant_id:
+        partner_id = getattr(request.state, "partner_id", None)
+
+        # Skip if no rate-limitable identity at all
+        if not tenant_id and not partner_id:
             return await call_next(request)
 
         try:
-            await self._check_rate_limit(request, tenant_id)
+            await self._check_rate_limit(request, tenant_id, partner_id)
             return await call_next(request)
 
         except RateLimitError as e:
             logger.warning(
                 "Rate limit exceeded",
-                tenant_id=str(tenant_id),
+                tenant_id=str(tenant_id) if tenant_id else None,
+                partner_id=str(partner_id) if partner_id else None,
                 path=request.url.path,
                 retry_after=e.retry_after,
             )
@@ -54,13 +58,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 response.headers["Retry-After"] = str(e.retry_after)
             return response
 
-    async def _check_rate_limit(self, request: Request, tenant_id: UUID) -> None:
+    async def _check_rate_limit(
+        self, request: Request, tenant_id: UUID | None, partner_id: UUID | None
+    ) -> None:
         """Check rate limits using waterfall strategy.
 
         Waterfall order:
+        0. Partner-level RPM check (hard cap across all partner's tenants)
         1. Tenant-level RPM check (hard cap for entire tenant)
         2. User-level RPM check (custom limit or inherit tenant default)
-        3. TPM check for chat endpoints
+        3. TPM check for chat endpoints (partner-level then tenant-level)
         """
         settings = get_settings()
         redis = await get_redis_client()
@@ -68,15 +75,39 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.time()
         window_start = now - 60  # 1-minute sliding window
 
-        # Get tenant-specific limits (from tenant object if available)
+        # Get partner-specific limits (from partner object if available)
+        partner = getattr(request.state, "partner", None)
+        partner_rpm = (
+            partner.rate_limit_rpm if partner and partner.rate_limit_rpm else None
+        )
+        partner_tpm = (
+            partner.rate_limit_tpm if partner and partner.rate_limit_tpm else None
+        )
+
+        # --- Step 0: Partner-level RPM check ---
+        if partner_id and partner_rpm:
+            partner_rpm_key = f"rate:rpm:partner:{partner_id}"
+            await self._check_rpm(
+                redis, partner_rpm_key, partner_rpm, now, window_start, "partner"
+            )
+
+            # Record partner request
+            await redis.client.zadd(partner_rpm_key, {str(now): now})
+            await redis.expire(partner_rpm_key, 120)
+
+        # If no tenant_id, remaining checks don't apply (partner-only request)
+        if not tenant_id:
+            return
+
+        # Get tenant-specific limits with fallback: tenant → partner → system default
         tenant = getattr(request.state, "tenant", None)
         tenant_rpm = (
             tenant.rate_limit_rpm if tenant and tenant.rate_limit_rpm
-            else settings.rate_limit_rpm
+            else partner_rpm or settings.rate_limit_rpm
         )
         tenant_tpm = (
             tenant.rate_limit_tpm if tenant and tenant.rate_limit_tpm
-            else settings.rate_limit_tpm
+            else partner_tpm or settings.rate_limit_tpm
         )
 
         # --- Step 1: Tenant-level RPM check ---
@@ -110,6 +141,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # --- Step 3: TPM check for chat endpoints ---
         if request.url.path.endswith("/chat/completions"):
+            # Partner-level TPM check first
+            if partner_id and partner_tpm:
+                partner_tpm_key = f"rate:tpm:partner:{partner_id}"
+                await self._check_token_rate(
+                    redis, partner_id, partner_tpm_key, partner_tpm, now, window_start
+                )
+
+            # Tenant-level TPM check
             tpm_key = f"rate:tpm:tenant:{tenant_id}"
             await self._check_token_rate(
                 redis, tenant_id, tpm_key, tenant_tpm, now, window_start
@@ -200,17 +239,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         tenant_id: UUID,
         input_tokens: int,
         output_tokens: int,
+        partner_id: UUID | None = None,
     ) -> None:
         """Record token usage for rate limiting.
 
         Called after a request completes to track actual token usage.
+        Records at both tenant and partner level (if applicable).
         """
         redis = await get_redis_client()
         now = time.time()
-
-        tpm_key = f"rate:tpm:{tenant_id}"
         total_tokens = input_tokens + output_tokens
 
-        # Add token count to sorted set
-        await redis.client.zadd(tpm_key, {f"{now}:{total_tokens}": total_tokens})
-        await redis.expire(tpm_key, 120)
+        # Record tenant-level token usage
+        tenant_tpm_key = f"rate:tpm:tenant:{tenant_id}"
+        await redis.client.zadd(
+            tenant_tpm_key, {f"{now}:{total_tokens}": total_tokens}
+        )
+        await redis.expire(tenant_tpm_key, 120)
+
+        # Record partner-level token usage (if tenant belongs to a partner)
+        if partner_id:
+            partner_tpm_key = f"rate:tpm:partner:{partner_id}"
+            await redis.client.zadd(
+                partner_tpm_key, {f"{now}:{total_tokens}": total_tokens}
+            )
+            await redis.expire(partner_tpm_key, 120)

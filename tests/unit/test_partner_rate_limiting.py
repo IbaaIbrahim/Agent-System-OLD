@@ -1,7 +1,8 @@
-"""Unit tests for waterfall rate limiting.
+"""Unit tests for partner-level rate limiting in the waterfall.
 
-Tests the rate limiting middleware logic including tenant-level
-and user-level waterfall enforcement.
+Tests that partner RPM is checked first (Step 0), tenant RPM
+inherits from partner when not set, and legacy tenants without
+a partner skip the partner-level check.
 """
 
 import sys
@@ -14,7 +15,6 @@ import pytest
 from libs.common.exceptions import RateLimitError
 
 # api-gateway uses a hyphen, which is not a valid Python package name.
-# Add the service root to sys.path so we can import from `src.*`.
 _SERVICE_ROOT = str(Path(__file__).resolve().parents[2] / "services" / "api-gateway")
 if _SERVICE_ROOT not in sys.path:
     sys.path.insert(0, _SERVICE_ROOT)
@@ -22,8 +22,8 @@ if _SERVICE_ROOT not in sys.path:
 from src.middleware.rate_limit import RateLimitMiddleware  # noqa: E402
 
 
-class TestRateLimitWaterfall:
-    """Test the waterfall rate limiting strategy."""
+class TestPartnerRateLimitWaterfall:
+    """Test partner-level rate limiting in the waterfall."""
 
     @pytest.fixture
     def middleware(self) -> RateLimitMiddleware:
@@ -33,32 +33,29 @@ class TestRateLimitWaterfall:
     def _make_request(
         self,
         tenant_id=None,
-        user_id=None,
+        partner_id=None,
         tenant_rpm=None,
         tenant_tpm=None,
-        user_custom_rpm=None,
-        partner_id=None,
         partner_rpm=None,
         partner_tpm=None,
+        user_id=None,
         path="/api/v1/chat/completions",
     ) -> MagicMock:
-        """Create a mock request with state attributes."""
+        """Create a mock request with partner and tenant state."""
         request = MagicMock()
         request.url.path = path
         request.method = "POST"
 
-        # Set state attributes
         request.state.tenant_id = tenant_id or uuid4()
-        request.state.user_id = user_id
         request.state.partner_id = partner_id
+        request.state.user_id = user_id
+        request.state.user = None
 
-        # Tenant object with rate limits
         tenant = MagicMock()
         tenant.rate_limit_rpm = tenant_rpm
         tenant.rate_limit_tpm = tenant_tpm
         request.state.tenant = tenant
 
-        # Partner object with rate limits
         if partner_id:
             partner = MagicMock()
             partner.rate_limit_rpm = partner_rpm
@@ -67,39 +64,33 @@ class TestRateLimitWaterfall:
         else:
             request.state.partner = None
 
-        # User object with custom limits
-        if user_id:
-            user = MagicMock()
-            user.custom_rpm_limit = user_custom_rpm
-            user.custom_tpm_limit = None
-            request.state.user = user
-        else:
-            request.state.user = None
-
         return request
 
     def _make_redis_mock(
         self,
+        partner_rpm_count: int = 0,
         tenant_rpm_count: int = 0,
-        user_rpm_count: int = 0,
     ) -> AsyncMock:
-        """Create a mock Redis client that returns configurable RPM counts."""
-        redis = AsyncMock()
+        """Create a mock Redis returning configurable RPM counts.
 
-        # Pipeline mock — returns [removed_count, current_count]
+        Pipeline execute order:
+        1. Partner RPM check (if partner_id exists and has limits)
+        2. Tenant RPM check
+        3+. User/TPM checks
+        """
+        redis = AsyncMock()
         pipe = AsyncMock()
-        # We'll configure the results per call
         call_count = 0
 
         async def pipeline_execute():
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return [0, tenant_rpm_count]  # Tenant check
+                return [0, partner_rpm_count]
             elif call_count == 2:
-                return [0, user_rpm_count]  # User check
+                return [0, tenant_rpm_count]
             else:
-                return [0, 0]  # TPM check
+                return [0, []]  # TPM check: zrange returns empty list
 
         pipe.execute = pipeline_execute
         pipe.zremrangebyscore = MagicMock()
@@ -114,10 +105,17 @@ class TestRateLimitWaterfall:
 
         return redis
 
-    async def test_tenant_under_limit_passes(self, middleware: RateLimitMiddleware) -> None:
-        """Requests under tenant RPM limit should pass."""
-        request = self._make_request(tenant_rpm=100)
-        redis = self._make_redis_mock(tenant_rpm_count=50)
+    async def test_partner_under_limit_passes(
+        self, middleware: RateLimitMiddleware
+    ) -> None:
+        """Request under partner RPM limit should pass to tenant check."""
+        partner_id = uuid4()
+        request = self._make_request(
+            partner_id=partner_id,
+            partner_rpm=200,
+            tenant_rpm=100,
+        )
+        redis = self._make_redis_mock(partner_rpm_count=50, tenant_rpm_count=5)
 
         with patch(
             "src.middleware.rate_limit.get_redis_client",
@@ -130,12 +128,21 @@ class TestRateLimitWaterfall:
             mock_settings.return_value.rate_limit_tpm = 100000
 
             # Should not raise
-            await middleware._check_rate_limit(request, request.state.tenant_id, request.state.partner_id)
+            await middleware._check_rate_limit(
+                request, request.state.tenant_id, partner_id
+            )
 
-    async def test_tenant_over_limit_raises(self, middleware: RateLimitMiddleware) -> None:
-        """Requests exceeding tenant RPM should raise RateLimitError."""
-        request = self._make_request(tenant_rpm=100)
-        redis = self._make_redis_mock(tenant_rpm_count=100)  # At limit
+    async def test_partner_over_limit_raises(
+        self, middleware: RateLimitMiddleware
+    ) -> None:
+        """Request exceeding partner RPM should raise RateLimitError."""
+        partner_id = uuid4()
+        request = self._make_request(
+            partner_id=partner_id,
+            partner_rpm=100,
+            tenant_rpm=200,  # Tenant has higher limit, but partner blocks
+        )
+        redis = self._make_redis_mock(partner_rpm_count=100)
 
         with patch(
             "src.middleware.rate_limit.get_redis_client",
@@ -148,106 +155,54 @@ class TestRateLimitWaterfall:
             mock_settings.return_value.rate_limit_tpm = 100000
 
             with pytest.raises(RateLimitError) as exc_info:
-                await middleware._check_rate_limit(request, request.state.tenant_id, request.state.partner_id)
+                await middleware._check_rate_limit(
+                    request, request.state.tenant_id, partner_id
+                )
 
-            assert "tenant" in exc_info.value.message.lower()
+            assert "partner" in exc_info.value.message.lower()
+            assert exc_info.value.details["limit_scope"] == "partner"
+
+    async def test_tenant_inherits_partner_rpm_when_none(
+        self, middleware: RateLimitMiddleware
+    ) -> None:
+        """Tenant without explicit RPM should inherit partner's RPM."""
+        partner_id = uuid4()
+        request = self._make_request(
+            partner_id=partner_id,
+            partner_rpm=50,
+            tenant_rpm=None,  # No tenant-specific limit → falls back to partner's 50
+        )
+        # Partner at 5 (under 50), tenant at 50 (at inherited limit of 50)
+        redis = self._make_redis_mock(partner_rpm_count=5, tenant_rpm_count=50)
+
+        with patch(
+            "src.middleware.rate_limit.get_redis_client",
+            new_callable=AsyncMock,
+            return_value=redis,
+        ), patch(
+            "src.middleware.rate_limit.get_settings",
+        ) as mock_settings:
+            mock_settings.return_value.rate_limit_rpm = 60
+            mock_settings.return_value.rate_limit_tpm = 100000
+
+            with pytest.raises(RateLimitError) as exc_info:
+                await middleware._check_rate_limit(
+                    request, request.state.tenant_id, partner_id
+                )
+
             assert exc_info.value.details["limit_scope"] == "tenant"
+            assert exc_info.value.details["limit"] == 50  # Inherited from partner
 
-    async def test_user_with_custom_limit_enforced(
+    async def test_legacy_tenant_skips_partner_check(
         self, middleware: RateLimitMiddleware
     ) -> None:
-        """User-specific RPM limit should be enforced when set."""
-        user_id = uuid4()
+        """Tenant without partner_id should skip partner-level check entirely."""
         request = self._make_request(
+            partner_id=None,
             tenant_rpm=100,
-            user_id=user_id,
-            user_custom_rpm=10,  # Custom limit: 10 RPM
+            path="/api/v1/jobs",  # Non-chat path to avoid TPM check
         )
-        # Tenant is at 5 (under 100), user is at 10 (at custom limit of 10)
-        redis = self._make_redis_mock(tenant_rpm_count=5, user_rpm_count=10)
-
-        with patch(
-            "src.middleware.rate_limit.get_redis_client",
-            new_callable=AsyncMock,
-            return_value=redis,
-        ), patch(
-            "src.middleware.rate_limit.get_settings",
-        ) as mock_settings:
-            mock_settings.return_value.rate_limit_rpm = 60
-            mock_settings.return_value.rate_limit_tpm = 100000
-
-            with pytest.raises(RateLimitError) as exc_info:
-                await middleware._check_rate_limit(request, request.state.tenant_id, request.state.partner_id)
-
-            assert "user" in exc_info.value.message.lower()
-            assert exc_info.value.details["limit_scope"] == "user"
-
-    async def test_user_inherits_tenant_limit_when_custom_is_none(
-        self, middleware: RateLimitMiddleware
-    ) -> None:
-        """User with no custom limit should inherit tenant's RPM limit."""
-        user_id = uuid4()
-        request = self._make_request(
-            tenant_rpm=50,
-            user_id=user_id,
-            user_custom_rpm=None,  # No custom limit → inherits 50
-        )
-        # Tenant at 5 (OK), user at 50 (at inherited limit of 50)
-        redis = self._make_redis_mock(tenant_rpm_count=5, user_rpm_count=50)
-
-        with patch(
-            "src.middleware.rate_limit.get_redis_client",
-            new_callable=AsyncMock,
-            return_value=redis,
-        ), patch(
-            "src.middleware.rate_limit.get_settings",
-        ) as mock_settings:
-            mock_settings.return_value.rate_limit_rpm = 60
-            mock_settings.return_value.rate_limit_tpm = 100000
-
-            with pytest.raises(RateLimitError) as exc_info:
-                await middleware._check_rate_limit(request, request.state.tenant_id, request.state.partner_id)
-
-            assert exc_info.value.details["limit_scope"] == "user"
-            assert exc_info.value.details["limit"] == 50
-
-    async def test_tenant_blocked_skips_user_check(
-        self, middleware: RateLimitMiddleware
-    ) -> None:
-        """If tenant limit is exceeded, user check should not run."""
-        user_id = uuid4()
-        request = self._make_request(
-            tenant_rpm=10,
-            user_id=user_id,
-            user_custom_rpm=200,  # Very generous user limit
-        )
-        # Tenant at 10 (at limit) — should fail at tenant level
-        redis = self._make_redis_mock(tenant_rpm_count=10, user_rpm_count=0)
-
-        with patch(
-            "src.middleware.rate_limit.get_redis_client",
-            new_callable=AsyncMock,
-            return_value=redis,
-        ), patch(
-            "src.middleware.rate_limit.get_settings",
-        ) as mock_settings:
-            mock_settings.return_value.rate_limit_rpm = 60
-            mock_settings.return_value.rate_limit_tpm = 100000
-
-            with pytest.raises(RateLimitError) as exc_info:
-                await middleware._check_rate_limit(request, request.state.tenant_id, request.state.partner_id)
-
-            # Should be tenant-level rejection
-            assert exc_info.value.details["limit_scope"] == "tenant"
-
-    async def test_no_user_id_skips_user_check(
-        self, middleware: RateLimitMiddleware
-    ) -> None:
-        """API key auth (no user_id) should skip user-level check."""
-        request = self._make_request(
-            tenant_rpm=100,
-            user_id=None,  # No user ID
-        )
+        # No partner RPM pipeline call; first pipeline call is tenant
         redis = self._make_redis_mock(tenant_rpm_count=5)
 
         with patch(
@@ -260,5 +215,66 @@ class TestRateLimitWaterfall:
             mock_settings.return_value.rate_limit_rpm = 60
             mock_settings.return_value.rate_limit_tpm = 100000
 
-            # Should pass — only tenant check, and tenant is under limit
-            await middleware._check_rate_limit(request, request.state.tenant_id, request.state.partner_id)
+            # Should pass without partner check
+            await middleware._check_rate_limit(
+                request, request.state.tenant_id, None
+            )
+
+    async def test_partner_blocked_skips_tenant_check(
+        self, middleware: RateLimitMiddleware
+    ) -> None:
+        """If partner limit is hit, tenant check should not run."""
+        partner_id = uuid4()
+        request = self._make_request(
+            partner_id=partner_id,
+            partner_rpm=10,
+            tenant_rpm=1000,  # Very generous tenant limit
+        )
+        redis = self._make_redis_mock(partner_rpm_count=10, tenant_rpm_count=0)
+
+        with patch(
+            "src.middleware.rate_limit.get_redis_client",
+            new_callable=AsyncMock,
+            return_value=redis,
+        ), patch(
+            "src.middleware.rate_limit.get_settings",
+        ) as mock_settings:
+            mock_settings.return_value.rate_limit_rpm = 60
+            mock_settings.return_value.rate_limit_tpm = 100000
+
+            with pytest.raises(RateLimitError) as exc_info:
+                await middleware._check_rate_limit(
+                    request, request.state.tenant_id, partner_id
+                )
+
+            # Should be partner-level rejection, not tenant
+            assert exc_info.value.details["limit_scope"] == "partner"
+
+    async def test_partner_no_rpm_limit_skips_partner_check(
+        self, middleware: RateLimitMiddleware
+    ) -> None:
+        """Partner without rate_limit_rpm should skip partner RPM check."""
+        partner_id = uuid4()
+        request = self._make_request(
+            partner_id=partner_id,
+            partner_rpm=None,  # No partner RPM limit
+            tenant_rpm=100,
+            path="/api/v1/jobs",  # Non-chat path to avoid TPM check
+        )
+        # First pipeline call goes to tenant (partner check skipped)
+        redis = self._make_redis_mock(tenant_rpm_count=5)
+
+        with patch(
+            "src.middleware.rate_limit.get_redis_client",
+            new_callable=AsyncMock,
+            return_value=redis,
+        ), patch(
+            "src.middleware.rate_limit.get_settings",
+        ) as mock_settings:
+            mock_settings.return_value.rate_limit_rpm = 60
+            mock_settings.return_value.rate_limit_tpm = 100000
+
+            # Should pass — partner has no RPM limit, tenant is under
+            await middleware._check_rate_limit(
+                request, request.state.tenant_id, partner_id
+            )

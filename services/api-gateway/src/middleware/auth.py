@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import Request
+from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -15,8 +16,11 @@ from libs.common.auth import (
 )
 from libs.common.config import get_settings
 from libs.common.exceptions import AuthenticationError
+from libs.db import get_session_context
+from libs.db.models import Tenant, User
 
 from ..services.api_key_cache import ApiKeyCache
+from ..services.partner_api_key_cache import PartnerApiKeyCache
 
 logger = get_logger(__name__)
 
@@ -53,13 +57,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     return await call_next(request)
 
             # Determine auth type
-            if auth_header.startswith("Bearer ") and not auth_header.startswith(
+            if auth_header.startswith("Bearer pk-agent-") or auth_header.startswith(
+                "pk-agent-"
+            ):
+                # Partner API key
+                await self._authenticate_partner_api_key(request, auth_header)
+            elif auth_header.startswith("Bearer ") and not auth_header.startswith(
                 "Bearer sk-agent-"
             ):
                 # JWT token
                 await self._authenticate_jwt(request, auth_header[7:])
             else:
-                # API key
+                # Tenant API key
                 await self._authenticate_api_key(request, auth_header)
 
             return await call_next(request)
@@ -79,12 +88,31 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """Authenticate using JWT token."""
         payload = decode_access_token(token)
 
+        user_id = UUID(payload.sub)
+        tenant_id = UUID(payload.tenant_id)
+
+        # Fetch user and tenant for rate limiting
+        async with get_session_context() as session:
+            user_result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            tenant_result = await session.execute(
+                select(Tenant).where(Tenant.id == tenant_id)
+            )
+            tenant = tenant_result.scalar_one_or_none()
+
         # Store auth info in request state
         request.state.is_platform_owner = False
-        request.state.user_id = UUID(payload.sub)
-        request.state.tenant_id = UUID(payload.tenant_id)
+        request.state.is_partner = False
+        request.state.user_id = user_id
+        request.state.tenant_id = tenant_id
+        request.state.partner_id = UUID(payload.partner_id) if payload.partner_id else None
         request.state.scopes = payload.scopes
         request.state.auth_method = "jwt"
+        request.state.user = user  # For user-level rate limiting
+        request.state.tenant = tenant  # For tenant-level rate limiting
 
     async def _authenticate_api_key(self, request: Request, auth_header: str) -> None:
         """Authenticate using API key with Redis caching."""
@@ -125,19 +153,82 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Store auth info in request state
         request.state.is_platform_owner = False
+        request.state.is_partner = False
         request.state.user_id = None  # API keys don't have users
         request.state.tenant_id = tenant.tenant_id if hasattr(tenant, "tenant_id") else tenant.id
         request.state.tenant_slug = tenant.tenant_slug if hasattr(tenant, "tenant_slug") else tenant.slug
+        request.state.partner_id = getattr(tenant, "partner_id", None)
         request.state.scopes = api_key_record.key_scopes if hasattr(api_key_record, "key_scopes") else api_key_record.scopes
         request.state.auth_method = "api_key"
         request.state.api_key_id = api_key_record.api_key_id if hasattr(api_key_record, "api_key_id") else api_key_record.id
+        request.state.tenant = tenant  # Store tenant object for rate limiting
+
+    async def _authenticate_partner_api_key(
+        self, request: Request, auth_header: str
+    ) -> None:
+        """Authenticate using partner API key (pk-agent-* prefix)."""
+        api_key = extract_api_key(auth_header)
+        key_hash = hash_api_key(api_key)
+
+        # Try cache first, fallback to database
+        row = await PartnerApiKeyCache.get_or_fetch(key_hash)
+
+        if not row:
+            raise AuthenticationError("Invalid partner API key")
+
+        partner_key_record, partner = row
+
+        # Check expiration
+        expires_at = partner_key_record.key_expires_at
+        if expires_at:
+            if isinstance(expires_at, str):
+                from datetime import datetime as dt
+
+                expires_at = dt.fromisoformat(expires_at)
+
+            if expires_at < datetime.now(UTC):
+                raise AuthenticationError("Partner API key has expired")
+
+        # Check if key is active
+        is_active = partner_key_record.key_is_active
+        if not is_active:
+            raise AuthenticationError("Partner API key has been revoked")
+
+        # Check partner status
+        partner_status = partner.partner_status
+        if partner_status and partner_status != "active":
+            raise AuthenticationError(
+                f"Partner is {partner_status}",
+                details={"partner_status": partner_status},
+            )
+
+        # Store auth info in request state
+        request.state.is_platform_owner = False
+        request.state.is_partner = True
+        request.state.user_id = None
+        request.state.tenant_id = None  # Partners are above tenants
+        request.state.partner_id = partner.partner_id
+        request.state.partner_slug = partner.partner_slug
+        request.state.scopes = partner_key_record.key_scopes
+        request.state.auth_method = "partner_api_key"
+        request.state.api_key_id = partner_key_record.api_key_id
+
+        logger.info(
+            "Partner authenticated",
+            partner_id=str(partner.partner_id),
+            partner_slug=partner.partner_slug,
+            path=request.url.path,
+            method=request.method,
+        )
 
     async def _authenticate_master_admin(self, request: Request) -> None:
         """Authenticate using master admin key (platform owner)."""
         # Store auth info in request state
         request.state.is_platform_owner = True
+        request.state.is_partner = False
         request.state.user_id = None
         request.state.tenant_id = None
+        request.state.partner_id = None
         request.state.scopes = ["*"]  # Full access to all operations
         request.state.auth_method = "master_admin"
 

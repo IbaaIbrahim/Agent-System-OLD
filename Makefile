@@ -22,11 +22,21 @@ help:
 	@echo "  make migrate-new - Create a new migration"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test        - Run all tests"
-	@echo "  make test-unit   - Run unit tests only"
-	@echo "  make test-int    - Run integration tests"
-	@echo "  make test-phase1 - Run Phase 1 authentication tests"
-	@echo "  make test-cov    - Run tests with coverage"
+	@echo "  make test              - Run all tests"
+	@echo "  make test-unit         - Run unit tests only"
+	@echo "  make test-int          - Run integration tests"
+	@echo "  make test-int-clean    - Reset DB → run tests"
+	@echo "  make test-int-clean-after - Run tests → reset DB"
+	@echo "  make test-reset-db     - Reset database only"
+	@echo ""
+	@echo "  Isolated Test Environment (separate DB on port 8100):"
+	@echo "  make test-isolated     - Start test services → run tests → stop"
+	@echo "  make test-isolated-keep - Start test services → run tests → keep running"
+	@echo "  make test-services-up  - Start isolated test services"
+	@echo "  make test-services-down - Stop isolated test services"
+	@echo ""
+	@echo "  make test-phase1       - Run Phase 1 auth tests"
+	@echo "  make test-cov          - Run tests with coverage"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make lint        - Run linters"
@@ -43,23 +53,6 @@ help:
 # INFRASTRUCTURE
 # ===================
 
-# up:
-# 	docker compose up -d
-
-# down:
-# 	docker compose down --rmi local
-
-# build:
-# 	docker compose build
-
-# redeploy: down build up
-
-# clean-volumes:
-# 	docker compose down --volumes --remove-orphans --rmi local
-
-# clean-all: clean-volumes
-# 	docker system prune -f
-
 up:
 	docker compose up -d
 	@echo "Waiting for services to be healthy..."
@@ -67,7 +60,7 @@ up:
 	@docker compose ps
 
 down:
-	docker compose down
+	docker compose down --rmi local
 
 logs:
 	docker compose logs -f
@@ -168,6 +161,72 @@ test-cov:
 
 test-watch:
 	ptw tests/ -- -v
+
+# Reset database and run integration tests (clean slate)
+test-int-clean: test-reset-db
+	pytest tests/integration/ -v
+
+# Run integration tests, then reset database after
+test-int-clean-after:
+	pytest tests/integration/ -v
+	$(MAKE) test-reset-db
+
+# Reset database only (drops all tables and runs migrations)
+test-reset-db:
+	@echo "Resetting database..."
+	PYTHONPATH=. alembic -c migrations/alembic.ini downgrade base
+	PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+	@echo "Clearing Redis cache..."
+	redis-cli -u $(REDIS_URL) FLUSHDB || true
+	@echo "Database reset complete."
+
+# ===================
+# ISOLATED TEST ENVIRONMENT
+# ===================
+# Uses separate ports (8100) and database (agent_db_test)
+
+# Start test services, run tests, stop services
+test-isolated: test-services-up test-isolated-migrate
+	@echo "Running integration tests against isolated environment..."
+	TEST_API_BASE_URL=http://localhost:8100 pytest tests/integration/ -v || ($(MAKE) test-services-down && exit 1)
+	$(MAKE) test-services-down
+
+# Start test services, run tests, keep services running
+test-isolated-keep: test-services-up test-isolated-migrate
+	@echo "Running integration tests against isolated environment..."
+	TEST_API_BASE_URL=http://localhost:8100 pytest tests/integration/ -v
+	@echo "Test services still running on port 8100. Use 'make test-services-down' to stop."
+
+# Start test infrastructure and API
+test-services-up:
+	@echo "Starting isolated test environment..."
+	docker compose -f docker-compose.test.yml up -d
+	@echo "Waiting for services to be healthy..."
+	@sleep 15
+	@docker compose -f docker-compose.test.yml ps
+
+# Stop test services and clean up volumes
+test-services-down:
+	@echo "Stopping test services..."
+	docker compose -f docker-compose.test.yml down -v --remove-orphans --rmi local
+	@echo "Test environment stopped and volumes removed."
+
+# Run migrations on test database
+test-isolated-migrate:
+	@echo "Running migrations on test database..."
+	DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test \
+		PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+
+# Reset test database only
+test-isolated-reset:
+	@echo "Resetting test database..."
+	DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test \
+		PYTHONPATH=. alembic -c migrations/alembic.ini downgrade base
+	DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test \
+		PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+	@echo "Clearing test Redis cache..."
+	redis-cli -p 6380 FLUSHDB || true
+	@echo "Test database reset complete."
 
 # ===================
 # CODE QUALITY

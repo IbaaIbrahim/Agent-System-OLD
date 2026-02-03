@@ -5,6 +5,7 @@ from libs.common.auth import (
     create_access_token,
     create_internal_transaction_token,
     decode_access_token,
+    generate_partner_api_key,
     hash_api_key,
     verify_api_key,
     verify_internal_transaction_token,
@@ -46,4 +47,5 @@ __all__ = [
     "TokenPayload",
     "create_internal_transaction_token",
     "verify_internal_transaction_token",
+    "generate_partner_api_key",
 ]
