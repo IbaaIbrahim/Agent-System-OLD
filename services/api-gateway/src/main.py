@@ -16,7 +16,7 @@ from .config import get_config
 from .middleware.auth import AuthMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 from .middleware.tenant import TenantMiddleware
-from .routers import admin, auth, chat, health, jobs, users
+from .routers import admin, auth, chat, health, jobs, partners, users
 
 logger = get_logger(__name__)
 
@@ -90,10 +90,20 @@ def create_app() -> FastAPI:
                 "name": "Authorization",
                 "description": "For Tenant API Keys (starts with sk-agent-, no Bearer prefix needed)",
             },
+            "PartnerApiKeyAuth": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "Authorization",
+                "description": "For Partner API Keys (starts with pk-agent-, prefix with Bearer)",
+            },
         }
 
         # Apply security globally
-        openapi_schema["security"] = [{"BearerAuth": []}, {"ApiKeyAuth": []}]
+        openapi_schema["security"] = [
+            {"BearerAuth": []},
+            {"ApiKeyAuth": []},
+            {"PartnerApiKeyAuth": []},
+        ]
 
         app.openapi_schema = openapi_schema
         return app.openapi_schema
@@ -153,6 +163,9 @@ def create_app() -> FastAPI:
 
     # Admin endpoints (platform owner only)
     app.include_router(admin.router, prefix="/api", tags=["Admin"])
+
+    # Partner management endpoints (platform owner only)
+    app.include_router(partners.router, prefix="/api", tags=["Partners"])
 
     # Authentication endpoints
     app.include_router(auth.router, prefix="/api", tags=["Auth"])

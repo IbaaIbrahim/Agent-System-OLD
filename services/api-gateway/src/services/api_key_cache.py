@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from libs.common import get_logger
 from libs.db import get_session_context
-from libs.db.models import ApiKey, Tenant
+from libs.db.models import ApiKey, Partner, Tenant
 from libs.messaging.redis import get_redis_client
 
 logger = get_logger(__name__)
@@ -18,7 +18,7 @@ CACHE_TTL_SECONDS = 300
 
 
 class ApiKeyCacheEntry:
-    """Cached API key and tenant data."""
+    """Cached API key, tenant, and partner data."""
 
     def __init__(
         self,
@@ -32,6 +32,11 @@ class ApiKeyCacheEntry:
         key_scopes: list[Any],
         key_is_active: bool,
         key_expires_at: str | None,
+        partner_id: UUID | None = None,
+        partner_slug: str | None = None,
+        partner_status: str | None = None,
+        partner_rate_limit_rpm: int | None = None,
+        partner_rate_limit_tpm: int | None = None,
     ):
         self.api_key_id = api_key_id
         self.tenant_id = tenant_id
@@ -43,6 +48,22 @@ class ApiKeyCacheEntry:
         self.key_scopes = key_scopes
         self.key_is_active = key_is_active
         self.key_expires_at = key_expires_at
+        self.partner_id = partner_id
+        self.partner_slug = partner_slug
+        self.partner_status = partner_status
+        self.partner_rate_limit_rpm = partner_rate_limit_rpm
+        self.partner_rate_limit_tpm = partner_rate_limit_tpm
+
+    # Property aliases for compatibility with rate limit middleware
+    @property
+    def rate_limit_rpm(self) -> int | None:
+        """Alias for tenant_rate_limit_rpm for rate limit middleware compatibility."""
+        return self.tenant_rate_limit_rpm
+
+    @property
+    def rate_limit_tpm(self) -> int | None:
+        """Alias for tenant_rate_limit_tpm for rate limit middleware compatibility."""
+        return self.tenant_rate_limit_tpm
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for JSON storage."""
@@ -57,11 +78,17 @@ class ApiKeyCacheEntry:
             "key_scopes": self.key_scopes,
             "key_is_active": self.key_is_active,
             "key_expires_at": self.key_expires_at,
+            "partner_id": str(self.partner_id) if self.partner_id else None,
+            "partner_slug": self.partner_slug,
+            "partner_status": self.partner_status,
+            "partner_rate_limit_rpm": self.partner_rate_limit_rpm,
+            "partner_rate_limit_tpm": self.partner_rate_limit_tpm,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ApiKeyCacheEntry":
         """Deserialize from dictionary."""
+        partner_id_raw = data.get("partner_id")
         return cls(
             api_key_id=UUID(data["api_key_id"]),
             tenant_id=UUID(data["tenant_id"]),
@@ -73,10 +100,20 @@ class ApiKeyCacheEntry:
             key_scopes=data.get("key_scopes", []),
             key_is_active=data["key_is_active"],
             key_expires_at=data.get("key_expires_at"),
+            partner_id=UUID(partner_id_raw) if partner_id_raw else None,
+            partner_slug=data.get("partner_slug"),
+            partner_status=data.get("partner_status"),
+            partner_rate_limit_rpm=data.get("partner_rate_limit_rpm"),
+            partner_rate_limit_tpm=data.get("partner_rate_limit_tpm"),
         )
 
     @classmethod
-    def from_models(cls, api_key: ApiKey, tenant: Tenant) -> "ApiKeyCacheEntry":
+    def from_models(
+        cls,
+        api_key: ApiKey,
+        tenant: Tenant,
+        partner: Partner | None = None,
+    ) -> "ApiKeyCacheEntry":
         """Create from database models."""
         return cls(
             api_key_id=api_key.id,
@@ -89,6 +126,11 @@ class ApiKeyCacheEntry:
             key_scopes=api_key.scopes or [],
             key_is_active=api_key.is_active,
             key_expires_at=api_key.expires_at.isoformat() if api_key.expires_at else None,
+            partner_id=partner.id if partner else None,
+            partner_slug=partner.slug if partner else None,
+            partner_status=(partner.status.value if hasattr(partner.status, 'value') else partner.status) if partner else None,
+            partner_rate_limit_rpm=partner.rate_limit_rpm if partner else None,
+            partner_rate_limit_tpm=partner.rate_limit_tpm if partner else None,
         )
 
 
@@ -144,20 +186,26 @@ class ApiKeyCache:
             return None
 
     @staticmethod
-    async def set(key_hash: str, api_key: ApiKey, tenant: Tenant) -> None:
-        """Store API key and tenant in cache.
+    async def set(
+        key_hash: str,
+        api_key: ApiKey,
+        tenant: Tenant,
+        partner: Partner | None = None,
+    ) -> None:
+        """Store API key, tenant, and partner in cache.
 
         Args:
             key_hash: SHA-256 hash of the API key
             api_key: ApiKey database model
             tenant: Tenant database model
+            partner: Partner database model (if tenant belongs to a partner)
         """
         try:
             redis = await get_redis_client()
             cache_key = f"api_key_cache:{key_hash}"
 
             # Create cache entry
-            entry = ApiKeyCacheEntry.from_models(api_key, tenant)
+            entry = ApiKeyCacheEntry.from_models(api_key, tenant, partner)
 
             # Serialize to JSON
             cache_data = json.dumps(entry.to_dict())
@@ -231,11 +279,12 @@ class ApiKeyCache:
             # The middleware will validate expiration and status
             return cache_entry, cache_entry
 
-        # Cache miss - fetch from database
+        # Cache miss - fetch from database (left-join Partner for B2B2B)
         async with get_session_context() as session:
             result = await session.execute(
-                select(ApiKey, Tenant)
+                select(ApiKey, Tenant, Partner)
                 .join(Tenant, ApiKey.tenant_id == Tenant.id)
+                .outerjoin(Partner, Tenant.partner_id == Partner.id)
                 .where(ApiKey.key_hash == key_hash)
                 .where(ApiKey.is_active == True)
             )
@@ -248,9 +297,9 @@ class ApiKeyCache:
                 )
                 return None
 
-            api_key, tenant = row
+            api_key, tenant, partner = row
 
             # Populate cache for next time
-            await ApiKeyCache.set(key_hash, api_key, tenant)
+            await ApiKeyCache.set(key_hash, api_key, tenant, partner)
 
             return api_key, tenant

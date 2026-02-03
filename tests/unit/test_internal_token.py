@@ -51,7 +51,7 @@ class TestCreateInternalTransactionToken:
 
         payload = verify_internal_transaction_token(token)
 
-        assert payload["ver"] == 1
+        assert payload["ver"] == 2
         assert payload["job_id"] == str(job_id)
         assert payload["tenant_id"] == str(tenant_id)
         assert payload["credit_check_passed"] is True

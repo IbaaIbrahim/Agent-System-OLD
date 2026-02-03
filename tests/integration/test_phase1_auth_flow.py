@@ -404,7 +404,7 @@ class TestPhase1AuthenticationFlow:
             json=tenant_data,
         )
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_missing_authorization_header(

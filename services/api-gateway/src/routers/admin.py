@@ -1,4 +1,7 @@
-"""Admin endpoints for platform owner (tenant and API key management)."""
+"""Admin endpoints for tenant and API key management.
+
+Supports both platform owner (super admin) and partner-scoped access.
+"""
 
 from datetime import datetime
 from typing import Any
@@ -35,8 +38,29 @@ def require_platform_owner(request: Request) -> None:
     if not is_platform_owner:
         raise HTTPException(
             status_code=403,
-            detail="Only platform owners can access admin endpoints",
+            detail="Only platform owners can access this endpoint",
         )
+
+
+def require_partner_or_owner(request: Request) -> dict[str, Any]:
+    """Verify request is from platform owner or authenticated partner.
+
+    Returns:
+        Context dict with role and partner_id.
+    """
+    if getattr(request.state, "is_platform_owner", False):
+        return {"role": "platform_owner", "partner_id": None}
+
+    if getattr(request.state, "is_partner", False):
+        return {
+            "role": "partner",
+            "partner_id": request.state.partner_id,
+        }
+
+    raise HTTPException(
+        status_code=403,
+        detail="Partner or platform owner access required",
+    )
 
 
 # ============================================================================
@@ -49,6 +73,10 @@ class CreateTenantRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     slug: str = Field(..., pattern=r"^[a-z0-9-]+$", min_length=1, max_length=63)
+    partner_id: UUID | None = Field(
+        None,
+        description="Partner ID (only platform owner can set this explicitly)",
+    )
     rate_limit_rpm: int | None = Field(None, ge=1)
     rate_limit_tpm: int | None = Field(None, ge=1)
     settings: dict[str, Any] | None = None
@@ -61,6 +89,7 @@ class TenantResponse(BaseModel):
     name: str
     slug: str
     status: str
+    partner_id: str | None
     rate_limit_rpm: int | None
     rate_limit_tpm: int | None
     settings: dict[str, Any]
@@ -70,13 +99,13 @@ class TenantResponse(BaseModel):
     @classmethod
     def from_model(cls, tenant: Tenant) -> "TenantResponse":
         """Create response from database model."""
-        # Handle both string and enum status (SQLAlchemy may return either)
         status = tenant.status.value if hasattr(tenant.status, 'value') else tenant.status
         return cls(
             id=str(tenant.id),
             name=tenant.name,
             slug=tenant.slug,
             status=status,
+            partner_id=str(tenant.partner_id) if tenant.partner_id else None,
             rate_limit_rpm=tenant.rate_limit_rpm,
             rate_limit_tpm=tenant.rate_limit_tpm,
             settings=tenant.settings or {},
@@ -147,14 +176,26 @@ class CreateApiKeyResponse(BaseModel):
 @router.post("/tenants", response_model=TenantResponse)
 async def create_tenant(
     body: CreateTenantRequest,
-    _: None = Depends(require_platform_owner),
+    auth_ctx: dict[str, Any] = Depends(require_partner_or_owner),
 ) -> TenantResponse:
-    """Create a new tenant (platform owner only).
+    """Create a new tenant.
 
-    This endpoint allows the platform owner to onboard new tenants.
-    After creating a tenant, use POST /admin/tenants/{tenant_id}/api-keys
-    to generate an API key for the tenant.
+    Platform owners can create tenants for any partner (or with no partner).
+    Partners can only create tenants under themselves.
     """
+    # Determine the partner_id for this tenant
+    if auth_ctx["role"] == "partner":
+        # Partner creates tenant scoped to themselves
+        partner_id = auth_ctx["partner_id"]
+        if body.partner_id and body.partner_id != partner_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Partners cannot assign tenants to other partners",
+            )
+    else:
+        # Platform owner can optionally assign a partner
+        partner_id = body.partner_id
+
     async with get_session_context() as session:
         # Check if slug already exists
         result = await session.execute(
@@ -171,6 +212,7 @@ async def create_tenant(
             name=body.name,
             slug=body.slug,
             status=TenantStatus.ACTIVE,
+            partner_id=partner_id,
             rate_limit_rpm=body.rate_limit_rpm,
             rate_limit_tpm=body.rate_limit_tpm,
             settings=body.settings or {},
@@ -185,6 +227,8 @@ async def create_tenant(
             tenant_id=str(tenant.id),
             tenant_slug=tenant.slug,
             tenant_name=tenant.name,
+            partner_id=str(partner_id) if partner_id else None,
+            created_by=auth_ctx["role"],
         )
 
         return TenantResponse.from_model(tenant)
@@ -193,15 +237,26 @@ async def create_tenant(
 @router.get("/tenants", response_model=list[TenantResponse])
 async def list_tenants(
     status: str | None = None,
+    partner_id: UUID | None = None,
     skip: int = 0,
     limit: int = 100,
-    _: None = Depends(require_platform_owner),
+    auth_ctx: dict[str, Any] = Depends(require_partner_or_owner),
 ) -> list[TenantResponse]:
-    """List all tenants with optional filtering (platform owner only)."""
+    """List tenants with optional filtering.
+
+    Platform owners see all tenants (optionally filtered by partner_id).
+    Partners see only their own tenants.
+    """
     async with get_session_context() as session:
         query = select(Tenant)
 
-        # Filter by status if provided
+        # Partner scoping: restrict to own tenants
+        if auth_ctx["role"] == "partner":
+            query = query.where(Tenant.partner_id == auth_ctx["partner_id"])
+        elif partner_id:
+            # Platform owner filtering by partner
+            query = query.where(Tenant.partner_id == partner_id)
+
         if status:
             try:
                 status_enum = TenantStatus(status)
@@ -223,30 +278,11 @@ async def list_tenants(
 @router.get("/tenants/{tenant_id}", response_model=TenantResponse)
 async def get_tenant(
     tenant_id: UUID,
-    _: None = Depends(require_platform_owner),
+    auth_ctx: dict[str, Any] = Depends(require_partner_or_owner),
 ) -> TenantResponse:
-    """Get tenant details by ID (platform owner only)."""
-    async with get_session_context() as session:
-        result = await session.execute(
-            select(Tenant).where(Tenant.id == tenant_id)
-        )
-        tenant = result.scalar_one_or_none()
+    """Get tenant details by ID.
 
-        if not tenant:
-            raise HTTPException(status_code=404, detail="Tenant not found")
-
-        return TenantResponse.from_model(tenant)
-
-
-@router.put("/tenants/{tenant_id}", response_model=TenantResponse)
-async def update_tenant(
-    tenant_id: UUID,
-    body: UpdateTenantRequest,
-    _: None = Depends(require_platform_owner),
-) -> TenantResponse:
-    """Update tenant settings (platform owner only).
-
-    Allows updating tenant name, status, rate limits, and custom settings.
+    Partners can only view their own tenants.
     """
     async with get_session_context() as session:
         result = await session.execute(
@@ -257,7 +293,36 @@ async def update_tenant(
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found")
 
-        # Update fields
+        # Partner scoping check
+        if auth_ctx["role"] == "partner" and tenant.partner_id != auth_ctx["partner_id"]:
+            raise HTTPException(status_code=403, detail="Access denied to this tenant")
+
+        return TenantResponse.from_model(tenant)
+
+
+@router.put("/tenants/{tenant_id}", response_model=TenantResponse)
+async def update_tenant(
+    tenant_id: UUID,
+    body: UpdateTenantRequest,
+    auth_ctx: dict[str, Any] = Depends(require_partner_or_owner),
+) -> TenantResponse:
+    """Update tenant settings.
+
+    Partners can only update their own tenants.
+    """
+    async with get_session_context() as session:
+        result = await session.execute(
+            select(Tenant).where(Tenant.id == tenant_id)
+        )
+        tenant = result.scalar_one_or_none()
+
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+
+        # Partner scoping check
+        if auth_ctx["role"] == "partner" and tenant.partner_id != auth_ctx["partner_id"]:
+            raise HTTPException(status_code=403, detail="Access denied to this tenant")
+
         if body.name is not None:
             tenant.name = body.name
 
@@ -294,9 +359,11 @@ async def update_tenant(
 async def create_api_key_for_tenant(
     tenant_id: UUID,
     body: CreateApiKeyRequest,
-    _: None = Depends(require_platform_owner),
+    auth_ctx: dict[str, Any] = Depends(require_partner_or_owner),
 ) -> CreateApiKeyResponse:
-    """Generate a new API key for a tenant (platform owner only).
+    """Generate a new API key for a tenant.
+
+    Partners can only create keys for their own tenants.
 
     IMPORTANT: The raw API key is only returned once in this response.
     Store it securely - it cannot be retrieved again.
@@ -310,6 +377,10 @@ async def create_api_key_for_tenant(
 
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found")
+
+        # Partner scoping check
+        if auth_ctx["role"] == "partner" and tenant.partner_id != auth_ctx["partner_id"]:
+            raise HTTPException(status_code=403, detail="Access denied to this tenant")
 
         # Generate API key
         raw_key, key_hash = generate_api_key()
@@ -350,10 +421,22 @@ async def create_api_key_for_tenant(
 async def list_api_keys_for_tenant(
     tenant_id: UUID,
     include_inactive: bool = False,
-    _: None = Depends(require_platform_owner),
+    auth_ctx: dict[str, Any] = Depends(require_partner_or_owner),
 ) -> list[ApiKeyResponse]:
-    """List all API keys for a tenant (platform owner only)."""
+    """List all API keys for a tenant.
+
+    Partners can only list keys for their own tenants.
+    """
     async with get_session_context() as session:
+        # Partner scoping: verify tenant belongs to partner
+        if auth_ctx["role"] == "partner":
+            tenant_result = await session.execute(
+                select(Tenant).where(Tenant.id == tenant_id)
+            )
+            tenant = tenant_result.scalar_one_or_none()
+            if not tenant or tenant.partner_id != auth_ctx["partner_id"]:
+                raise HTTPException(status_code=403, detail="Access denied to this tenant")
+
         query = select(ApiKey).where(ApiKey.tenant_id == tenant_id)
 
         if not include_inactive:
@@ -370,11 +453,11 @@ async def list_api_keys_for_tenant(
 @router.delete("/api-keys/{key_id}")
 async def revoke_api_key(
     key_id: UUID,
-    _: None = Depends(require_platform_owner),
+    auth_ctx: dict[str, Any] = Depends(require_partner_or_owner),
 ) -> dict[str, str]:
-    """Revoke an API key (platform owner only).
+    """Revoke an API key.
 
-    This marks the key as inactive, preventing further use.
+    Partners can only revoke keys belonging to their own tenants.
     """
     async with get_session_context() as session:
         result = await session.execute(
@@ -384,6 +467,15 @@ async def revoke_api_key(
 
         if not api_key:
             raise HTTPException(status_code=404, detail="API key not found")
+
+        # Partner scoping: verify the key's tenant belongs to the partner
+        if auth_ctx["role"] == "partner":
+            tenant_result = await session.execute(
+                select(Tenant).where(Tenant.id == api_key.tenant_id)
+            )
+            tenant = tenant_result.scalar_one_or_none()
+            if not tenant or tenant.partner_id != auth_ctx["partner_id"]:
+                raise HTTPException(status_code=403, detail="Access denied to this API key")
 
         api_key.is_active = False
         await session.commit()

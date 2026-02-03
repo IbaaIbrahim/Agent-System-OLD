@@ -96,8 +96,9 @@ async def create_chat_completion(
             errors=[{"field": "messages", "message": "Cannot be empty"}],
         )
 
-    # Get user ID if available
+    # Get user ID and partner ID if available
     user_id = getattr(request.state, "user_id", None)
+    partner_id = getattr(request.state, "partner_id", None)
 
     # Determine provider and model
     provider = body.provider or config.default_llm_provider
@@ -184,12 +185,14 @@ async def create_chat_completion(
         tenant_id=tenant_id,
         credit_check_passed=credit_check_passed,
         max_tokens=body.max_tokens,
+        partner_id=partner_id,
     )
 
     # --- Step 4: Publish to Kafka ---
     job_payload = {
         "job_id": str(job_id),
         "tenant_id": str(tenant_id),
+        "partner_id": str(partner_id) if partner_id else None,
         "user_id": str(user_id) if user_id else None,
         "provider": provider,
         "model": model,
@@ -210,6 +213,7 @@ async def create_chat_completion(
         headers={
             "job_id": str(job_id),
             "tenant_id": str(tenant_id),
+            "partner_id": str(partner_id) if partner_id else "",
             "internal_token": internal_token,
         },
     )

@@ -1,0 +1,157 @@
+# Test Environment Docker Compose
+# Uses separate ports and database to avoid conflicts with development
+#
+# Usage:
+#   docker-compose -f docker-compose.test.yml up -d
+#   TEST_API_BASE_URL=http://localhost:8100 pytest tests/integration/ -v
+#   docker-compose -f docker-compose.test.yml down -v
+
+services:
+  # ===================
+  # TEST INFRASTRUCTURE
+  # ===================
+
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: agent-postgres-test
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent_secret
+      POSTGRES_DB: agent_db_test
+    ports:
+      - "5433:5432" # Different port from dev
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U agent -d agent_db_test" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-test-network
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: agent-redis-test
+    ports:
+      - "6380:6379" # Different port from dev
+    volumes:
+      - redis_test_data:/data
+      - ./infrastructure/docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-test-network
+
+  zookeeper-test:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: agent-zookeeper-test
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2182:2181" # Different port from dev
+    volumes:
+      - zookeeper_test_data:/var/lib/zookeeper/data
+      - zookeeper_test_log:/var/lib/zookeeper/log
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-test-network
+
+  kafka-test:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: agent-kafka-test
+    depends_on:
+      zookeeper-test:
+        condition: service_healthy
+    ports:
+      - "9093:9092" # Different port from dev
+      - "29093:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-test:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-test:29092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - kafka_test_data:/var/lib/kafka/data
+    healthcheck:
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:29092" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - agent-test-network
+
+  kafka-test-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: agent-kafka-test-init
+    depends_on:
+      kafka-test:
+        condition: service_healthy
+    volumes:
+      - ./infrastructure/docker/kafka/create-topics.sh:/create-topics.sh
+    entrypoint: [ "/bin/bash", "/create-topics.sh" ]
+    environment:
+      KAFKA_BOOTSTRAP_SERVER: kafka-test:29092
+    networks:
+      - agent-test-network
+
+  # ===================
+  # TEST API GATEWAY
+  # ===================
+
+  api-gateway-test:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: agent-api-gateway-test
+    ports:
+      - "8100:8000" # Test on port 8100
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres-test:5432/agent_db_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-test:29092
+      - JWT_SECRET=${JWT_SECRET:-change_in_production}
+      - MASTER_ADMIN_KEY=${MASTER_ADMIN_KEY:-change_in_production_use_long_random_string_min_32_chars}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      kafka-test:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-test-network
+
+volumes:
+  postgres_test_data:
+  redis_test_data:
+  zookeeper_test_data:
+  zookeeper_test_log:
+  kafka_test_data:
+
+
+networks:
+  agent-test-network:
+    driver: bridge

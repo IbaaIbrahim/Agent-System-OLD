@@ -10,7 +10,7 @@ from starlette.responses import JSONResponse
 from libs.common import get_logger
 from libs.common.exceptions import AuthorizationError
 from libs.db import get_session_context
-from libs.db.models import Tenant
+from libs.db.models import Partner, Tenant
 
 logger = get_logger(__name__)
 
@@ -74,6 +74,15 @@ class TenantMiddleware(BaseHTTPMiddleware):
                 )
 
             request.state.tenant = tenant
+
+            # Load partner if tenant belongs to one (B2B2B support)
+            if tenant.partner_id:
+                partner_result = await session.execute(
+                    select(Partner).where(Partner.id == tenant.partner_id)
+                )
+                request.state.partner = partner_result.scalar_one_or_none()
+            else:
+                request.state.partner = None
 
 
 def get_tenant(request: Request) -> Tenant:
