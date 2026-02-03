@@ -74,8 +74,10 @@ logs-stream:
 logs-orchestrator:
 	docker compose logs -f orchestrator
 
-clean:
+clean-volumes:
 	docker compose down --volumes --rmi local
+
+clean: clean-volumes
 	docker system prune -f
 
 restart: down up
