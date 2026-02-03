@@ -16,7 +16,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agent -d agent_db"]
+      test: [ "CMD-SHELL", "pg_isready -U agent -d agent_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -33,7 +33,7 @@ services:
       - ./infrastructure/docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -52,7 +52,7 @@ services:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -81,7 +81,7 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -96,7 +96,7 @@ services:
         condition: service_healthy
     volumes:
       - ./infrastructure/docker/kafka/create-topics.sh:/create-topics.sh
-    entrypoint: ["/bin/bash", "/create-topics.sh"]
+    entrypoint: [ "/bin/bash", "/create-topics.sh" ]
     networks:
       - agent-network
 
@@ -116,6 +116,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - JWT_SECRET=${JWT_SECRET:-change_in_production}
+      - MASTER_ADMIN_KEY=${MASTER_ADMIN_KEY:-change_in_production_use_long_random_string_min_32_chars}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     depends_on:
@@ -126,7 +127,7 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -154,7 +155,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -245,6 +246,7 @@ volumes:
   zookeeper_data:
   zookeeper_log:
   kafka_data:
+
 
 networks:
   agent-network:
