@@ -1,17 +1,19 @@
 # Next Phases: Technical Implementation Roadmap (Phases 3-5)
 
-This document provides the concrete, file-level implementation steps for completing the agent system. Phases 1 and 2 are done — see [plan.md](plan.md) for their retrospective.
+This document provides the concrete, file-level implementation steps for completing the agent system. Phases 1, 2, and 2.5 (B2B2B Partners) are done — see [plan.md](plan.md) for their retrospective.
 
 ---
 
 ## Current System Snapshot
 
 ### What works today
-- **API Gateway**: Three-tier auth (master admin / API key / JWT), admin CRUD, chat completion with DB persistence + Kafka publish, billing pre-check (feature-flagged), waterfall rate limiting (tenant + user level)
+- **API Gateway**: Four-tier auth (super admin / partner `pk-agent-*` / tenant `sk-agent-*` / JWT), partner management with full CRUD + API keys, admin CRUD with partner-scoped tenant management, chat completion with DB persistence + Kafka publish (includes `partner_id`), billing pre-check (feature-flagged, tenant + partner credit pools), waterfall rate limiting (partner → tenant → user → TPM)
 - **Stream Edge**: SSE streaming via Redis Pub/Sub with hot/cold reconnection
 - **Orchestrator**: Agent execution loop (Think → Act → Observe) with LLM calls, event streaming, basic tool dispatch — but **blocks on tool results** (100ms Redis polling)
 - **Tool Workers**: Two tools (code executor, mock web search), results stored in Redis, no resume signal
 - **Archiver**: Redis stream reader → PostgreSQL batch writer for message/delta/tool_result events
+- **Database**: All models complete — Tenant, User, ApiKey, Job, ChatMessage, UsageLedger, ModelPricing, Partner, PartnerApiKey. 4 migrations (001-004).
+- **Tests**: 62 unit tests passing (auth, billing, rate limiting, partner auth, partner rate limiting, internal token v2)
 
 ### What is broken / missing
 | Problem | Impact | Phase |
@@ -620,6 +622,14 @@ Add dependency health checks:
 ## Implementation Sequencing
 
 ```
+Phases 1+2+2.5 (COMPLETE)
+├── Auth (3-tier → 4-tier with Partners)
+├── Billing (tenant + partner pools)
+├── Rate Limiting (4-tier waterfall)
+├── DB Persistence + Internal Token v2
+└── 62 unit tests passing
+         │
+         ▼
 Phase 3 (Suspend/Resume)            Phase 4 (Tools + Archiver)
          │                                    │
    3.1 Kafka topic                   4.1 Web search API
@@ -646,6 +656,8 @@ Phase 3 (Suspend/Resume)            Phase 4 (Tools + Archiver)
 
 **Critical path**: Phase 3 → Phase 5. The suspend/resume refactor is the biggest remaining architectural change and must be thoroughly tested.
 
+**Note on partner_id propagation**: The Kafka payloads already include `partner_id` (added in Phase 2.5). Phase 3 resume handlers should read and preserve `partner_id` from the snapshot/payload when resuming jobs.
+
 ---
 
 ## Completion Criteria
@@ -670,7 +682,7 @@ Phase 3 (Suspend/Resume)            Phase 4 (Tools + Archiver)
 - [ ] Unit tests for all tools and archiver event mapping pass
 
 ### Phase 5 is DONE when:
-- [ ] All unit tests pass (target: 60+ tests)
+- [ ] All unit tests pass (target: 100+ tests, currently 62 passing)
 - [ ] Integration tests cover: job lifecycle, suspend/resume, streaming, billing
 - [ ] Chaos tests verify recovery from service kills
 - [ ] Load test: 100 concurrent jobs with < 500ms P95 creation latency
@@ -680,13 +692,13 @@ Phase 3 (Suspend/Resume)            Phase 4 (Tools + Archiver)
 - [ ] Deployment guide complete
 
 ### Full System is PRODUCTION-READY when:
-- [ ] All Phase 1-5 criteria met
+- [ ] All Phase 1-5 criteria met (Phase 1, 2, 2.5 already complete)
 - [ ] `make check` passes (lint + typecheck + tests)
 - [ ] No pre-existing mypy errors in `libs/` (14 current — should be resolved)
 - [ ] All environment variables documented in `.env.example`
 - [ ] Master admin key and JWT secrets rotated from defaults
 - [ ] CORS configured (not wildcard `*`)
-- [ ] Database migrations up to date
+- [ ] Database migrations up to date (currently at 004_partners)
 
 ---
 

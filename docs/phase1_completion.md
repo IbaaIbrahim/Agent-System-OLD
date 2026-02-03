@@ -123,21 +123,28 @@ CREATE INDEX ix_users_external_id ON tenants.users (external_id);
 
 ---
 
-## 🔑 Three-Tier Authentication Architecture
+## 🔑 Authentication Architecture
 
-### Tier 1: Platform Owner
-- **Auth Method:** Master admin key (env var)
-- **Access:** Full system (create tenants, manage platform)
+> **Note:** Phase 1 established a three-tier auth system. Phase 2.5 extended it to four tiers with the Partner layer. See below for the current hierarchy.
+
+### Tier 1: Platform Owner (Super Admin)
+- **Auth Method:** Master admin key (env var `MASTER_ADMIN_KEY`)
+- **Access:** Full system — create partners, tenants, manage everything
 - **Use Case:** Platform administration
 
-### Tier 2: Tenant Backend
-- **Auth Method:** API key (`sk-agent-...`)
-- **Access:** Tenant resources (create users, manage settings)
+### Tier 2: Partner (Added in Phase 2.5)
+- **Auth Method:** Partner API key (`pk-agent-...`)
+- **Access:** Scoped to own tenants — create/manage tenants, generate tenant API keys
+- **Use Case:** White-label partners, resellers, B2B2B owners
+
+### Tier 3: Tenant Backend
+- **Auth Method:** Tenant API key (`sk-agent-...`)
+- **Access:** Tenant resources — create users, manage settings, create jobs
 - **Use Case:** Backend integrations, server-side apps
 
-### Tier 3: End User (Virtual)
-- **Auth Method:** JWT token (short-lived)
-- **Access:** User-scoped resources (create jobs, stream events)
+### Tier 4: End User (Virtual)
+- **Auth Method:** JWT token (short-lived, 1 hour)
+- **Access:** User-scoped resources — create jobs, stream events
 - **Use Case:** Frontend apps, mobile clients
 
 ---
@@ -222,33 +229,26 @@ JWT_EXPIRATION=3600  # 1 hour
 
 ---
 
-## 🚀 Next Steps - Phase 2
+## 🚀 Subsequent Phases (Completed)
 
-With Phase 1 complete, the following Phase 2 features are ready to implement:
+### Phase 2: Billing & Rate Limiting — COMPLETE
+- Billing pre-check service with microdollar credit system
+- Internal transaction tokens (v2 with partner_id)
+- Job creation DB transaction (persist before Kafka publish)
+- Waterfall rate limiting: tenant RPM → user RPM → TPM
+- 37 unit tests passing after Phase 2
 
-1. **Billing Pre-Check Service**
-   - Credit balance validation
-   - Credit reservation system
-   - Model pricing integration
+### Phase 2.5: B2B2B Multi-Partner Layer — COMPLETE
+- Partner entity with full CRUD + API key management
+- Four-tier auth: Super Admin → Partner (`pk-agent-*`) → Tenant (`sk-agent-*`) → End User (JWT)
+- Partner-scoped tenant management with isolation
+- Partner rate limiting as first tier in waterfall (Partner RPM → Tenant RPM → User RPM → TPM)
+- Partner credit pool billing methods
+- Internal transaction token v2 with `partner_id`
+- 62 unit tests passing after Phase 2.5
 
-2. **Internal Transaction Tokens**
-   - Kafka payload authentication
-   - Distributed tracing support
-
-3. **Job Creation DB Transaction**
-   - Persist jobs before Kafka publish
-   - Initial message storage
-   - Audit trail
-
-4. **Waterfall Rate Limiting**
-   - Tenant-level enforcement
-   - User-specific overrides
-   - Redis atomic counters
-
-5. **Enhanced Rate Limiting Middleware**
-   - RPM/TPM tracking
-   - Retry-after headers
-   - Graceful degradation
+### Next: Phase 3 — Orchestrator Suspend/Resume
+See [plan.md](plan.md) and [next-phases.md](next-phases.md) for details.
 
 ---
 
