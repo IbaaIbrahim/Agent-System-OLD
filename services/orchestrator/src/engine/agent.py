@@ -8,6 +8,7 @@ from libs.common import get_logger
 from ..config import get_config
 from ..handlers.tool_handler import ToolHandler
 from ..services.llm_service import LLMService
+from ..services.snapshot_service import SnapshotService
 from .state import AgentState
 
 logger = get_logger(__name__)
@@ -20,10 +21,12 @@ class AgentExecutor:
         self,
         llm_service: LLMService,
         tool_handler: ToolHandler,
+        snapshot_service: SnapshotService,
         event_callback: Any = None,
     ) -> None:
         self.llm_service = llm_service
         self.tool_handler = tool_handler
+        self.snapshot_service = snapshot_service
         self.event_callback = event_callback
         self.config = get_config()
 
@@ -49,6 +52,15 @@ class AgentExecutor:
         try:
             while state.iteration < self.config.max_iterations:
                 state.iteration += 1
+
+                # Periodic snapshot for crash recovery
+                if state.iteration % self.config.snapshot_interval == 0:
+                    await self.snapshot_service.save_snapshot(state)
+                    logger.debug(
+                        "Periodic snapshot saved",
+                        job_id=str(state.job_id),
+                        iteration=state.iteration,
+                    )
 
                 logger.debug(
                     "Agent iteration",
@@ -80,20 +92,51 @@ class AgentExecutor:
                         ],
                     })
 
-                    # Execute tools
-                    tool_results = await self.tool_handler.execute_tools(
-                        state,
-                        response.tool_calls,
-                    )
+                    # Check feature flag for suspend/resume
+                    if self.config.enable_suspend_resume:
+                        # SUSPEND: Save state and exit
+                        state.mark_waiting_tool(response.tool_calls)
 
-                    # Add tool results to messages
-                    for tc, result in zip(response.tool_calls, tool_results, strict=True):
-                        state.add_tool_result(tc.id, result)
-                        await self._emit_event(state, "tool_result", {
-                            "tool_call_id": tc.id,
-                            "tool_name": tc.name,
-                            "result": result[:500],  # Truncate for event
+                        # Save snapshot before dispatching tools
+                        await self.snapshot_service.save_snapshot(state)
+                        await self.snapshot_service.update_job(state)
+
+                        # Dispatch tools asynchronously (no waiting)
+                        await self.tool_handler.dispatch_tools_async(state, response.tool_calls)
+
+                        # Emit suspended event
+                        await self._emit_event(state, "suspended", {
+                            "pending_tools": [
+                                {"id": tc.id, "name": tc.name}
+                                for tc in response.tool_calls
+                            ],
+                            "snapshot_sequence": state.iteration,
                         })
+
+                        logger.info(
+                            "Orchestrator suspended",
+                            job_id=str(state.job_id),
+                            tool_count=len(response.tool_calls),
+                            snapshot_sequence=state.iteration,
+                        )
+
+                        # EXIT - free CPU, wait for resume signal
+                        return state
+                    else:
+                        # FALLBACK: Old blocking behavior for rollback safety
+                        tool_results = await self.tool_handler.execute_tools(
+                            state,
+                            response.tool_calls,
+                        )
+
+                        # Add tool results to messages
+                        for tc, result in zip(response.tool_calls, tool_results, strict=True):
+                            state.add_tool_result(tc.id, result)
+                            await self._emit_event(state, "tool_result", {
+                                "tool_call_id": tc.id,
+                                "tool_name": tc.name,
+                                "result": result[:500],  # Truncate for event
+                            })
 
                 else:
                     # LLM response without tools - we're done
@@ -167,6 +210,15 @@ class AgentExecutor:
             while state.iteration < self.config.max_iterations:
                 state.iteration += 1
 
+                # Periodic snapshot for crash recovery
+                if state.iteration % self.config.snapshot_interval == 0:
+                    await self.snapshot_service.save_snapshot(state)
+                    logger.debug(
+                        "Periodic snapshot saved (streaming)",
+                        job_id=str(state.job_id),
+                        iteration=state.iteration,
+                    )
+
                 # Stream LLM response
                 content_buffer = ""
                 tool_calls = []
@@ -201,18 +253,49 @@ class AgentExecutor:
                                     "arguments": tc.arguments,
                                 })
 
-                            # Execute tools
-                            results = await self.tool_handler.execute_tools(
-                                state,
-                                tool_calls,
-                            )
+                            # Check feature flag for suspend/resume
+                            if self.config.enable_suspend_resume:
+                                # SUSPEND: Save state and exit
+                                state.mark_waiting_tool(tool_calls)
 
-                            for tc, result in zip(tool_calls, results, strict=True):
-                                state.add_tool_result(tc.id, result)
-                                await self._emit_event(state, "tool_result", {
-                                    "tool_call_id": tc.id,
-                                    "result": result[:500],
+                                # Save snapshot before dispatching tools
+                                await self.snapshot_service.save_snapshot(state)
+                                await self.snapshot_service.update_job(state)
+
+                                # Dispatch tools asynchronously (no waiting)
+                                await self.tool_handler.dispatch_tools_async(state, tool_calls)
+
+                                # Emit suspended event
+                                await self._emit_event(state, "suspended", {
+                                    "pending_tools": [
+                                        {"id": tc.id, "name": tc.name}
+                                        for tc in tool_calls
+                                    ],
+                                    "snapshot_sequence": state.iteration,
                                 })
+
+                                logger.info(
+                                    "Orchestrator suspended (streaming)",
+                                    job_id=str(state.job_id),
+                                    tool_count=len(tool_calls),
+                                    snapshot_sequence=state.iteration,
+                                )
+
+                                # EXIT - free CPU, wait for resume signal
+                                return state
+                            else:
+                                # FALLBACK: Old blocking behavior
+                                results = await self.tool_handler.execute_tools(
+                                    state,
+                                    tool_calls,
+                                )
+
+                                for tc, result in zip(tool_calls, results, strict=True):
+                                    state.add_tool_result(tc.id, result)
+                                    await self._emit_event(state, "tool_result", {
+                                        "tool_call_id": tc.id,
+                                        "result": result[:500],
+                                    })
 
                         elif content_buffer:
                             state.add_assistant_message(content=content_buffer)
@@ -242,6 +325,63 @@ class AgentExecutor:
             await self._emit_event(state, "error", {"error": str(e)})
 
         return state
+
+    async def resume_from_snapshot(
+        self,
+        state: AgentState,
+        tool_results: dict[str, str],
+    ) -> AgentState:
+        """Resume execution after tool completion.
+
+        Called by ResumeHandler when all pending tools are complete.
+
+        Args:
+            state: Agent state loaded from snapshot
+            tool_results: Map of tool_call_id -> result string
+
+        Returns:
+            Updated agent state after resuming execution
+        """
+        logger.info(
+            "Resuming agent execution",
+            job_id=str(state.job_id),
+            iteration=state.iteration,
+            pending_tool_count=len(state.pending_tool_calls),
+        )
+
+        # Inject tool results into message history
+        for tc in state.pending_tool_calls:
+            result = tool_results.get(tc.id)
+
+            if result is None:
+                # This shouldn't happen if resume handler checks properly
+                logger.error(
+                    "Tool result missing during resume",
+                    job_id=str(state.job_id),
+                    tool_call_id=tc.id,
+                )
+                result = "Error: Tool result not available"
+
+            # Add to message history
+            state.add_tool_result(tc.id, result)
+
+            # Emit event for client
+            await self._emit_event(state, "tool_result", {
+                "tool_call_id": tc.id,
+                "tool_name": tc.name,
+                "result": result[:500],  # Truncate for event
+            })
+
+        # Clear pending tools and mark as running
+        state.pending_tool_calls = []
+        state.mark_running()
+
+        # Continue the main execution loop
+        # Determine which method to use based on state metadata
+        if state.metadata.get("streaming", True):
+            return await self.execute_streaming(state)
+        else:
+            return await self.execute(state)
 
     async def _emit_event(
         self,

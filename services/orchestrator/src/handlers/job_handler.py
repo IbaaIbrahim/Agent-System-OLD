@@ -7,7 +7,6 @@ from libs.common import get_logger
 from libs.messaging.redis import RedisPubSub
 
 from ..config import get_config
-from ..engine.agent import AgentExecutor
 from ..engine.state import StateManager
 from ..services.llm_service import LLMService
 from ..services.snapshot_service import SnapshotService
@@ -65,10 +64,14 @@ class JobHandler:
             # Save initial state
             await self.snapshot_service.save_job(state)
 
+            # Lazy import to avoid circular dependency
+            from ..engine.agent import AgentExecutor
+
             # Create executor with event callback
             executor = AgentExecutor(
                 llm_service=self.llm_service,
                 tool_handler=self.tool_handler,
+                snapshot_service=self.snapshot_service,
                 event_callback=self._publish_event,
             )
 

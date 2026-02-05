@@ -52,6 +52,87 @@ class ToolHandler:
 
         return results
 
+    async def dispatch_tools_async(
+        self,
+        state: AgentState,
+        tool_calls: list[ToolCall],
+    ) -> None:
+        """Dispatch tools to Kafka without waiting for results.
+
+        Used in suspend/resume mode. Tools are dispatched and the
+        orchestrator exits. Resume signals will trigger continuation.
+
+        Args:
+            state: Current agent state
+            tool_calls: List of tool calls to dispatch
+        """
+        from libs.messaging.redis import get_redis_client
+
+        producer = await get_producer()
+        redis = await get_redis_client()
+
+        for tc in tool_calls:
+            logger.info(
+                "Dispatching tool (async)",
+                job_id=str(state.job_id),
+                tool_name=tc.name,
+                tool_id=tc.id,
+            )
+
+            # Check for built-in simple tools
+            if tc.name == "get_current_time":
+                # Store result immediately in Redis for resume handler
+                from datetime import datetime
+                result = datetime.now(UTC).isoformat()
+
+                result_key = f"tool_result:{tc.id}"
+                await redis.set(result_key, result, ex=300)
+
+                # Publish resume signal immediately
+                await producer.send(
+                    topic=self.config.resume_topic,
+                    message={
+                        "job_id": str(state.job_id),
+                        "tool_call_id": tc.id,
+                        "snapshot_sequence": state.iteration,
+                        "status": "completed",
+                        "tool_name": tc.name,
+                    },
+                    key=str(state.job_id),
+                )
+
+                logger.info(
+                    "Built-in tool executed and resume signal sent",
+                    job_id=str(state.job_id),
+                    tool_name=tc.name,
+                )
+            else:
+                # Dispatch to tool workers
+                message = {
+                    "tool_call_id": tc.id,
+                    "job_id": str(state.job_id),
+                    "tenant_id": str(state.tenant_id),
+                    "tool_name": tc.name,
+                    "arguments": tc.arguments,
+                    "snapshot_sequence": state.iteration,
+                }
+
+                await producer.send(
+                    topic=self.config.tools_topic,
+                    message=message,
+                    key=str(state.tenant_id),
+                    headers={
+                        "job_id": str(state.job_id),
+                        "tool_call_id": tc.id,
+                    },
+                )
+
+                logger.debug(
+                    "Tool dispatched to worker queue",
+                    job_id=str(state.job_id),
+                    tool_name=tc.name,
+                )
+
     async def _execute_single_tool(
         self,
         state: AgentState,
@@ -107,6 +188,7 @@ class ToolHandler:
             "tenant_id": str(state.tenant_id),
             "tool_name": tool_call.name,
             "arguments": tool_call.arguments,
+            "snapshot_sequence": state.iteration,  # For resume handler
         }
 
         # Send to tools topic

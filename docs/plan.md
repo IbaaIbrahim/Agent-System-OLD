@@ -2,15 +2,15 @@
 
 ## Executive Summary
 
-The Agentic System is currently **~75% complete**. Phases 1, 2, 2.5 (B2B2B Partners), 3 (Comprehensive Billing System), and 3.5 (Stream-Edge OTT Security) are fully implemented, tested, and verified. The remaining work centers on the orchestrator suspend/resume refactor (Phase 4), tool worker enhancements (Phase 5), and production testing (Phase 6).
+The Agentic System is currently **~85% complete**. Phases 1, 2, 2.5 (B2B2B Partners), 3 (Comprehensive Billing System), 3.5 (Stream-Edge OTT Security), and 4 (Orchestrator Suspend/Resume) are fully implemented, tested, and verified. The remaining work centers on tool worker enhancements (Phase 5) and production testing (Phase 6).
 
 See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for remaining phases.
 
-### Current State (as of Phase 3.5 completion)
+### Current State (as of Phase 4 completion)
 - ✅ **Stream Edge (100%)**: Fully functional SSE with hot/cold reconnection, **secured with one-time tokens (OTT)**
 - ✅ **API Gateway (100%)**: Four-tier auth, partner management, admin endpoints, **comprehensive billing (wallets, plans, subscriptions, features, credit rate limits)**, DB job persistence, waterfall rate limiting — all complete
-- ⚠️ **Orchestrator (30%)**: Basic loop works but blocks on tool calls — no suspend/resume, no distributed locking
-- ⚠️ **Tool Workers (25%)**: Two tools (code executor + mock web search), no resume signal, no Kafka result publication
+- ✅ **Orchestrator (100%)**: Agent loop with **suspend/resume architecture** — exits after tool dispatch, saves state to PostgreSQL snapshots, resumes from snapshot when tools complete via Kafka signals. Distributed locking prevents duplicate processing.
+- ⚠️ **Tool Workers (50%)**: Two tools (code executor + mock web search), **resume signals published to Kafka**, results stored in Redis
 - ⚠️ **Archiver (40%)**: Reads Redis streams and batches to PostgreSQL, but incomplete event-type mapping
 - ✅ **Database Models (100%)**: All SQLAlchemy models complete (including billing: wallets, plans, subscriptions, top-ups, features)
 - ✅ **Shared Libraries (100%)**: Auth, billing, internal tokens v2, config, logging, LLM abstraction, Kafka, Redis — all complete
@@ -34,11 +34,13 @@ See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for
 16. ~~Background job scheduler~~ → **DONE** (APScheduler for credit reset, top-up expiration, low balance alerts)
 17. ~~Stream-Edge OTT security~~ → **DONE** (one-time JWT tokens for SSE connections, Redis SETNX enforcement, reconnection support)
 18. ~~Wallet transaction ledger~~ → **PARTIAL** (DB model + migration created, service layer NOT implemented)
+19. ~~Orchestrator suspend/resume~~ → **DONE** (state serialization, distributed locking, dual Kafka consumers, resume handler)
+20. ~~Tool worker resume signals~~ → **DONE** (Kafka `agent.job-resume` topic, tool workers publish resume signals after completion)
 
 ### Remaining Critical Features
-1. **True suspend/resume** — orchestrator must exit after tool dispatch, resume from snapshot on completion
-2. **Kafka-based tool result consumption** — replace Redis polling with resume signals
-3. **Distributed state locking** — prevent duplicate processing across orchestrator instances
+1. ~~True suspend/resume~~ → **DONE** — orchestrator exits after tool dispatch, resumes from snapshot on completion
+2. ~~Kafka-based tool result consumption~~ → **DONE** — resume signals replace Redis polling
+3. ~~Distributed state locking~~ → **DONE** — prevents duplicate processing across orchestrator instances
 4. **Production tool implementations** — web search needs real API, add calculator tool
 5. **Complete archiver event-type mapping** — `tool_call`, `complete`, `error`, `cancelled` events
 6. **Incremental message persistence** — persist assistant messages during execution, not just at completion
@@ -764,6 +766,62 @@ PUT    /api/partner/features/{feature_id}     # Configure feature override
 **Reason**: User said "thats enouph we dont need the the continue of the wallet anymore"
 
 **Total unit tests after Phase 3.5: 114 (106 billing/auth + 8 OTT)**
+
+---
+
+## Phase 4: Orchestrator Suspend/Resume Refactor -- COMPLETE
+
+**Goal**: Implement true suspend/resume where orchestrator exits after tool dispatch
+
+**Status**: COMPLETE. All features implemented with 24 new unit tests (138 total), integration test suite created.
+
+### Phase 4 Implementation Log
+
+**Files created:**
+| File | Purpose |
+|------|---------|
+| `services/orchestrator/src/services/state_lock.py` | `DistributedStateLock` — Redis SETNX with TTL for exclusive job processing |
+| `services/orchestrator/src/handlers/resume_handler.py` | `ResumeHandler` — loads snapshot, checks tool completion, resumes execution |
+| `services/orchestrator/src/engine/serializer.py` | `StateSerializer` — serialize/deserialize AgentState for PostgreSQL snapshots |
+| `tests/unit/test_suspend_resume.py` | 24 unit tests for state lock, serialization, resume logic, executor suspend |
+| `tests/integration/test_suspend_resume_flow.py` | Integration tests for full suspend/resume cycle |
+
+**Files modified:**
+| File | Change |
+|------|--------|
+| `infrastructure/docker/kafka/create-topics.sh` | Added `agent.job-resume` topic (6 partitions, 1h retention) |
+| `services/orchestrator/src/config.py` | Added `resume_topic`, `resume_consumer_group`, `enable_suspend_resume`, `job_lock_ttl_seconds` |
+| `services/orchestrator/src/engine/agent.py` | Refactored to suspend on tool dispatch, added `resume_from_snapshot()` method |
+| `services/orchestrator/src/engine/state.py` | Added `AgentStatus.WAITING_TOOL`, `mark_waiting_tool()`, `pending_tool_calls` field |
+| `services/orchestrator/src/handlers/tool_handler.py` | Added `dispatch_tools_async()` for non-blocking dispatch with `snapshot_sequence` |
+| `services/orchestrator/src/handlers/job_handler.py` | Uses lazy import for `AgentExecutor` to avoid circular dependency |
+| `services/orchestrator/src/main.py` | Dual Kafka consumers with `asyncio.gather()` for jobs + resume topics |
+| `services/tool-workers/src/main.py` | Publishes resume signal to Kafka after tool completion |
+| `services/tool-workers/src/config.py` | Added `resume_topic` config |
+| `.env.example` | Added `ENABLE_SUSPEND_RESUME=true` |
+
+**Architecture changes:**
+
+*Old flow (blocking):*
+```
+LLM response with tool_calls → dispatch to Kafka → poll Redis (100ms loop) → get results → continue
+```
+
+*New flow (suspend/resume):*
+```
+LLM response with tool_calls → mark WAITING_TOOL → save snapshot → dispatch to Kafka → EXIT
+... tool worker completes ...
+Resume signal → ResumeHandler → acquire lock → load snapshot → fetch results → continue execution
+```
+
+**Key design decisions:**
+- Feature flag `enable_suspend_resume` (default: true) allows safe rollback to blocking behavior
+- Distributed lock uses Redis SETNX with 5-minute TTL to prevent duplicate processing
+- Resume handler checks ALL pending tools before resuming (handles multi-tool dispatches)
+- `snapshot_sequence` in Kafka messages enables stale resume detection
+- Lazy imports in `job_handler.py` break circular dependency chain
+
+**Total unit tests after Phase 4: 138 (114 + 24 suspend/resume)**
 
 **Documentation**: See [docs/stream-ott-security.md](stream-ott-security.md) and [docs/wallet-transactions-ledger.md](wallet-transactions-ledger.md)
 
@@ -1532,7 +1590,7 @@ class MetricsCollector:
 
 ### Critical Path
 ```
-Phase 1 (Auth) ✅ → Phase 2 (Billing) ✅ → Phase 2.5 (Partners) ✅ → Phase 3 (Billing System) ✅ → Phase 4 (Suspend/Resume) ⬜ → Phase 6 (Testing) ⬜
+Phase 1 (Auth) ✅ → Phase 2 (Billing) ✅ → Phase 2.5 (Partners) ✅ → Phase 3 (Billing System) ✅ → Phase 4 (Suspend/Resume) ✅ → Phase 6 (Testing) ⬜
                                                                                                            ↑
                                                                                           Phase 5 (Tools) ⬜ (parallel)
 ```
@@ -1542,9 +1600,9 @@ Phase 1 (Auth) ✅ → Phase 2 (Billing) ✅ → Phase 2.5 (Partners) ✅ → Ph
 - **Phase 2**: COMPLETE — Basic billing, internal tokens, waterfall rate limiting, DB job persistence
 - **Phase 2.5**: COMPLETE — B2B2B multi-partner model, four-tier auth, partner billing, partner rate limiting
 - **Phase 3**: COMPLETE — Comprehensive billing (wallets, plans, subscriptions, features, credit rate limits)
-- **Phase 4**: NEXT — orchestrator suspend/resume (highest priority, core architecture)
-- **Phase 5**: Can start in parallel — tool workers are independent services
-- **Phase 6**: After Phase 4+5 — integration/chaos/load testing needs working suspend/resume
+- **Phase 4**: COMPLETE — Orchestrator suspend/resume, distributed locking, dual Kafka consumers, 24 unit tests
+- **Phase 5**: NEXT — tool workers are independent services (can parallelize with Phase 6)
+- **Phase 6**: After Phase 5 — integration/chaos/load testing with full system
 
 ### Parallelizable Now
 - Phase 4 (orchestrator refactor) + Phase 5.1-5.3 (tool implementations + registry) — independent services
@@ -1761,13 +1819,16 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 - [x] Migration 005 with all 8 billing tables
 - [x] 106 unit tests passing (44 new billing tests)
 
-**Phase 4 Complete When:** -- PENDING
-- [ ] Orchestrator exits immediately after tool dispatch (currently blocks with 100ms Redis polling)
-- [ ] Job snapshot saved to PostgreSQL before exit (snapshot service exists but not used mid-execution)
-- [ ] Tool completion triggers Kafka resume signal (workers only store to Redis currently)
-- [ ] Different orchestrator instance can resume job from snapshot
-- [ ] Distributed locking prevents duplicate processing (no lock mechanism exists)
-- [ ] `agent.job-resume` Kafka topic created and consumed
+**Phase 4 Complete When:** -- ALL MET
+- [x] Orchestrator exits immediately after tool dispatch (suspend/resume architecture)
+- [x] Job snapshot saved to PostgreSQL before exit (StateSerializer + SnapshotService)
+- [x] Tool completion triggers Kafka resume signal (tool workers publish to `agent.job-resume`)
+- [x] Different orchestrator instance can resume job from snapshot (ResumeHandler)
+- [x] Distributed locking prevents duplicate processing (DistributedStateLock via Redis SETNX)
+- [x] `agent.job-resume` Kafka topic created and consumed (dual Kafka consumers in orchestrator)
+- [x] Feature flag `enable_suspend_resume` allows fallback to legacy blocking mode
+- [x] 24 unit tests for suspend/resume passing
+- [x] Integration tests for full suspend/resume cycle created
 
 **Phase 5 Complete When:** -- PENDING
 - [ ] Web search tool calls real API (currently mock/placeholder)
@@ -1776,7 +1837,7 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 - [ ] Tool timeout handling works correctly
 
 **Phase 6 Complete When:** -- PENDING
-- [ ] All tests pass (unit + integration + e2e) — target 150+ tests (currently 106 unit tests passing)
+- [ ] All tests pass (unit + integration + e2e) — target 150+ tests (currently 138 unit tests passing)
 - [ ] Load test: 100 concurrent jobs complete successfully
 - [ ] Chaos test: Service kills don't cause data loss
 - [ ] Documentation complete (API, deployment, admin, developer)
@@ -1818,11 +1879,10 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 
 ## Next Steps
 
-Phases 1, 2, 2.5 (B2B2B Partners), and 3 (Comprehensive Billing) are complete. Continuing with:
+Phases 1, 2, 2.5 (B2B2B Partners), 3 (Comprehensive Billing), and 4 (Suspend/Resume) are complete. Continuing with:
 
-1. **Phase 4**: Orchestrator suspend/resume refactor (highest priority, core architecture change)
-2. **Phase 5**: Tool worker enhancements + archiver completion (can parallelize with Phase 4)
-3. **Phase 6**: Comprehensive testing, load testing, chaos testing, documentation
+1. **Phase 5**: Tool worker enhancements + archiver completion (real web search API, calculator tool)
+2. **Phase 6**: Comprehensive testing, load testing, chaos testing, documentation
 
 See **[docs/next-phases.md](next-phases.md)** for the full technical implementation plan for remaining phases.
 

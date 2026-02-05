@@ -12,6 +12,7 @@ class ToolWorkersConfig(Settings):
     tools_topic: str = "agent.tools"
     tools_dlq_topic: str = "agent.tools.dlq"
     tool_results_topic: str = "agent.tool-results"
+    resume_topic: str = "agent.job-resume"
 
     # Consumer settings
     consumer_group: str = "tool-workers"

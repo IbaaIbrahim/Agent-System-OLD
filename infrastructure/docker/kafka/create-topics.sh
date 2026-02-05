@@ -58,6 +58,15 @@ kafka-topics --create \
     --config retention.ms=2592000000 \
     --if-not-exists
 
+# Job resumption signals from tool workers
+kafka-topics --create \
+    --bootstrap-server $KAFKA_BOOTSTRAP_SERVERS \
+    --topic agent.job-resume \
+    --partitions 6 \
+    --replication-factor 1 \
+    --config retention.ms=3600000 \
+    --if-not-exists
+
 # Events for archiving (compact for deduplication)
 kafka-topics --create \
     --bootstrap-server $KAFKA_BOOTSTRAP_SERVERS \
