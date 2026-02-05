@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from libs.common import get_logger
-from libs.common.auth import create_internal_transaction_token
+from libs.common.auth import create_internal_transaction_token, create_stream_ott
 from libs.common.exceptions import ValidationError
 from libs.db.models import ChatMessage as ChatMessageModel
 from libs.db.models import Job, JobStatus, MessageRole
@@ -64,6 +64,7 @@ class ChatCompletionResponse(BaseModel):
 
     job_id: str
     stream_url: str
+    stream_token: str
     status: str = "pending"
     created_at: str | None = None
 
@@ -228,12 +229,21 @@ async def create_chat_completion(
         reservation_id=reservation_id,
     )
 
-    # Build stream URL
-    stream_url = f"{config.stream_edge_url}/api/v1/events/{job_id}"
+    # Generate stream one-time token
+    stream_ott = create_stream_ott(
+        job_id=job_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        partner_id=partner_id,
+    )
+
+    # Build stream URL with OTT
+    stream_url = f"{config.stream_edge_url}/api/v1/stream?token={stream_ott}"
 
     return ChatCompletionResponse(
         job_id=str(job_id),
         stream_url=stream_url,
+        stream_token=stream_ott,
         status="pending",
         created_at=now.isoformat(),
     )

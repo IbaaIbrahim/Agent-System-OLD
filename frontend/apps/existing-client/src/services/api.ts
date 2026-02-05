@@ -38,6 +38,7 @@ export interface ChatCompletionRequest {
 export interface ChatCompletionResponse {
   job_id: string
   stream_url: string
+  stream_token: string
   status: string
 }
 

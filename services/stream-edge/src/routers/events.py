@@ -5,11 +5,14 @@ import json
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from libs.common import get_logger
-from libs.messaging.redis import RedisPubSub
+from libs.common.auth import verify_stream_ott
+from libs.common.config import get_settings
+from libs.common.exceptions import AuthenticationError
+from libs.messaging.redis import RedisPubSub, get_redis_client
 
 from ..config import get_config
 from ..handlers.catchup import CatchupHandler
@@ -186,36 +189,53 @@ async def keepalive_generator(connection, interval: int):
                 break
 
 
-@router.get("/events/{job_id}")
-async def stream_events(
+@router.get("/stream")
+async def stream_events_authenticated(
     request: Request,
-    job_id: uuid.UUID,
+    token: str = Query(..., description="One-time stream token from chat completions"),
 ) -> StreamingResponse:
-    """Stream events for a job via Server-Sent Events.
+    """Stream events for a job via SSE, authenticated by one-time token.
 
-    Connect to this endpoint to receive real-time events for a chat completion job.
-    The stream will emit events as the LLM generates responses and tools are invoked.
+    The token is a short-lived JWT issued by the API Gateway when creating
+    a chat completion. It encodes the job_id and auth context.
 
-    Supports automatic reconnection with catch-up via the Last-Event-ID header.
+    This endpoint validates the token signature, checks it hasn't been
+    used before (one-time via Redis SETNX), extracts the job_id, and
+    subscribes to the event stream.
 
-    Event types:
-    - open: Connection established
-    - message: Content chunk from LLM
-    - tool_call: Tool invocation started
-    - tool_result: Tool execution completed
-    - complete: Job finished successfully
-    - error: Job failed
-    - keepalive: Connection keepalive (ignore these)
+    For reconnections (Last-Event-ID header present), consumed tokens
+    are accepted as long as the signature and expiry are still valid.
     """
-    # Check Last-Event-ID header for reconnection
-    last_event_id = request.headers.get("Last-Event-ID")
+    # Step 1: Verify token signature and expiry
+    try:
+        ott_payload = verify_stream_ott(token)
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e.message))
 
-    # Generate unique connection ID
+    # Step 2: One-time consumption check via Redis SETNX
+    redis = await get_redis_client()
+    settings = get_settings()
+    ott_key = f"ott:{ott_payload.jti}"
+    was_set = await redis.set(ott_key, "1", ex=settings.ott_ttl_seconds, nx=True)
+
+    if not was_set:
+        # Token already consumed — only allow reconnections
+        last_event_id = request.headers.get("Last-Event-ID")
+        if not last_event_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Stream token has already been used",
+            )
+
+    # Step 3: Extract job_id and stream
+    job_id = uuid.UUID(ott_payload.job_id)
+    last_event_id = request.headers.get("Last-Event-ID")
     connection_id = str(uuid.uuid4())
 
     logger.info(
-        "SSE stream requested",
+        "Authenticated SSE stream requested",
         job_id=str(job_id),
+        tenant_id=ott_payload.tenant_id,
         connection_id=connection_id,
         last_event_id=last_event_id,
     )
@@ -226,6 +246,40 @@ async def stream_events(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/events/{job_id}", deprecated=True)
+async def stream_events(
+    request: Request,
+    job_id: uuid.UUID,
+) -> StreamingResponse:
+    """[DEPRECATED] Stream events for a job via Server-Sent Events.
+
+    Use GET /api/v1/stream?token=... instead. This endpoint will be
+    removed in a future release.
+    """
+    logger.warning(
+        "Deprecated unauthenticated endpoint accessed",
+        job_id=str(job_id),
+        endpoint="/events/{job_id}",
+        client_ip=request.client.host if request.client else "unknown",
+    )
+
+    # Check Last-Event-ID header for reconnection
+    last_event_id = request.headers.get("Last-Event-ID")
+
+    # Generate unique connection ID
+    connection_id = str(uuid.uuid4())
+
+    return StreamingResponse(
+        event_generator(request, job_id, connection_id, last_event_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )

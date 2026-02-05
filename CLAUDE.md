@@ -14,7 +14,7 @@ Frontend (React) → API Gateway (Control Plane, 8000) → Kafka → Orchestrato
 
 **Services:**
 - **api-gateway** (port 8000): FastAPI REST — auth, rate limiting, job creation → Kafka `agent.jobs`
-- **stream-edge** (port 8001): FastAPI SSE streaming to clients via Redis Pub/Sub (`events:{job_id}`)
+- **stream-edge** (port 8001): FastAPI SSE streaming to clients via Redis Pub/Sub (`events:{job_id}`), secured with one-time tokens (OTT)
 - **orchestrator**: Kafka consumer running the agent loop (Think → Act → Observe). Supports **suspend/resume**: serializes state to `job_snapshots`, dispatches tool tasks to Kafka, exits to free CPU, then resumes from snapshot when tool results arrive
 - **tool-workers**: Stateless tool executors via Kafka (`agent.tools` → results in Redis)
 - **archiver**: Moves completed events from Redis (hot) to PostgreSQL (cold)
@@ -103,8 +103,8 @@ All backend `make` targets set `PYTHONPATH=$(PWD)` for module resolution from re
 - **Multi-tenancy**: all operations require `tenant_id`, enforced via middleware.
 - **Config pattern**: service configs extend base `pydantic-settings` from `libs/common/config.py`. Base: `get_settings()`. Service-specific: `get_config()`.
 - **DB models**: SQLAlchemy 2.0 `Mapped[]` columns with `TimestampMixin`, organized into PostgreSQL schemas (`tenants`, `billing`, `jobs`).
-- **Migrations**: sequential numbering `001_`–`005_` in `migrations/versions/`. Current: `001_tenants_users`, `002_pricing_ledger`, `003_jobs_messages`, `004_partners`, `005_billing_plans`.
-- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. 106 unit tests, 4 integration test files.
+- **Migrations**: sequential numbering `001_`–`006_` in `migrations/versions/`. Current: `001_tenants_users`, `002_pricing_ledger`, `003_jobs_messages`, `004_partners`, `005_billing_plans`, `006_wallet_transactions`.
+- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. 114 unit tests (106 billing/auth + 8 OTT), 4 integration test files.
 - **Test imports**: Hyphenated service directories (e.g. `services/api-gateway`) require `sys.path.insert(0, "services/api-gateway")` before importing `src.*` modules in unit tests.
 
 ## Adding New Tools
@@ -154,6 +154,8 @@ class MyTool(BaseTool):
 | DB init SQL | `infrastructure/docker/postgres/init.sql` |
 | Partner migration | `migrations/versions/004_partners.py` |
 | Billing plans migration | `migrations/versions/005_billing_plans.py` |
+| Wallet transactions migration | `migrations/versions/006_wallet_transactions.py` |
+| OTT unit tests | `tests/unit/test_stream_ott.py` |
 | Frontend chat state | `frontend/src/hooks/useChat.ts` |
 | Architecture design doc | `docs/rebuild.md` |
 | Project plan | `docs/plan.md` |

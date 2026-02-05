@@ -308,3 +308,108 @@ def verify_internal_transaction_token(token: str) -> dict[str, Any]:
             message="Invalid internal transaction token",
             details={"reason": str(e)},
         )
+
+
+# --- One-Time Tokens for Stream-Edge ---
+# Short-lived, one-time-use tokens that authenticate SSE connections
+# to stream-edge. Signed with internal_jwt_secret, distinguished by
+# the "purpose": "stream_ott" claim.
+
+
+class StreamOTTPayload(BaseModel):
+    """Decoded payload from a stream one-time token."""
+
+    purpose: str
+    job_id: str
+    tenant_id: str
+    user_id: str | None = None
+    partner_id: str | None = None
+    jti: str
+    exp: int
+    iat: int
+
+
+def create_stream_ott(
+    job_id: UUID,
+    tenant_id: UUID,
+    user_id: UUID | None = None,
+    partner_id: UUID | None = None,
+) -> str:
+    """Create a one-time token for stream-edge SSE authentication.
+
+    Signed with internal_jwt_secret. Short-lived (ott_ttl_seconds).
+    The token encodes job_id and auth context so the stream-edge can
+    subscribe to the correct Redis channel without exposing raw job_id.
+
+    Args:
+        job_id: Job identifier
+        tenant_id: Tenant identifier
+        user_id: User identifier (optional)
+        partner_id: Partner identifier (optional)
+
+    Returns:
+        Encoded JWT string (the OTT)
+    """
+    settings = get_settings()
+    now = datetime.now(UTC)
+
+    payload: dict[str, Any] = {
+        "purpose": "stream_ott",
+        "job_id": str(job_id),
+        "tenant_id": str(tenant_id),
+        "user_id": str(user_id) if user_id else None,
+        "partner_id": str(partner_id) if partner_id else None,
+        "jti": secrets.token_urlsafe(16),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=settings.ott_ttl_seconds)).timestamp()),
+    }
+
+    return jwt.encode(
+        payload,
+        settings.internal_jwt_secret,
+        algorithm="HS256",
+    )
+
+
+def verify_stream_ott(token: str) -> StreamOTTPayload:
+    """Verify and decode a stream one-time token.
+
+    Validates signature, expiry, and purpose claim. Does NOT check
+    one-time consumption (that requires Redis and is done by the
+    stream-edge endpoint).
+
+    Args:
+        token: JWT token string
+
+    Returns:
+        Decoded StreamOTTPayload
+
+    Raises:
+        AuthenticationError: If token is invalid, expired, or wrong purpose
+    """
+    settings = get_settings()
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.internal_jwt_secret,
+            algorithms=["HS256"],
+        )
+    except jwt.ExpiredSignatureError:
+        raise AuthenticationError(
+            message="Stream token has expired",
+            details={"reason": "expired"},
+        )
+    except jwt.InvalidTokenError as e:
+        raise AuthenticationError(
+            message="Invalid stream token",
+            details={"reason": str(e)},
+        )
+
+    if payload.get("purpose") != "stream_ott":
+        raise AuthenticationError(
+            message="Invalid token purpose",
+            details={"reason": "wrong_purpose"},
+        )
+
+    return StreamOTTPayload(**payload)
