@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -92,6 +93,10 @@ class Partner(Base, TimestampMixin):
     # Relationships
     tenants: Mapped[list["Tenant"]] = relationship(back_populates="partner")
     api_keys: Mapped[list["PartnerApiKey"]] = relationship(back_populates="partner")
+    plans: Mapped[list["PartnerPlan"]] = relationship(back_populates="partner")
+    feature_configs: Mapped[list["PartnerFeatureConfig"]] = relationship(
+        back_populates="partner"
+    )
 
 
 class PartnerApiKey(Base, TimestampMixin):
@@ -333,6 +338,495 @@ class UsageLedger(Base, TimestampMixin):
 
     # Relationships
     tenant: Mapped["Tenant"] = relationship(back_populates="usage_records")
+
+
+# =============================================================================
+# Billing: Partner Wallet & Deposits
+# =============================================================================
+
+
+class DepositStatus(str, Enum):
+    """Deposit transaction status."""
+
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
+class PartnerWallet(Base, TimestampMixin):
+    """Partner wallet for managing USD balance.
+
+    Partners deposit money into their wallet, which is debited
+    when their tenants consume LLM resources.
+    """
+
+    __tablename__ = "partner_wallets"
+    __table_args__ = (
+        Index("ix_partner_wallets_partner_id", "partner_id"),
+        {"schema": "billing"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.partners.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    balance_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+    total_deposited_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+    total_spent_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+    low_balance_threshold_micros: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    last_low_balance_alert_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationships
+    partner: Mapped["Partner"] = relationship()
+    deposits: Mapped[list["PartnerDeposit"]] = relationship(back_populates="wallet")
+
+
+class PartnerDeposit(Base, TimestampMixin):
+    """Record of money deposited into a partner wallet."""
+
+    __tablename__ = "partner_deposits"
+    __table_args__ = (
+        Index("ix_partner_deposits_wallet_id", "wallet_id"),
+        Index("ix_partner_deposits_status", "status"),
+        {"schema": "billing"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    wallet_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing.partner_wallets.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    amount_micros: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[DepositStatus] = mapped_column(
+        String(20), default=DepositStatus.PENDING, nullable=False
+    )
+    payment_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    external_transaction_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationships
+    wallet: Mapped["PartnerWallet"] = relationship(back_populates="deposits")
+
+
+# =============================================================================
+# Billing: Partner Plans & Tenant Subscriptions
+# =============================================================================
+
+
+class PartnerPlanStatus(str, Enum):
+    """Partner plan status."""
+
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+    DRAFT = "draft"
+
+
+class PartnerPlan(Base, TimestampMixin):
+    """Subscription plan that partners define for their tenants.
+
+    Each plan specifies monthly credits, extra credit pricing/lifetime,
+    rate limits, features, and partner margin.
+    """
+
+    __tablename__ = "partner_plans"
+    __table_args__ = (
+        UniqueConstraint("partner_id", "slug", name="uq_partner_plans_partner_slug"),
+        Index("ix_partner_plans_partner_id", "partner_id"),
+        {"schema": "billing"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.partners.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(63), nullable=False)
+    status: Mapped[PartnerPlanStatus] = mapped_column(
+        String(20), default=PartnerPlanStatus.ACTIVE, nullable=False
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Credit allocation
+    monthly_credits_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+    # Price per 1M extra credits in microdollars
+    extra_credit_price_micros: Mapped[int] = mapped_column(
+        BigInteger, default=1_000_000, nullable=False
+    )
+    # How long top-ups last (varies by plan tier)
+    extra_credit_lifetime_days: Mapped[int] = mapped_column(
+        Integer, default=365, nullable=False
+    )
+
+    # Rate limits (RPM/TPM)
+    rate_limit_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_limit_tpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Credit rate limits: {"tenant": {"hourly": N, "daily": N}, "user": {"hourly": N, "daily": N}}
+    credit_rate_limits: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    # Feature limits: {"max_users": N, "max_concurrent_jobs": N, "tools_enabled": [...]}
+    features: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    # Partner margin on LLM costs (percentage, e.g., 20.0 = 20%)
+    margin_percent: Mapped[float] = mapped_column(
+        Numeric(5, 2), default=0.0, nullable=False
+    )
+
+    # Billing cycle in days (default 30)
+    billing_cycle_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+
+    # Display order for pricing page
+    display_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Relationships
+    partner: Mapped["Partner"] = relationship()
+    subscriptions: Mapped[list["TenantSubscription"]] = relationship(
+        back_populates="plan"
+    )
+
+
+class SubscriptionStatus(str, Enum):
+    """Tenant subscription status."""
+
+    ACTIVE = "active"
+    CANCELLED = "cancelled"
+    PAST_DUE = "past_due"
+    TRIAL = "trial"
+
+
+class TenantSubscription(Base, TimestampMixin):
+    """Links a tenant to their active subscription plan.
+
+    Tracks billing period and remaining plan credits.
+    """
+
+    __tablename__ = "tenant_subscriptions"
+    __table_args__ = (
+        Index("ix_tenant_subscriptions_tenant_id", "tenant_id"),
+        Index("ix_tenant_subscriptions_plan_id", "plan_id"),
+        Index("ix_tenant_subscriptions_status", "status"),
+        {"schema": "billing"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
+        unique=True,  # One active subscription per tenant
+        nullable=False,
+    )
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing.partner_plans.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    status: Mapped[SubscriptionStatus] = mapped_column(
+        String(20), default=SubscriptionStatus.ACTIVE, nullable=False
+    )
+
+    # Billing period
+    current_period_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    current_period_end: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    # Plan credits remaining for current period (resets monthly)
+    plan_credits_remaining_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+
+    # Trial info
+    trial_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Cancellation
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancel_at_period_end: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
+    # Relationships
+    tenant: Mapped["Tenant"] = relationship()
+    plan: Mapped["PartnerPlan"] = relationship(back_populates="subscriptions")
+    top_ups: Mapped[list["CreditTopUp"]] = relationship(back_populates="subscription")
+
+
+class TopUpStatus(str, Enum):
+    """Credit top-up status."""
+
+    ACTIVE = "active"
+    DEPLETED = "depleted"
+    EXPIRED = "expired"
+    REFUNDED = "refunded"
+
+
+class CreditTopUp(Base, TimestampMixin):
+    """Additional credits purchased by a tenant.
+
+    Top-ups are consumed in FIFO order after plan credits are exhausted.
+    Lifetime is determined by the plan's extra_credit_lifetime_days.
+    """
+
+    __tablename__ = "credit_top_ups"
+    __table_args__ = (
+        Index("ix_credit_top_ups_tenant_id", "tenant_id"),
+        Index("ix_credit_top_ups_status", "status"),
+        Index("ix_credit_top_ups_expires_at", "expires_at"),
+        # FIFO query index: active top-ups ordered by creation
+        Index(
+            "ix_credit_top_ups_tenant_fifo",
+            "tenant_id",
+            "status",
+            "created_at",
+        ),
+        {"schema": "billing"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing.tenant_subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Credit amounts
+    amount_micros: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    remaining_micros: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    # Cost charged to tenant
+    price_paid_micros: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    # Status and expiration
+    status: Mapped[TopUpStatus] = mapped_column(
+        String(20), default=TopUpStatus.ACTIVE, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    # Payment reference
+    external_transaction_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+
+    # Relationships
+    tenant: Mapped["Tenant"] = relationship()
+    subscription: Mapped["TenantSubscription | None"] = relationship(
+        back_populates="top_ups"
+    )
+
+
+# =============================================================================
+# Billing: System Features & Partner Configuration
+# =============================================================================
+
+
+class SystemFeature(Base, TimestampMixin):
+    """Platform-defined feature with default model routing.
+
+    Each feature (e.g., translation, RAG, document analysis) has a
+    default LLM provider/model and cost weight multiplier.
+    """
+
+    __tablename__ = "system_features"
+    __table_args__ = (
+        Index("ix_system_features_slug", "slug"),
+        {"schema": "billing"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    slug: Mapped[str] = mapped_column(String(63), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Default model routing
+    default_provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    default_model_id: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Cost multiplier (1.0 = base price, 1.5 = 50% markup)
+    weight_multiplier: Mapped[float] = mapped_column(
+        Numeric(5, 2), default=1.0, nullable=False
+    )
+
+    # Feature flags
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    requires_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
+    # Relationships
+    partner_configs: Mapped[list["PartnerFeatureConfig"]] = relationship(
+        back_populates="feature"
+    )
+
+
+class PartnerFeatureConfig(Base, TimestampMixin):
+    """Partner-level overrides for system features.
+
+    Partners can customize model routing and pricing for each feature.
+    """
+
+    __tablename__ = "partner_feature_configs"
+    __table_args__ = (
+        UniqueConstraint(
+            "partner_id", "feature_id", name="uq_partner_feature_configs_partner_feature"
+        ),
+        Index("ix_partner_feature_configs_partner_id", "partner_id"),
+        {"schema": "billing"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.partners.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    feature_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing.system_features.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Override model routing (NULL = use system defaults)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Override weight multiplier
+    weight_multiplier: Mapped[float | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
+
+    # Partner can disable features
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Relationships
+    partner: Mapped["Partner"] = relationship()
+    feature: Mapped["SystemFeature"] = relationship(back_populates="partner_configs")
+
+
+class CreditUsageRecord(Base, TimestampMixin):
+    """Detailed record of credit consumption for audit and rate limiting.
+
+    Tracks both tenant cost (with margin) and partner cost (base LLM cost).
+    """
+
+    __tablename__ = "credit_usage_records"
+    __table_args__ = (
+        Index("ix_credit_usage_records_tenant_id", "tenant_id"),
+        Index("ix_credit_usage_records_user_id", "user_id"),
+        Index("ix_credit_usage_records_created_at", "created_at"),
+        Index("ix_credit_usage_records_tenant_created", "tenant_id", "created_at"),
+        Index("ix_credit_usage_records_user_created", "user_id", "created_at"),
+        {"schema": "billing"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.jobs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Feature used (if applicable)
+    feature_slug: Mapped[str | None] = mapped_column(String(63), nullable=True)
+
+    # Credit amounts
+    credits_consumed_micros: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    plan_credits_used_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+    topup_credits_used_micros: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+
+    # Partner cost (actual LLM cost without margin)
+    partner_cost_micros: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    # Model info
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Relationships
+    tenant: Mapped["Tenant"] = relationship()
+    user: Mapped["User | None"] = relationship()
 
 
 class JobStatus(str, Enum):

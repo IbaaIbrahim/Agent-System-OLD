@@ -13,10 +13,24 @@ from libs.messaging.kafka import create_producer
 from libs.messaging.redis import get_redis_client
 
 from .config import get_config
+from .jobs.scheduler import setup_scheduler
 from .middleware.auth import AuthMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 from .middleware.tenant import TenantMiddleware
-from .routers import admin, auth, chat, health, jobs, partners, users
+from .routers import (
+    admin,
+    auth,
+    chat,
+    features,
+    health,
+    jobs,
+    partners,
+    plans,
+    subscriptions,
+    topups,
+    users,
+    wallet,
+)
 
 logger = get_logger(__name__)
 
@@ -105,6 +119,11 @@ def create_app() -> FastAPI:
             {"PartnerApiKeyAuth": []},
         ]
 
+        # Add Postman extensions for auto-setting environment variables
+        from .openapi_extensions import add_postman_extensions
+        
+        openapi_schema = add_postman_extensions(openapi_schema)
+        
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 
@@ -161,21 +180,34 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(health.router, tags=["Health"])
 
-    # Admin endpoints (platform owner only)
-    app.include_router(admin.router, prefix="/api", tags=["Admin"])
-
     # Partner management endpoints (platform owner only)
     app.include_router(partners.router, prefix="/api", tags=["Partners"])
 
-    # Authentication endpoints
-    app.include_router(auth.router, prefix="/api", tags=["Auth"])
+    # Admin endpoints (platform owner only)
+    app.include_router(admin.router, prefix="/api", tags=["Tenant"])
 
     # User management endpoints (tenant API key required)
     app.include_router(users.router, prefix="/api", tags=["Users"])
 
+    # Authentication endpoints
+    app.include_router(auth.router, prefix="/api", tags=["Auth"])
+
     # Chat and job endpoints
     app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
     app.include_router(jobs.router, prefix="/api/v1", tags=["Jobs"])
+
+    # Billing and subscription endpoints
+    app.include_router(wallet.router, prefix="/api", tags=["Wallet"])
+    app.include_router(plans.router, prefix="/api", tags=["Plans"])
+    app.include_router(subscriptions.router, prefix="/api", tags=["Subscriptions"])
+    app.include_router(topups.router, prefix="/api", tags=["Credits"])
+
+    # Feature configuration endpoints
+    app.include_router(features.admin_router, prefix="/api", tags=["Features"])
+    app.include_router(features.partner_router, prefix="/api", tags=["Partner Features"])
+
+    # Setup background job scheduler
+    setup_scheduler(app)
 
     return app
 
