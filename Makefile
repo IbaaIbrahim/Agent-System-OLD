@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator workers archiver frontend
+.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator workers archiver frontend postman openapi
 
 # Default target
 help:
@@ -48,6 +48,8 @@ help:
 	@echo "  make stream      - Run Stream Edge locally"
 	@echo "  make orchestrator- Run Orchestrator locally"
 	@echo "  make frontend    - Run Frontend locally"
+	@echo "  make postman      - Generate Postman Collection"
+	@echo "  make openapi      - Generate OpenAPI Schema"
 
 # ===================
 # INFRASTRUCTURE
@@ -77,7 +79,7 @@ logs-orchestrator:
 clean-volumes:
 	docker compose down --volumes --rmi local
 
-clean: clean-volumes
+clean: clean-volumes test-services-down
 	docker system prune -f
 
 restart: down up
@@ -100,6 +102,7 @@ install:
 
 dev: infra
 	@echo "Starting services in development mode..."
+	@echo "Run 'make migrate' first"
 	@echo "Run each service in separate terminals:"
 	@echo "  make api"
 	@echo "  make stream"
@@ -123,6 +126,12 @@ archiver:
 
 frontend:
 	cd frontend/apps/demo && npm run dev
+
+postman:
+	PYTHONPATH=$(PWD) python3 services/api-gateway/scripts/generate_postman.py > postman_collection.json
+
+openapi:
+	cd services/api-gateway && PYTHONPATH=../../ python3 -c "from src.main import app; import json; print(json.dumps(app.openapi()))" > ../../openapi.json
 
 # ===================
 # DATABASE

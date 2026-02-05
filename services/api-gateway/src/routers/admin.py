@@ -15,11 +15,11 @@ from libs.common import get_logger
 from libs.common.auth import generate_api_key
 from libs.common.exceptions import ValidationError
 from libs.db import get_session_context
-from libs.db.models import ApiKey, Tenant, TenantStatus
+from libs.db.models import ApiKey, Partner, Tenant, TenantStatus
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter(prefix="/admin", tags=["Tenant"])
 
 
 # ============================================================================
@@ -206,6 +206,17 @@ async def create_tenant(
                 message="Tenant slug already exists",
                 errors=[{"field": "slug", "message": f"Slug '{body.slug}' is already taken"}],
             )
+        
+        # Validate partner_id if provided
+        if partner_id:
+            partner_result = await session.execute(
+                select(Partner).where(Partner.id == partner_id)
+            )
+            if not partner_result.scalar_one_or_none():
+                raise ValidationError(
+                    message=f"Partner with ID {partner_id} not found",
+                    errors=[{"field": "partner_id", "message": "Partner does not exist"}]
+                )
 
         # Create tenant
         tenant = Tenant(

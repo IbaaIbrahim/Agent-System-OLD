@@ -2,20 +2,20 @@
 
 ## Executive Summary
 
-The Agentic System is currently **~65% complete**. Phases 1, 2, and the B2B2B partner layer (Phase 2.5) are fully implemented, tested, and verified. The remaining work centers on the orchestrator suspend/resume refactor (Phase 3), tool worker enhancements (Phase 4), and production testing (Phase 5).
+The Agentic System is currently **~75% complete**. Phases 1, 2, 2.5 (B2B2B Partners), and 3 (Comprehensive Billing System) are fully implemented, tested, and verified. The remaining work centers on the orchestrator suspend/resume refactor (Phase 4), tool worker enhancements (Phase 5), and production testing (Phase 6).
 
-See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for Phases 3-5.
+See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for remaining phases.
 
-### Current State (as of Phase 2.5 completion)
+### Current State (as of Phase 3 completion)
 - ✅ **Stream Edge (95%)**: Fully functional SSE with hot/cold reconnection
-- ✅ **API Gateway (98%)**: Four-tier auth (super admin / partner / tenant / end user), partner management, admin endpoints, billing (tenant + partner pools), DB job persistence, waterfall rate limiting (partner → tenant → user → TPM) — all complete
+- ✅ **API Gateway (100%)**: Four-tier auth, partner management, admin endpoints, **comprehensive billing (wallets, plans, subscriptions, features, credit rate limits)**, DB job persistence, waterfall rate limiting — all complete
 - ⚠️ **Orchestrator (30%)**: Basic loop works but blocks on tool calls — no suspend/resume, no distributed locking
 - ⚠️ **Tool Workers (25%)**: Two tools (code executor + mock web search), no resume signal, no Kafka result publication
 - ⚠️ **Archiver (40%)**: Reads Redis streams and batches to PostgreSQL, but incomplete event-type mapping
-- ✅ **Database Models (100%)**: All SQLAlchemy models complete (including Partner, PartnerApiKey, tenant.partner_id FK)
-- ✅ **Shared Libraries (98%)**: Auth (tenant + partner keys), billing (tenant + partner pools), internal tokens v2, config, logging, LLM abstraction, Kafka, Redis
+- ✅ **Database Models (100%)**: All SQLAlchemy models complete (including billing: wallets, plans, subscriptions, top-ups, features)
+- ✅ **Shared Libraries (100%)**: Auth, billing, internal tokens v2, config, logging, LLM abstraction, Kafka, Redis — all complete
 
-### Resolved Features (Phase 1 + 2 + 2.5)
+### Resolved Features (Phase 1 + 2 + 2.5 + 3)
 1. ~~Three-tier authentication~~ → **DONE**, then upgraded to **four-tier** in Phase 2.5 (Super Admin / Partner `pk-agent-*` / Tenant `sk-agent-*` / End User JWT)
 2. ~~Admin endpoints~~ → **DONE** (CRUD tenants, API keys, users, token exchange, **partner CRUD + partner API keys**)
 3. ~~Job creation DB transaction~~ → **DONE** (Job + ChatMessages persisted before Kafka publish, includes `partner_id` in Kafka payload)
@@ -24,6 +24,14 @@ See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for
 6. ~~Waterfall rate limiting~~ → **DONE** (**partner RPM →** tenant RPM → user RPM with custom/inherited limits → **partner TPM →** tenant TPM)
 7. ~~API key caching layer~~ → **DONE** (Redis-backed LRU with 5-min TTL, **separate PartnerApiKeyCache**)
 8. ~~B2B2B multi-partner model~~ → **DONE** (Partner entity with own API keys, partner-scoped tenant management, tenant isolation across partners)
+9. ~~Partner wallets~~ → **DONE** (deposit/debit operations, balance caching, low balance alerts)
+10. ~~Subscription plans~~ → **DONE** (partner-defined plans with monthly credits, extra credit pricing, rate limits)
+11. ~~Tenant subscriptions~~ → **DONE** (subscribe/change/cancel, monthly credit allocation)
+12. ~~Credit top-ups~~ → **DONE** (FIFO consumption, expiration, plan-based pricing/lifetime)
+13. ~~Credit rate limits~~ → **DONE** (per-plan limits on credits/hour and credits/day at tenant + user level)
+14. ~~System features~~ → **DONE** (platform features with default model routing)
+15. ~~Partner feature configs~~ → **DONE** (partner overrides for model/pricing per feature)
+16. ~~Background job scheduler~~ → **DONE** (APScheduler for credit reset, top-up expiration, low balance alerts)
 
 ### Remaining Critical Features
 1. **True suspend/resume** — orchestrator must exit after tool dispatch, resume from snapshot on completion
@@ -33,6 +41,7 @@ See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for
 5. **Complete archiver event-type mapping** — `tool_call`, `complete`, `error`, `cancelled` events
 6. **Incremental message persistence** — persist assistant messages during execution, not just at completion
 7. **Comprehensive test suite** — integration tests for suspend/resume, chaos testing, load testing
+8. **Integration tests for billing flows** — full wallet→plan→subscription→consumption test coverage
 
 ---
 
@@ -536,7 +545,143 @@ DELETE /api/admin/partner-api-keys/{key_id}        # Revoke partner API key
 
 ---
 
-## Phase 3: Orchestrator Suspend/Resume Refactor (Week 3-4)
+## Phase 3: Comprehensive Billing, Plans & Feature System -- COMPLETE
+
+**Goal**: Build a complete billing system with partner wallets, subscription plans, credit top-ups, feature-based model routing, and credit rate limits.
+
+**Status**: COMPLETE. All features implemented with 44 new unit tests (106 total), background job scheduler configured.
+
+**Key decisions made during implementation:**
+- **Microdollar system**: 1,000,000 = $1.00 for precise billing
+- **Dual-credit consumption**: Plan credits consumed first, then top-ups (FIFO order)
+- **Credit rate limiting**: Per-plan limits on credits/hour and credits/day (tenant + user levels)
+- **Partner wallet**: Partners deposit USD, debited for actual LLM costs
+- **Feature-to-model routing**: System features with partner overrides
+- **APScheduler**: Background jobs for credit reset, top-up expiration, low balance alerts
+
+### Database Schema (Migration 005)
+
+**New Tables in `billing` Schema:**
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `partner_wallets` | Partner USD balance | `partner_id` (unique), `balance_micros`, `total_deposited_micros`, `total_spent_micros`, `low_balance_threshold_micros` |
+| `partner_deposits` | Deposit transactions | `partner_id`, `amount_micros`, `status`, `payment_method`, `external_transaction_id` |
+| `partner_plans` | Subscription tiers | `partner_id`, `name`, `slug`, `monthly_credits_micros`, `extra_credit_price_micros`, `extra_credit_lifetime_days`, `credit_rate_limits` (JSONB), `features` (JSONB), `margin_percent` |
+| `tenant_subscriptions` | Active subscriptions | `tenant_id` (unique), `plan_id`, `status`, `current_period_start/end`, `plan_credits_remaining_micros` |
+| `credit_top_ups` | Purchased extras | `tenant_id`, `amount_micros`, `remaining_micros`, `price_paid_micros`, `expires_at`, `status` |
+| `system_features` | Platform features | `slug` (unique), `name`, `default_provider`, `default_model_id`, `weight_multiplier` |
+| `partner_feature_configs` | Partner overrides | `partner_id`, `feature_id`, `provider`, `model_id`, `weight_multiplier`, `is_enabled` |
+| `credit_usage_records` | Consumption audit | `tenant_id`, `user_id`, `job_id`, `feature_slug`, `credits_consumed_micros`, `plan_credits_used_micros`, `topup_credits_used_micros` |
+
+### Credit Rate Limits Structure (JSONB in `partner_plans`)
+
+```json
+{
+  "tenant": {"hourly": 100000, "daily": 500000},
+  "user": {"hourly": 10000, "daily": 50000}
+}
+```
+
+### Phase 3 Implementation Log
+
+**Files created:**
+| File | Purpose |
+|------|---------|
+| `services/api-gateway/src/services/wallet.py` | `WalletService` — deposit, debit, balance caching, low balance alerts |
+| `services/api-gateway/src/services/subscription.py` | `SubscriptionService` — plan CRUD, subscription lifecycle, credit reset |
+| `services/api-gateway/src/services/feature.py` | `FeatureService` — system features, partner overrides, model routing |
+| `services/api-gateway/src/routers/wallet.py` | Partner wallet endpoints |
+| `services/api-gateway/src/routers/plans.py` | Partner plan CRUD endpoints |
+| `services/api-gateway/src/routers/subscriptions.py` | Tenant subscription endpoints |
+| `services/api-gateway/src/routers/topups.py` | Credit top-up + balance endpoints |
+| `services/api-gateway/src/routers/features.py` | Admin + partner feature endpoints |
+| `services/api-gateway/src/jobs/__init__.py` | Jobs package init |
+| `services/api-gateway/src/jobs/scheduler.py` | APScheduler setup for background jobs |
+| `services/api-gateway/src/jobs/credit_reset.py` | Monthly credit reset job |
+| `services/api-gateway/src/jobs/topup_expiration.py` | Top-up expiration job |
+| `services/api-gateway/src/jobs/low_balance_alert.py` | Low balance alert job |
+| `migrations/versions/005_billing_plans.py` | DDL migration for all 8 billing tables |
+| `tests/unit/test_subscription_service.py` | 10 tests: plan CRUD, subscription lifecycle |
+| `tests/unit/test_wallet_service.py` | 15 tests: deposit, debit, balance checks |
+| `tests/unit/test_feature_service.py` | 6 tests: feature routing, overrides |
+| `tests/unit/test_credit_consumption.py` | 13 tests: FIFO consumption, rate limiting |
+
+**Files modified:**
+| File | Change |
+|------|--------|
+| `libs/db/models.py` | Added 8 new models + 4 enums (DepositStatus, PartnerPlanStatus, SubscriptionStatus, TopUpStatus) |
+| `services/api-gateway/src/services/billing.py` | Enhanced: dual-credit consumption, credit rate limits, feature cost calculation |
+| `services/api-gateway/src/main.py` | Registered 6 new routers + scheduler setup |
+| `requirements.txt` | Added apscheduler, pytest-sugar |
+
+**API Endpoints created:**
+
+*Wallet Endpoints:*
+```
+GET    /api/partner/wallet                    # Get partner wallet balance
+POST   /api/partners/{id}/deposits            # Create deposit (platform owner)
+GET    /api/partner/wallet/deposits           # List deposits
+```
+
+*Plan Endpoints:*
+```
+POST   /api/partner/plans                     # Create plan
+GET    /api/partner/plans                     # List partner's plans
+GET    /api/partner/plans/{plan_id}           # Get plan details
+PUT    /api/partner/plans/{plan_id}           # Update plan
+DELETE /api/partner/plans/{plan_id}           # Archive plan
+```
+
+*Subscription Endpoints:*
+```
+POST   /api/tenants/{id}/subscription         # Create subscription
+GET    /api/tenants/{id}/subscription         # Get subscription
+PUT    /api/tenants/{id}/subscription         # Change plan
+DELETE /api/tenants/{id}/subscription         # Cancel subscription
+```
+
+*Credit Endpoints:*
+```
+POST   /api/tenants/{id}/credits/top-up       # Purchase top-up
+GET    /api/tenants/{id}/credits              # Get credit balance
+GET    /api/tenants/{id}/credits/usage        # Get usage history
+```
+
+*Feature Endpoints:*
+```
+POST   /api/admin/features                    # Create system feature (platform)
+GET    /api/admin/features                    # List system features
+PUT    /api/admin/features/{id}               # Update system feature
+GET    /api/partner/features                  # List available features (partner)
+PUT    /api/partner/features/{feature_id}     # Configure feature override
+```
+
+**Background Jobs:**
+| Job | Schedule | Purpose |
+|-----|----------|---------|
+| `reset_monthly_credits` | Daily 00:05 UTC | Reset plan credits for new billing periods |
+| `expire_topups` | Hourly :15 | Mark expired top-ups |
+| `check_low_balances` | Every 6h | Alert partners with low wallet balance |
+
+**Credit Consumption Logic:**
+```
+1. Get feature config (SystemFeature + PartnerFeatureConfig override)
+2. Get ModelPricing for resolved (provider, model_id)
+3. Calculate base cost: (tokens/1000) × price × weight_multiplier
+4. Apply partner margin: tenant_cost = base_cost × (1 + margin%)
+5. Check credit rate limits (tenant hourly/daily, user hourly/daily)
+6. Consume from plan credits first
+7. If insufficient, consume from top-ups (FIFO, skip expired)
+8. Debit partner wallet for base cost (no margin)
+9. Record in credit_usage_records
+```
+
+**Total unit tests after Phase 3: 106 (all passing)**
+
+---
+
+## Phase 4: Orchestrator Suspend/Resume Refactor
 
 **Goal**: Implement true suspend/resume where orchestrator exits after tool dispatch
 
@@ -894,7 +1039,7 @@ async def _persist_to_db(self, job_id: UUID, event_type: str, data: dict) -> Non
             await session.commit()
 ```
 
-### Testing Phase 3
+### Testing Phase 4
 - Unit: State lock (acquire, release, extend)
 - Unit: Snapshot serialization/deserialization
 - Integration: Full suspend/resume cycle (job dispatches tool → exits → tool completes → job resumes)
@@ -903,7 +1048,7 @@ async def _persist_to_db(self, job_id: UUID, event_type: str, data: dict) -> Non
 
 ---
 
-## Phase 4: Tool Workers & Archiver Completion (Week 4-5)
+## Phase 5: Tool Workers & Archiver Completion
 
 **Goal**: Implement actual tools and complete message archival
 
@@ -1050,7 +1195,7 @@ async def _handle_message_event(self, event: dict, session) -> None:
     session.add(msg)
 ```
 
-### Testing Phase 4
+### Testing Phase 5
 - Unit: Each tool (web search, calculator, file ops)
 - Unit: Tool timeout handling
 - Integration: Tool dispatch → execution → result → resume
@@ -1058,7 +1203,7 @@ async def _handle_message_event(self, event: dict, session) -> None:
 
 ---
 
-## Phase 5: Configuration, Testing & Production Readiness (Week 5-6)
+## Phase 6: Configuration, Testing & Production Readiness
 
 **Goal**: Comprehensive testing, documentation, and deployment preparation
 
@@ -1287,7 +1432,7 @@ class MetricsCollector:
 - Links to documentation
 - Contributing guidelines
 
-### Testing Phase 5
+### Testing Phase 6
 - Full test suite execution (unit + integration + e2e)
 - Load testing: 100 concurrent jobs, measure latency/throughput
 - Chaos testing: Random service kills, verify recovery
@@ -1299,22 +1444,23 @@ class MetricsCollector:
 
 ### Critical Path
 ```
-Phase 1 (Auth) ✅ → Phase 2 (Billing) ✅ → Phase 2.5 (B2B2B Partners) ✅ → Phase 3 (Suspend/Resume) ⬜ → Phase 5 (Testing) ⬜
-                                                                                      ↑
-                                                                     Phase 4 (Tools) ⬜ (parallel)
+Phase 1 (Auth) ✅ → Phase 2 (Billing) ✅ → Phase 2.5 (Partners) ✅ → Phase 3 (Billing System) ✅ → Phase 4 (Suspend/Resume) ⬜ → Phase 6 (Testing) ⬜
+                                                                                                           ↑
+                                                                                          Phase 5 (Tools) ⬜ (parallel)
 ```
 
 ### Current Position
 - **Phase 1**: COMPLETE — Three-tier auth, admin endpoints, API key caching
-- **Phase 2**: COMPLETE — Billing, internal tokens, waterfall rate limiting, DB job persistence
+- **Phase 2**: COMPLETE — Basic billing, internal tokens, waterfall rate limiting, DB job persistence
 - **Phase 2.5**: COMPLETE — B2B2B multi-partner model, four-tier auth, partner billing, partner rate limiting
-- **Phase 3**: NEXT — orchestrator suspend/resume (highest priority, core architecture)
-- **Phase 4**: Can start in parallel — tool workers are independent services
-- **Phase 5**: After Phase 3+4 — integration/chaos/load testing needs working suspend/resume
+- **Phase 3**: COMPLETE — Comprehensive billing (wallets, plans, subscriptions, features, credit rate limits)
+- **Phase 4**: NEXT — orchestrator suspend/resume (highest priority, core architecture)
+- **Phase 5**: Can start in parallel — tool workers are independent services
+- **Phase 6**: After Phase 4+5 — integration/chaos/load testing needs working suspend/resume
 
 ### Parallelizable Now
-- Phase 3 (orchestrator refactor) + Phase 4.1-4.3 (tool implementations + registry) — independent services
-- Phase 3.5 (tool worker resume signal) bridges Phase 3 and Phase 4 — small change to `main.py`
+- Phase 4 (orchestrator refactor) + Phase 5.1-5.3 (tool implementations + registry) — independent services
+- Phase 4.5 (tool worker resume signal) bridges Phase 4 and Phase 5 — small change to `main.py`
 
 ---
 
@@ -1358,6 +1504,27 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages ORDE
 
 **Phase 3 Verification:**
 ```bash
+# Check partner wallet balance
+curl http://localhost:8000/api/partner/wallet \
+  -H "Authorization: Bearer pk-agent-..."
+
+# Create a subscription plan
+curl -X POST http://localhost:8000/api/partner/plans \
+  -H "Authorization: Bearer pk-agent-..." \
+  -d '{"name": "Plus", "slug": "plus", "monthly_credits_micros": 10000000}'
+
+# Subscribe a tenant
+curl -X POST http://localhost:8000/api/tenants/{id}/subscription \
+  -H "Authorization: Bearer pk-agent-..." \
+  -d '{"plan_id": "..."}'
+
+# Check credit balance
+curl http://localhost:8000/api/tenants/{id}/credits \
+  -H "Authorization: Bearer sk-agent-..."
+```
+
+**Phase 4 Verification:**
+```bash
 # Submit job with tool requirement
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer ${JWT_TOKEN}" \
@@ -1374,7 +1541,7 @@ psql $DATABASE_URL -c "SELECT job_id, sequence_num, state_data->'iteration' FROM
 kafka-console-consumer --bootstrap-server localhost:9092 --topic agent.job-resume --from-beginning
 ```
 
-**Phase 4 Verification:**
+**Phase 5 Verification:**
 ```bash
 # Test web search tool
 # (Submit job that requires web search, verify results)
@@ -1389,7 +1556,7 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 
 ### High-Risk Changes
 
-1. **Orchestrator Suspend/Resume Refactor (Phase 3)**
+1. **Orchestrator Suspend/Resume Refactor (Phase 4)**
    - **Risk**: Breaking existing job execution
    - **Mitigation**:
      - Feature flag `ENABLE_SUSPEND_RESUME` (default: false initially)
@@ -1448,7 +1615,7 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 | `libs/db/models.py` | All models complete: **Partner, PartnerApiKey, tenant.partner_id FK** |
 | `migrations/versions/004_partners.py` | **Partner tables + tenant FK migration** |
 
-### Remaining (Phase 3-5) — most critical first
+### Remaining (Phase 4-6) — most critical first
 
 | File | What needs to happen |
 |------|---------------------|
@@ -1494,7 +1661,19 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 - [x] Partner billing pool methods implemented
 - [x] 62 unit tests passing (25 new partner tests)
 
-**Phase 3 Complete When:** -- PENDING
+**Phase 3 Complete When:** -- ALL MET
+- [x] Partner wallet with deposit/debit operations (WalletService)
+- [x] Subscription plans with monthly credits and rate limits (SubscriptionService)
+- [x] Tenant subscription lifecycle (create/change/cancel)
+- [x] Credit top-ups with FIFO consumption and expiration
+- [x] Credit rate limiting (per-plan hourly/daily limits)
+- [x] System features with default model routing (FeatureService)
+- [x] Partner feature configuration overrides
+- [x] Background job scheduler (APScheduler) for credit reset, expiration, alerts
+- [x] Migration 005 with all 8 billing tables
+- [x] 106 unit tests passing (44 new billing tests)
+
+**Phase 4 Complete When:** -- PENDING
 - [ ] Orchestrator exits immediately after tool dispatch (currently blocks with 100ms Redis polling)
 - [ ] Job snapshot saved to PostgreSQL before exit (snapshot service exists but not used mid-execution)
 - [ ] Tool completion triggers Kafka resume signal (workers only store to Redis currently)
@@ -1502,14 +1681,14 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 - [ ] Distributed locking prevents duplicate processing (no lock mechanism exists)
 - [ ] `agent.job-resume` Kafka topic created and consumed
 
-**Phase 4 Complete When:** -- PENDING
+**Phase 5 Complete When:** -- PENDING
 - [ ] Web search tool calls real API (currently mock/placeholder)
 - [ ] Calculator tool implemented with safe AST-based evaluation
 - [ ] Archiver handles all event types: `start`, `tool_call`, `complete`, `error`, `cancelled`, `suspended`
 - [ ] Tool timeout handling works correctly
 
-**Phase 5 Complete When:** -- PENDING
-- [ ] All tests pass (unit + integration + e2e) — target 100+ tests (currently 62 unit tests passing)
+**Phase 6 Complete When:** -- PENDING
+- [ ] All tests pass (unit + integration + e2e) — target 150+ tests (currently 106 unit tests passing)
 - [ ] Load test: 100 concurrent jobs complete successfully
 - [ ] Chaos test: Service kills don't cause data loss
 - [ ] Documentation complete (API, deployment, admin, developer)
@@ -1534,37 +1713,41 @@ psql $DATABASE_URL -c "SELECT job_id, role, content FROM jobs.chat_messages WHER
 
 ## Estimated Timeline
 
-- **Phase 1**: 1.5 weeks (auth is complex)
-- **Phase 2**: 1 week (billing + job persistence)
-- **Phase 3**: 1.5 weeks (suspend/resume is critical)
-- **Phase 4**: 1 week (tool implementations)
-- **Phase 5**: 1 week (testing + docs)
+- **Phase 1**: 1.5 weeks (auth is complex) ✅
+- **Phase 2**: 1 week (billing + job persistence) ✅
+- **Phase 2.5**: 1 week (B2B2B partners) ✅
+- **Phase 3**: 1 week (comprehensive billing) ✅
+- **Phase 4**: 1.5 weeks (suspend/resume is critical)
+- **Phase 5**: 1 week (tool implementations)
+- **Phase 6**: 1 week (testing + docs)
 
-**Total**: 6 weeks (with some buffer for unexpected issues)
+**Completed**: ~5 weeks of implementation
+**Remaining**: ~3.5 weeks
 
-**Can be accelerated to 4-5 weeks** if Phase 4 (tools) is parallelized with Phase 3.
+**Can be accelerated to 2-3 weeks** if Phase 5 (tools) is parallelized with Phase 4.
 
 ---
 
 ## Next Steps
 
-Phases 1, 2, and 2.5 (B2B2B Partners) are complete. Continuing with:
+Phases 1, 2, 2.5 (B2B2B Partners), and 3 (Comprehensive Billing) are complete. Continuing with:
 
-1. **Phase 3**: Orchestrator suspend/resume refactor (highest priority, core architecture change)
-2. **Phase 4**: Tool worker enhancements + archiver completion (can parallelize with Phase 3)
-3. **Phase 5**: Comprehensive testing, load testing, chaos testing, documentation
+1. **Phase 4**: Orchestrator suspend/resume refactor (highest priority, core architecture change)
+2. **Phase 5**: Tool worker enhancements + archiver completion (can parallelize with Phase 4)
+3. **Phase 6**: Comprehensive testing, load testing, chaos testing, documentation
 
-See **[docs/next-phases.md](next-phases.md)** for the full technical implementation plan for Phases 3-5.
+See **[docs/next-phases.md](next-phases.md)** for the full technical implementation plan for remaining phases.
 
 ---
 
 ## Questions -- RESOLVED
 
-1. **Billing**: Integer microdollars (1,000,000 = $1.00). Avoids floating-point, Redis DECRBY compatible. Partner credit pool added in Phase 2.5.
-2. **Rate Limiting**: RPM (requests per minute) with 60-second sliding window via Redis sorted sets. Partner tier added as Step 0 in Phase 2.5.
-3. **Tool Workers**: Web search (real API) and calculator are Phase 4 priority. Code executor exists.
+1. **Billing**: Integer microdollars (1,000,000 = $1.00). Avoids floating-point, Redis DECRBY compatible. Partner credit pool added in Phase 2.5. **Full billing system (wallets, plans, subscriptions, features) completed in Phase 3.**
+2. **Rate Limiting**: RPM (requests per minute) with 60-second sliding window via Redis sorted sets. Partner tier added as Step 0 in Phase 2.5. **Credit rate limiting (per-plan hourly/daily) added in Phase 3.**
+3. **Tool Workers**: Web search (real API) and calculator are Phase 5 priority. Code executor exists.
 4. **Suspend/Resume**: Feature-flagged approach — old polling kept as fallback initially.
 5. **Admin Access**: ~~Single master admin key via env var (current approach). Database-backed multi-admin deferred.~~ → **RESOLVED in Phase 2.5**: Super admin (master key) retains full access. Partners (`pk-agent-*` keys) manage their own tenants. True B2B2B hierarchy: Super Admin → Partners → Tenants → End Users.
+6. **Feature Routing**: **RESOLVED in Phase 3**: System features define default provider/model, partners can override via PartnerFeatureConfig. Weight multiplier applies to cost calculation.
 
 ---
 

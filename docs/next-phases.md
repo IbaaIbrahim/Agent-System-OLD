@@ -1,42 +1,43 @@
-# Next Phases: Technical Implementation Roadmap (Phases 3-5)
+# Next Phases: Technical Implementation Roadmap (Phases 4-6)
 
-This document provides the concrete, file-level implementation steps for completing the agent system. Phases 1, 2, and 2.5 (B2B2B Partners) are done — see [plan.md](plan.md) for their retrospective.
+This document provides the concrete, file-level implementation steps for completing the agent system. Phases 1, 2, 2.5 (B2B2B Partners), and 3 (Comprehensive Billing System) are done — see [plan.md](plan.md) for their retrospective.
 
 ---
 
 ## Current System Snapshot
 
 ### What works today
-- **API Gateway**: Four-tier auth (super admin / partner `pk-agent-*` / tenant `sk-agent-*` / JWT), partner management with full CRUD + API keys, admin CRUD with partner-scoped tenant management, chat completion with DB persistence + Kafka publish (includes `partner_id`), billing pre-check (feature-flagged, tenant + partner credit pools), waterfall rate limiting (partner → tenant → user → TPM)
+- **API Gateway**: Four-tier auth (super admin / partner `pk-agent-*` / tenant `sk-agent-*` / JWT), partner management with full CRUD + API keys, admin CRUD with partner-scoped tenant management, chat completion with DB persistence + Kafka publish (includes `partner_id`), **comprehensive billing (wallets, plans, subscriptions, credit top-ups, features, credit rate limits)**, waterfall rate limiting (partner → tenant → user → TPM)
 - **Stream Edge**: SSE streaming via Redis Pub/Sub with hot/cold reconnection
 - **Orchestrator**: Agent execution loop (Think → Act → Observe) with LLM calls, event streaming, basic tool dispatch — but **blocks on tool results** (100ms Redis polling)
 - **Tool Workers**: Two tools (code executor, mock web search), results stored in Redis, no resume signal
 - **Archiver**: Redis stream reader → PostgreSQL batch writer for message/delta/tool_result events
-- **Database**: All models complete — Tenant, User, ApiKey, Job, ChatMessage, UsageLedger, ModelPricing, Partner, PartnerApiKey. 4 migrations (001-004).
-- **Tests**: 62 unit tests passing (auth, billing, rate limiting, partner auth, partner rate limiting, internal token v2)
+- **Database**: All models complete — Tenant, User, ApiKey, Job, ChatMessage, UsageLedger, ModelPricing, Partner, PartnerApiKey, **PartnerWallet, PartnerDeposit, PartnerPlan, TenantSubscription, CreditTopUp, SystemFeature, PartnerFeatureConfig, CreditUsageRecord**. 5 migrations (001-005).
+- **Tests**: 106 unit tests passing (auth, billing, rate limiting, partner auth, partner rate limiting, internal token v2, **subscription, wallet, feature, credit consumption**)
 
 ### What is broken / missing
 | Problem | Impact | Phase |
 |---------|--------|-------|
-| Orchestrator **blocks** waiting for tool results | Cannot scale horizontally, CPU wasted | 3 |
-| No **snapshot save** during execution | Crash = lost state, no resume possible | 3 |
-| No **resume handler** | Jobs with tools can't survive orchestrator restart | 3 |
-| No **distributed locking** | Multiple orchestrators could process same job | 3 |
-| No **Kafka resume topic** (`agent.job-resume`) | Tool completion can't trigger orchestrator | 3 |
-| Web search tool is **mock-only** | Non-functional in production | 4 |
-| No **calculator** tool | Missing basic tool | 4 |
-| Archiver ignores `tool_call`, `complete`, `error`, `cancelled` events | Incomplete audit trail | 4 |
-| Tool workers don't publish **resume signals** | Suspend/resume flow incomplete | 3+4 |
-| No **integration tests** for suspend/resume | Can't verify core workflow | 5 |
-| No **load/chaos testing** | Production readiness unknown | 5 |
+| Orchestrator **blocks** waiting for tool results | Cannot scale horizontally, CPU wasted | 4 |
+| No **snapshot save** during execution | Crash = lost state, no resume possible | 4 |
+| No **resume handler** | Jobs with tools can't survive orchestrator restart | 4 |
+| No **distributed locking** | Multiple orchestrators could process same job | 4 |
+| No **Kafka resume topic** (`agent.job-resume`) | Tool completion can't trigger orchestrator | 4 |
+| Web search tool is **mock-only** | Non-functional in production | 5 |
+| No **calculator** tool | Missing basic tool | 5 |
+| Archiver ignores `tool_call`, `complete`, `error`, `cancelled` events | Incomplete audit trail | 5 |
+| Tool workers don't publish **resume signals** | Suspend/resume flow incomplete | 4+5 |
+| No **integration tests** for suspend/resume | Can't verify core workflow | 6 |
+| No **load/chaos testing** | Production readiness unknown | 6 |
+| No **integration tests for billing flows** | Full wallet→plan→subscription→consumption untested | 6 |
 
 ---
 
-## Phase 3: Orchestrator Suspend/Resume
+## Phase 4: Orchestrator Suspend/Resume
 
 **Goal**: Orchestrator exits after tool dispatch, frees CPU, resumes from snapshot when tools complete.
 
-### 3.1 Add `agent.job-resume` Kafka Topic
+### 4.1 Add `agent.job-resume` Kafka Topic
 
 **File**: `infrastructure/docker/kafka/create-topics.sh`
 
@@ -59,7 +60,7 @@ resume_consumer_group: str = "orchestrator-resume"
 enable_suspend_resume: bool = True  # Feature flag
 ```
 
-### 3.2 Distributed State Lock
+### 4.2 Distributed State Lock
 
 **Create**: `services/orchestrator/src/services/state_lock.py`
 
@@ -90,7 +91,7 @@ class DistributedStateLock:
 
 **Integration point**: Both `JobHandler.handle_job()` and `ResumeHandler.handle_resume()` must acquire the lock before processing and release it when done.
 
-### 3.3 Refactor AgentExecutor — Suspend on Tool Dispatch
+### 4.3 Refactor AgentExecutor — Suspend on Tool Dispatch
 
 **File**: `services/orchestrator/src/engine/agent.py`
 
@@ -164,7 +165,7 @@ async def resume_from_snapshot(
 
 **Feature flag**: Check `config.enable_suspend_resume`. When False, fall back to the old blocking `_wait_for_result()` behavior so we can gradually roll out.
 
-### 3.4 Update Tool Dispatch — Include Resume Metadata
+### 4.4 Update Tool Dispatch — Include Resume Metadata
 
 **File**: `services/orchestrator/src/handlers/tool_handler.py`
 
@@ -191,7 +192,7 @@ async def dispatch_tools_async(
         await self._dispatch_to_worker_async(state, tc)
 ```
 
-### 3.5 Tool Worker Resume Signal
+### 4.5 Tool Worker Resume Signal
 
 **File**: `services/tool-workers/src/main.py`
 
@@ -217,7 +218,7 @@ await producer.send(
 
 **Also update**: `services/tool-workers/src/config.py` — add `resume_topic: str = "agent.job-resume"`.
 
-### 3.6 Resume Handler (New Consumer)
+### 4.6 Resume Handler (New Consumer)
 
 **Create**: `services/orchestrator/src/handlers/resume_handler.py`
 
@@ -268,7 +269,7 @@ class ResumeHandler:
 
 **Critical edge case**: If 3 tools are dispatched, the resume handler will fire 3 times (once per tool completion). Only the last one (when all results are available) should actually resume. The others should detect missing results and release the lock.
 
-### 3.7 Register Resume Consumer in main.py
+### 4.7 Register Resume Consumer in main.py
 
 **File**: `services/orchestrator/src/main.py`
 
@@ -299,7 +300,7 @@ await asyncio.gather(
 )
 ```
 
-### 3.8 Periodic Snapshot Saves
+### 4.8 Periodic Snapshot Saves
 
 **File**: `services/orchestrator/src/engine/agent.py`
 
@@ -313,7 +314,7 @@ if state.iteration % self.config.snapshot_interval == 0:
 
 This provides crash recovery: if the orchestrator dies mid-execution, the resume handler can pick up from the last saved snapshot.
 
-### Phase 3 Testing
+### Phase 5 Testing
 
 **Unit tests** (`tests/unit/test_suspend_resume.py`):
 - `test_executor_returns_on_tool_calls` — verify execute() returns with WAITING_TOOL status
@@ -329,7 +330,7 @@ This provides crash recovery: if the orchestrator dies mid-execution, the resume
 - Kill orchestrator during tool execution → different instance resumes
 - Multiple tools dispatched → resumes only after all complete
 
-### Phase 3 Files Summary
+### Phase 6 Files Summary
 
 | File | Action | Key Change |
 |------|--------|------------|
@@ -347,13 +348,13 @@ This provides crash recovery: if the orchestrator dies mid-execution, the resume
 
 ---
 
-## Phase 4: Tool Workers & Archiver Completion
+## Phase 5: Tool Workers & Archiver Completion
 
 **Goal**: Production-ready tools, complete event archival.
 
-Can be parallelized with Phase 3 (independent services).
+Can be parallelized with Phase 4 (independent services).
 
-### 4.1 Web Search Tool — Real API Integration
+### 5.1 Web Search Tool — Real API Integration
 
 **File**: `services/tool-workers/src/tools/web_search.py`
 
@@ -384,7 +385,7 @@ async def execute(self, arguments: dict, context: dict) -> str:
 
 **Config**: Add `brave_api_key: str = ""` to tool workers config. When empty, fall back to DuckDuckGo instant answers (no API key required).
 
-### 4.2 Calculator Tool
+### 5.2 Calculator Tool
 
 **Create**: `services/tool-workers/src/tools/calculator.py`
 
@@ -411,7 +412,7 @@ class CalculatorTool(BaseTool):
         ...
 ```
 
-### 4.3 Update Tool Registry
+### 5.3 Update Tool Registry
 
 **File**: `services/tool-workers/src/registry.py`
 
@@ -421,7 +422,7 @@ from .tools.calculator import CalculatorTool
 self.register(CalculatorTool())
 ```
 
-### 4.4 Complete Archiver Event-Type Mapping
+### 5.4 Complete Archiver Event-Type Mapping
 
 **File**: `services/archiver/src/services/postgres_writer.py`
 
@@ -436,7 +437,7 @@ Add handlers for:
 | `complete` | Update `Job.status = COMPLETED`, set `completed_at`, token counts |
 | `error` | Update `Job.status = FAILED`, set `error` field |
 | `cancelled` | Update `Job.status = CANCELLED` |
-| `suspended` | Update `Job.status = WAITING_TOOL` (Phase 3 event) |
+| `suspended` | Update `Job.status = WAITING_TOOL` (Phase 4 event) |
 
 Implementation pattern:
 ```python
@@ -454,7 +455,7 @@ async def _handle_complete_event(self, event: dict, session) -> None:
         job.total_output_tokens = data.get("total_output_tokens", 0)
 ```
 
-### 4.5 Archiver Stream Cleanup
+### 5.5 Archiver Stream Cleanup
 
 **File**: `services/archiver/src/main.py`
 
@@ -474,14 +475,14 @@ await asyncio.gather(
 )
 ```
 
-### Phase 4 Testing
+### Phase 5 Testing
 
 **Unit tests**:
 - `tests/unit/test_calculator.py` — safe eval, operator support, injection rejection
 - `tests/unit/test_web_search.py` — API response parsing, error handling, rate limiting
 - `tests/unit/test_archiver_events.py` — all event types mapped correctly
 
-### Phase 4 Files Summary
+### Phase 6 Files Summary
 
 | File | Action | Key Change |
 |------|--------|------------|
@@ -497,11 +498,11 @@ await asyncio.gather(
 
 ---
 
-## Phase 5: Testing & Production Readiness
+## Phase 6: Testing & Production Readiness
 
 **Goal**: Comprehensive test suite, observability, documentation.
 
-### 5.1 Integration Test Suite
+### 6.1 Integration Test Suite
 
 **File**: `tests/integration/test_job_lifecycle.py`
 
@@ -513,7 +514,7 @@ Full job lifecycle with infrastructure running:
 5. Verify events received via SSE stream
 6. Verify token counts updated
 
-**File**: `tests/integration/test_suspend_resume_flow.py` (from Phase 3)
+**File**: `tests/integration/test_suspend_resume_flow.py` (from Phase 4)
 
 Suspend/resume with real Kafka and Redis:
 1. Submit job that triggers tool calls
@@ -531,7 +532,7 @@ SSE reconnection:
 3. Disconnect and reconnect (hot/cold fetch)
 4. Verify no missed events
 
-### 5.2 Chaos Testing
+### 6.2 Chaos Testing
 
 **File**: `tests/e2e/test_chaos.py`
 
@@ -545,7 +546,7 @@ Requires all infrastructure running. Tests resilience:
 | Redis restart during rate limiting | Graceful degradation, counts reset |
 | Kafka broker restart | Consumers reconnect, no message loss |
 
-### 5.3 Load Testing
+### 6.3 Load Testing
 
 **File**: `tests/e2e/test_load.py`
 
@@ -556,7 +557,7 @@ Using `httpx` or `locust`:
 - Verify: no race conditions in billing reservations
 - Target: < 500ms P95 for job creation (DB + Kafka publish)
 
-### 5.4 Observability — Structured Metrics
+### 6.4 Observability — Structured Metrics
 
 **Create**: `libs/common/metrics.py`
 
@@ -577,7 +578,7 @@ class MetricsCollector:
 - Tool Workers: tool execution time, success/failure rate
 - Archiver: batch size, flush latency, event processing rate
 
-### 5.5 Health Check Enhancements
+### 6.5 Health Check Enhancements
 
 **Files**: Each service's `/health` endpoint
 
@@ -594,7 +595,7 @@ Add dependency health checks:
 }
 ```
 
-### 5.6 Documentation
+### 6.6 Documentation
 
 | Document | Content |
 |----------|---------|
@@ -603,7 +604,7 @@ Add dependency health checks:
 | `docs/admin_guide.md` | Tenant management, API key rotation, billing, monitoring |
 | `docs/developer_guide.md` | Adding tools, adding LLM providers, local dev setup, testing |
 
-### Phase 5 Files Summary
+### Phase 6 Files Summary
 
 | File | Action | Key Change |
 |------|--------|------------|
@@ -622,47 +623,60 @@ Add dependency health checks:
 ## Implementation Sequencing
 
 ```
-Phases 1+2+2.5 (COMPLETE)
+Phases 1+2+2.5+3 (COMPLETE)
 ├── Auth (3-tier → 4-tier with Partners)
-├── Billing (tenant + partner pools)
-├── Rate Limiting (4-tier waterfall)
+├── Basic Billing (tenant + partner pools)
+├── Comprehensive Billing (wallets, plans, subscriptions, features)
+├── Rate Limiting (4-tier waterfall + credit rate limits)
 ├── DB Persistence + Internal Token v2
-└── 62 unit tests passing
+└── 106 unit tests passing
          │
          ▼
-Phase 3 (Suspend/Resume)            Phase 4 (Tools + Archiver)
+Phase 4 (Suspend/Resume)            Phase 5 (Tools + Archiver)
          │                                    │
-   3.1 Kafka topic                   4.1 Web search API
-   3.2 State lock                    4.2 Calculator tool
-   3.3 Executor refactor             4.3 Registry update
-   3.4 Tool dispatch metadata        4.4 Archiver event mapping
-   3.5 Worker resume signal ←────────4.5 Archiver cleanup
-   3.6 Resume handler                     │
-   3.7 Dual consumer                      │
-   3.8 Periodic snapshots                 │
+   4.1 Kafka topic                   5.1 Web search API
+   4.2 State lock                    5.2 Calculator tool
+   4.3 Executor refactor             5.3 Registry update
+   4.4 Tool dispatch metadata        5.4 Archiver event mapping
+   4.5 Worker resume signal ←────────5.5 Archiver cleanup
+   4.6 Resume handler                     │
+   4.7 Dual consumer                      │
+   4.8 Periodic snapshots                 │
          │                                │
          └────────────┬───────────────────┘
                       │
-              Phase 5 (Testing + Prod)
-              5.1 Integration tests
-              5.2 Chaos tests
-              5.3 Load tests
-              5.4 Metrics
-              5.5 Health checks
-              5.6 Documentation
+              Phase 6 (Testing + Prod)
+              6.1 Integration tests
+              6.2 Chaos tests
+              6.3 Load tests
+              6.4 Metrics
+              6.5 Health checks
+              6.6 Documentation
 ```
 
-**Dependency**: Phase 3.5 (worker resume signal) connects to Phase 4 (tool workers). These can be developed in parallel — the tool worker resume signal (3.5) is a small change to `main.py` that can be done alongside Phase 4 tool improvements.
+**Dependency**: Phase 4.5 (worker resume signal) connects to Phase 5 (tool workers). These can be developed in parallel — the tool worker resume signal (4.5) is a small change to `main.py` that can be done alongside Phase 5 tool improvements.
 
-**Critical path**: Phase 3 → Phase 5. The suspend/resume refactor is the biggest remaining architectural change and must be thoroughly tested.
+**Critical path**: Phase 4 → Phase 6. The suspend/resume refactor is the biggest remaining architectural change and must be thoroughly tested.
 
-**Note on partner_id propagation**: The Kafka payloads already include `partner_id` (added in Phase 2.5). Phase 3 resume handlers should read and preserve `partner_id` from the snapshot/payload when resuming jobs.
+**Note on partner_id propagation**: The Kafka payloads already include `partner_id` (added in Phase 2.5). Phase 4 resume handlers should read and preserve `partner_id` from the snapshot/payload when resuming jobs.
 
 ---
 
 ## Completion Criteria
 
-### Phase 3 is DONE when:
+### Phase 3 is DONE when: ✅ ALL MET
+- [x] Partner wallet with deposit/debit operations
+- [x] Subscription plans with monthly credits and rate limits
+- [x] Tenant subscription lifecycle (create/change/cancel)
+- [x] Credit top-ups with FIFO consumption and expiration
+- [x] Credit rate limiting (per-plan hourly/daily)
+- [x] System features with default model routing
+- [x] Partner feature configuration overrides
+- [x] Background job scheduler (APScheduler)
+- [x] Migration 005 with all billing tables
+- [x] 106 unit tests passing
+
+### Phase 4 is DONE when:
 - [ ] `agent.job-resume` Kafka topic created and configured
 - [ ] Distributed lock prevents duplicate job processing (Redis SETNX)
 - [ ] Orchestrator returns immediately after dispatching tools (no polling)
@@ -674,16 +688,16 @@ Phase 3 (Suspend/Resume)            Phase 4 (Tools + Archiver)
 - [ ] Unit tests for lock, suspend, resume all pass
 - [ ] Integration test: full suspend/resume cycle works end-to-end
 
-### Phase 4 is DONE when:
+### Phase 5 is DONE when:
 - [ ] Web search tool calls real API (Brave or DuckDuckGo)
 - [ ] Calculator tool safely evaluates expressions (no code injection)
 - [ ] All event types (`start`, `tool_call`, `complete`, `error`, `cancelled`, `suspended`) handled by archiver
 - [ ] Redis stream cleanup runs periodically
 - [ ] Unit tests for all tools and archiver event mapping pass
 
-### Phase 5 is DONE when:
-- [ ] All unit tests pass (target: 100+ tests, currently 62 passing)
-- [ ] Integration tests cover: job lifecycle, suspend/resume, streaming, billing
+### Phase 6 is DONE when:
+- [ ] All unit tests pass (target: 150+ tests, currently 106 passing)
+- [ ] Integration tests cover: job lifecycle, suspend/resume, streaming, billing flows
 - [ ] Chaos tests verify recovery from service kills
 - [ ] Load test: 100 concurrent jobs with < 500ms P95 creation latency
 - [ ] MetricsCollector integrated into all services
@@ -692,27 +706,30 @@ Phase 3 (Suspend/Resume)            Phase 4 (Tools + Archiver)
 - [ ] Deployment guide complete
 
 ### Full System is PRODUCTION-READY when:
-- [ ] All Phase 1-5 criteria met (Phase 1, 2, 2.5 already complete)
+- [ ] All Phase 1-6 criteria met (Phase 1, 2, 2.5, 3 already complete)
 - [ ] `make check` passes (lint + typecheck + tests)
 - [ ] No pre-existing mypy errors in `libs/` (14 current — should be resolved)
 - [ ] All environment variables documented in `.env.example`
 - [ ] Master admin key and JWT secrets rotated from defaults
 - [ ] CORS configured (not wildcard `*`)
-- [ ] Database migrations up to date (currently at 004_partners)
+- [ ] Database migrations up to date (currently at 005_billing_plans)
 
 ---
 
 ## Verification Commands
 
 ```bash
-# Phase 3
+# Phase 3 (COMPLETE)
+pytest tests/unit/test_subscription_service.py tests/unit/test_wallet_service.py tests/unit/test_feature_service.py tests/unit/test_credit_consumption.py -v
+
+# Phase 4
 pytest tests/unit/test_suspend_resume.py -v
 pytest tests/integration/test_suspend_resume_flow.py -v
 
-# Phase 4
+# Phase 5
 pytest tests/unit/test_calculator.py tests/unit/test_web_search.py tests/unit/test_archiver_events.py -v
 
-# Phase 5
+# Phase 6
 pytest tests/ -v --cov=libs --cov=services --cov-report=term-missing
 pytest tests/e2e/ -v  # Requires all infrastructure
 

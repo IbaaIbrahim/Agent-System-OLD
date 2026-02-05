@@ -103,8 +103,8 @@ All backend `make` targets set `PYTHONPATH=$(PWD)` for module resolution from re
 - **Multi-tenancy**: all operations require `tenant_id`, enforced via middleware.
 - **Config pattern**: service configs extend base `pydantic-settings` from `libs/common/config.py`. Base: `get_settings()`. Service-specific: `get_config()`.
 - **DB models**: SQLAlchemy 2.0 `Mapped[]` columns with `TimestampMixin`, organized into PostgreSQL schemas (`tenants`, `billing`, `jobs`).
-- **Migrations**: sequential numbering `001_`–`004_` in `migrations/versions/`. Current: `001_tenants_users`, `002_pricing_ledger`, `003_jobs_messages`, `004_partners`.
-- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. 62 unit tests, 4 integration test files.
+- **Migrations**: sequential numbering `001_`–`005_` in `migrations/versions/`. Current: `001_tenants_users`, `002_pricing_ledger`, `003_jobs_messages`, `004_partners`, `005_billing_plans`.
+- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. 106 unit tests, 4 integration test files.
 - **Test imports**: Hyphenated service directories (e.g. `services/api-gateway`) require `sys.path.insert(0, "services/api-gateway")` before importing `src.*` modules in unit tests.
 
 ## Adding New Tools
@@ -138,12 +138,22 @@ class MyTool(BaseTool):
 | Tenant API key cache | `services/api-gateway/src/services/api_key_cache.py` |
 | Partner API key cache | `services/api-gateway/src/services/partner_api_key_cache.py` |
 | Billing service | `services/api-gateway/src/services/billing.py` |
+| Wallet service | `services/api-gateway/src/services/wallet.py` |
+| Subscription service | `services/api-gateway/src/services/subscription.py` |
+| Feature service | `services/api-gateway/src/services/feature.py` |
+| Wallet router | `services/api-gateway/src/routers/wallet.py` |
+| Plans router | `services/api-gateway/src/routers/plans.py` |
+| Subscriptions router | `services/api-gateway/src/routers/subscriptions.py` |
+| Top-ups router | `services/api-gateway/src/routers/topups.py` |
+| Features router | `services/api-gateway/src/routers/features.py` |
+| Background job scheduler | `services/api-gateway/src/jobs/scheduler.py` |
 | Agent execution loop | `services/orchestrator/src/engine/agent.py` |
 | Agent state machine | `services/orchestrator/src/engine/state.py` |
 | Tool base class | `services/tool-workers/src/tools/base.py` |
 | Kafka topic setup | `infrastructure/docker/kafka/create-topics.sh` |
 | DB init SQL | `infrastructure/docker/postgres/init.sql` |
 | Partner migration | `migrations/versions/004_partners.py` |
+| Billing plans migration | `migrations/versions/005_billing_plans.py` |
 | Frontend chat state | `frontend/src/hooks/useChat.ts` |
 | Architecture design doc | `docs/rebuild.md` |
 | Project plan | `docs/plan.md` |
