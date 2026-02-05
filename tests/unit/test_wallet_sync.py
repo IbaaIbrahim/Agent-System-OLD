@@ -6,9 +6,9 @@ import sys
 import os
 
 # Fix path to allow importing from src
-sys.path.insert(0, os.path.abspath("services/api-gateway/src"))
+sys.path.insert(0, os.path.abspath("services/api-gateway"))
 
-from services.wallet import WalletService, WalletError
+from src.services.wallet import WalletService, WalletError
 from libs.db.models import Partner, PartnerWallet, PartnerDeposit, DepositStatus
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def mock_session():
 @pytest.fixture
 def wallet_service(mock_session):
     """Create a WalletService instance with mocked session context."""
-    with patch("services.wallet.get_session_context") as mock_ctx:
+    with patch("src.services.wallet.get_session_context") as mock_ctx:
         # Mock the context manager behavior accurately
         # When 'async with get_session_context() as session:' is called:
         # 1. __aenter__ is awaited and returns the session
@@ -76,7 +76,7 @@ async def test_deposit_syncs_credit_balance(wallet_service, mock_session):
     mock_session.get.return_value = partner
     
     # Mock redis to avoid connection errors
-    with patch("services.wallet.get_redis_client") as mock_redis:
+    with patch("src.services.wallet.get_redis_client") as mock_redis:
         mock_redis_client = AsyncMock()
         mock_redis.return_value = mock_redis_client
         
@@ -141,7 +141,7 @@ async def test_complete_deposit_syncs_credit_balance(wallet_service, mock_sessio
     # Mock get partner
     mock_session.get.return_value = partner
     
-    with patch("services.wallet.get_redis_client") as mock_redis:
+    with patch("src.services.wallet.get_redis_client") as mock_redis:
         mock_redis_client = AsyncMock()
         mock_redis.return_value = mock_redis_client
         

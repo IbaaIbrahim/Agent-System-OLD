@@ -76,6 +76,44 @@ async def handle_tool_request(
         result_length=len(result),
     )
 
+    # Publish resume signal to Kafka for suspend/resume architecture
+    try:
+        from libs.messaging.kafka import get_producer
+
+        config = get_config()
+        producer = await get_producer()
+
+        await producer.send(
+            topic=config.resume_topic,
+            message={
+                "job_id": job_id,
+                "tool_call_id": tool_call_id,
+                "snapshot_sequence": message.get("snapshot_sequence", 0),
+                "status": "completed",
+                "tool_name": tool_name,
+            },
+            key=job_id,  # Partition by job_id to maintain ordering
+            headers={
+                "tool_call_id": tool_call_id,
+                "job_id": job_id,
+            },
+        )
+
+        logger.info(
+            "Resume signal published",
+            job_id=job_id,
+            tool_call_id=tool_call_id,
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to publish resume signal",
+            job_id=job_id,
+            tool_call_id=tool_call_id,
+            error=str(e),
+        )
+        # Don't fail the tool execution if resume signal fails
+        # The orchestrator will timeout and handle it
+
 
 async def main() -> None:
     """Main entry point for tool workers."""

@@ -28,24 +28,34 @@ async def main() -> None:
         log_format=config.log_format,
     )
 
-    logger.info("Starting Orchestrator")
+    logger.info(
+        "Starting Orchestrator",
+        suspend_resume_enabled=config.enable_suspend_resume,
+    )
 
     # Initialize connections
     await init_db()
     await get_redis_client()
 
+    # Create shared services
+    from .services.snapshot_service import SnapshotService
+    from .services.llm_service import LLMService
+    from .handlers.tool_handler import ToolHandler
+
+    snapshot_service = SnapshotService()
+    llm_service = LLMService()
+    tool_handler = ToolHandler()
+
     # Create job handler
     job_handler = JobHandler()
 
-    # Create Kafka consumer
-    consumer = await create_consumer(
+    # Create job consumer
+    job_consumer = await create_consumer(
         topics=[config.jobs_topic],
         group_id=config.consumer_group,
         dlq_topic=config.jobs_dlq_topic,
     )
-
-    # Register handler
-    consumer.register_handler(config.jobs_topic, job_handler.handle_job)
+    job_consumer.register_handler(config.jobs_topic, job_handler.handle_job)
 
     # Setup signal handlers
     loop = asyncio.get_event_loop()
@@ -60,18 +70,62 @@ async def main() -> None:
 
     logger.info("Orchestrator started successfully")
 
-    # Start consumer
-    try:
-        await consumer.start()
-        await consumer.run()
-    except asyncio.CancelledError:
-        pass
-    finally:
-        # Cleanup
-        logger.info("Shutting down Orchestrator")
-        await consumer.stop()
-        await close_db()
-        logger.info("Orchestrator shutdown complete")
+    # Start consumers based on feature flag
+    if config.enable_suspend_resume:
+        # Create resume handler and consumer
+        from .handlers.resume_handler import ResumeHandler
+
+        resume_handler = ResumeHandler(
+            snapshot_service=snapshot_service,
+            llm_service=llm_service,
+            tool_handler=tool_handler,
+        )
+
+        resume_consumer = await create_consumer(
+            topics=[config.resume_topic],
+            group_id=config.resume_consumer_group,
+        )
+        resume_consumer.register_handler(
+            config.resume_topic,
+            resume_handler.handle_resume,
+        )
+
+        logger.info(
+            "Resume consumer configured",
+            topic=config.resume_topic,
+            group_id=config.resume_consumer_group,
+        )
+
+        # Run both consumers concurrently
+        try:
+            await job_consumer.start()
+            await resume_consumer.start()
+
+            await asyncio.gather(
+                job_consumer.run(),
+                resume_consumer.run(),
+            )
+        except asyncio.CancelledError:
+            pass
+        finally:
+            logger.info("Shutting down Orchestrator")
+            await job_consumer.stop()
+            await resume_consumer.stop()
+            await close_db()
+            logger.info("Orchestrator shutdown complete")
+    else:
+        # Single consumer mode (legacy blocking behavior)
+        logger.info("Running in legacy blocking mode")
+        try:
+            await job_consumer.start()
+            await job_consumer.run()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            logger.info("Shutting down Orchestrator")
+            await job_consumer.stop()
+            await close_db()
+            logger.info("Orchestrator shutdown complete")
 
 
 if __name__ == "__main__":
