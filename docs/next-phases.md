@@ -1,6 +1,6 @@
 # Next Phases: Technical Implementation Roadmap (Phases 4-6)
 
-This document provides the concrete, file-level implementation steps for completing the agent system. Phases 1, 2, 2.5 (B2B2B Partners), and 3 (Comprehensive Billing System) are done — see [plan.md](plan.md) for their retrospective.
+This document provides the concrete, file-level implementation steps for completing the agent system. Phases 1, 2, 2.5 (B2B2B Partners), 3 (Comprehensive Billing System), and 3.5 (Stream-Edge OTT Security) are done — see [plan.md](plan.md) for their retrospective.
 
 ---
 
@@ -8,12 +8,12 @@ This document provides the concrete, file-level implementation steps for complet
 
 ### What works today
 - **API Gateway**: Four-tier auth (super admin / partner `pk-agent-*` / tenant `sk-agent-*` / JWT), partner management with full CRUD + API keys, admin CRUD with partner-scoped tenant management, chat completion with DB persistence + Kafka publish (includes `partner_id`), **comprehensive billing (wallets, plans, subscriptions, credit top-ups, features, credit rate limits)**, waterfall rate limiting (partner → tenant → user → TPM)
-- **Stream Edge**: SSE streaming via Redis Pub/Sub with hot/cold reconnection
+- **Stream Edge**: SSE streaming via Redis Pub/Sub with hot/cold reconnection, **secured with one-time tokens (OTT)**
 - **Orchestrator**: Agent execution loop (Think → Act → Observe) with LLM calls, event streaming, basic tool dispatch — but **blocks on tool results** (100ms Redis polling)
 - **Tool Workers**: Two tools (code executor, mock web search), results stored in Redis, no resume signal
 - **Archiver**: Redis stream reader → PostgreSQL batch writer for message/delta/tool_result events
-- **Database**: All models complete — Tenant, User, ApiKey, Job, ChatMessage, UsageLedger, ModelPricing, Partner, PartnerApiKey, **PartnerWallet, PartnerDeposit, PartnerPlan, TenantSubscription, CreditTopUp, SystemFeature, PartnerFeatureConfig, CreditUsageRecord**. 5 migrations (001-005).
-- **Tests**: 106 unit tests passing (auth, billing, rate limiting, partner auth, partner rate limiting, internal token v2, **subscription, wallet, feature, credit consumption**)
+- **Database**: All models complete — Tenant, User, ApiKey, Job, ChatMessage, UsageLedger, ModelPricing, Partner, PartnerApiKey, **PartnerWallet, PartnerDeposit, WalletTransaction (model only), PartnerPlan, TenantSubscription, CreditTopUp, SystemFeature, PartnerFeatureConfig, CreditUsageRecord**. 6 migrations (001-006).
+- **Tests**: 114 unit tests passing (auth, billing, rate limiting, partner auth, partner rate limiting, internal token v2, **subscription, wallet, feature, credit consumption, OTT security**)
 
 ### What is broken / missing
 | Problem | Impact | Phase |
@@ -623,13 +623,14 @@ Add dependency health checks:
 ## Implementation Sequencing
 
 ```
-Phases 1+2+2.5+3 (COMPLETE)
+Phases 1+2+2.5+3+3.5 (COMPLETE)
 ├── Auth (3-tier → 4-tier with Partners)
 ├── Basic Billing (tenant + partner pools)
 ├── Comprehensive Billing (wallets, plans, subscriptions, features)
 ├── Rate Limiting (4-tier waterfall + credit rate limits)
 ├── DB Persistence + Internal Token v2
-└── 106 unit tests passing
+├── Stream-Edge OTT Security
+└── 114 unit tests passing
          │
          ▼
 Phase 4 (Suspend/Resume)            Phase 5 (Tools + Archiver)
@@ -676,6 +677,17 @@ Phase 4 (Suspend/Resume)            Phase 5 (Tools + Archiver)
 - [x] Migration 005 with all billing tables
 - [x] 106 unit tests passing
 
+### Phase 3.5 is DONE when: ✅ OTT COMPLETE, ⚠️ LEDGER PARTIAL
+- [x] OTT JWT tokens created in chat completion response
+- [x] Stream-Edge validates OTT with Redis SETNX one-time check
+- [x] Browser reconnection handled via Last-Event-ID exemption
+- [x] Old `/events/{job_id}` endpoint deprecated
+- [x] Frontend TypeScript interface updated with `stream_token`
+- [x] 8 OTT unit tests passing
+- [x] WalletTransaction model + Migration 006 created
+- [ ] ⚠️ Wallet service does NOT create transaction records (intentionally skipped)
+- [ ] ⚠️ Transaction list API endpoint NOT implemented (intentionally skipped)
+
 ### Phase 4 is DONE when:
 - [ ] `agent.job-resume` Kafka topic created and configured
 - [ ] Distributed lock prevents duplicate job processing (Redis SETNX)
@@ -721,6 +733,9 @@ Phase 4 (Suspend/Resume)            Phase 5 (Tools + Archiver)
 ```bash
 # Phase 3 (COMPLETE)
 pytest tests/unit/test_subscription_service.py tests/unit/test_wallet_service.py tests/unit/test_feature_service.py tests/unit/test_credit_consumption.py -v
+
+# Phase 3.5 (OTT COMPLETE)
+pytest tests/unit/test_stream_ott.py -v
 
 # Phase 4
 pytest tests/unit/test_suspend_resume.py -v

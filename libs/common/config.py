@@ -74,6 +74,14 @@ class Settings(BaseSettings):
         description="Secret key for internal transaction tokens (Kafka payloads)",
     )
 
+    # One-Time Token for Stream-Edge
+    ott_ttl_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=300,
+        description="TTL in seconds for stream one-time tokens",
+    )
+
     # Rate Limiting
     rate_limit_rpm: int = Field(default=60, ge=1)
     rate_limit_tpm: int = Field(default=100000, ge=1)

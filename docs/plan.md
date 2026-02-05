@@ -2,12 +2,12 @@
 
 ## Executive Summary
 
-The Agentic System is currently **~75% complete**. Phases 1, 2, 2.5 (B2B2B Partners), and 3 (Comprehensive Billing System) are fully implemented, tested, and verified. The remaining work centers on the orchestrator suspend/resume refactor (Phase 4), tool worker enhancements (Phase 5), and production testing (Phase 6).
+The Agentic System is currently **~75% complete**. Phases 1, 2, 2.5 (B2B2B Partners), 3 (Comprehensive Billing System), and 3.5 (Stream-Edge OTT Security) are fully implemented, tested, and verified. The remaining work centers on the orchestrator suspend/resume refactor (Phase 4), tool worker enhancements (Phase 5), and production testing (Phase 6).
 
 See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for remaining phases.
 
-### Current State (as of Phase 3 completion)
-- ✅ **Stream Edge (95%)**: Fully functional SSE with hot/cold reconnection
+### Current State (as of Phase 3.5 completion)
+- ✅ **Stream Edge (100%)**: Fully functional SSE with hot/cold reconnection, **secured with one-time tokens (OTT)**
 - ✅ **API Gateway (100%)**: Four-tier auth, partner management, admin endpoints, **comprehensive billing (wallets, plans, subscriptions, features, credit rate limits)**, DB job persistence, waterfall rate limiting — all complete
 - ⚠️ **Orchestrator (30%)**: Basic loop works but blocks on tool calls — no suspend/resume, no distributed locking
 - ⚠️ **Tool Workers (25%)**: Two tools (code executor + mock web search), no resume signal, no Kafka result publication
@@ -32,6 +32,8 @@ See [docs/next-phases.md](next-phases.md) for the detailed technical roadmap for
 14. ~~System features~~ → **DONE** (platform features with default model routing)
 15. ~~Partner feature configs~~ → **DONE** (partner overrides for model/pricing per feature)
 16. ~~Background job scheduler~~ → **DONE** (APScheduler for credit reset, top-up expiration, low balance alerts)
+17. ~~Stream-Edge OTT security~~ → **DONE** (one-time JWT tokens for SSE connections, Redis SETNX enforcement, reconnection support)
+18. ~~Wallet transaction ledger~~ → **PARTIAL** (DB model + migration created, service layer NOT implemented)
 
 ### Remaining Critical Features
 1. **True suspend/resume** — orchestrator must exit after tool dispatch, resume from snapshot on completion
@@ -678,6 +680,92 @@ PUT    /api/partner/features/{feature_id}     # Configure feature override
 ```
 
 **Total unit tests after Phase 3: 106 (all passing)**
+
+---
+
+## Phase 3.5: Stream-Edge OTT Security & Wallet Transaction Ledger -- COMPLETE (OTT) / PARTIAL (Ledger)
+
+**Goal**: Secure SSE streaming with one-time tokens + establish immutable wallet transaction audit trail.
+
+**Status**:
+- ✅ **OTT Security**: Fully implemented with 8 unit tests
+- ⚠️ **Wallet Transaction Ledger**: DB model + migration created, service layer NOT implemented (user requested to stop)
+
+### Stream-Edge One-Time Token (OTT) Security
+
+**Problem**: Stream-Edge SSE endpoint `GET /events/{job_id}` was open to anyone with a job_id — no authentication required.
+
+**Solution**: Require short-lived (60s), single-use JWT tokens to establish SSE connections.
+
+**Implementation:**
+| File | Change |
+|------|--------|
+| `libs/common/config.py` | Added `ott_ttl_seconds: int = 60` (range 10-300s) |
+| `libs/common/auth.py` | Added `StreamOTTPayload`, `create_stream_ott()`, `verify_stream_ott()` |
+| `libs/common/__init__.py` | Exported OTT functions |
+| `services/api-gateway/src/routers/chat.py` | Generate OTT in response, embed in `stream_url`, add `stream_token` field |
+| `services/stream-edge/src/routers/events.py` | New `GET /stream?token=` with Redis SETNX one-time check, old endpoint deprecated |
+| `frontend/apps/existing-client/src/services/api.ts` | Added `stream_token: string` to `ChatCompletionResponse` |
+| `tests/unit/test_stream_ott.py` | 8 tests: creation, verification, expiry, tampering, wrong purpose, jti uniqueness |
+
+**Token structure**:
+```json
+{
+  "purpose": "stream_ott",
+  "job_id": "...",
+  "tenant_id": "...",
+  "user_id": "...",
+  "partner_id": "...",
+  "jti": "random_nonce",
+  "exp": 1704499260
+}
+```
+
+**Security properties**:
+- JWT signed with `internal_jwt_secret` (HS256)
+- 60-second TTL prevents long-term reuse
+- Redis `SETNX ott:{jti}` enforces one-time use
+- Browser reconnection handled via `Last-Event-ID` header exemption
+
+**API change**:
+```json
+// Before
+{"job_id": "...", "stream_url": "http://.../events/{job_id}"}
+
+// After
+{"job_id": "...", "stream_url": "http://.../stream?token=...", "stream_token": "..."}
+```
+
+### Wallet Transaction Ledger (Partial)
+
+**Problem**: Partner wallet debits created NO transaction record — only balance updated. No audit trail for refunds or adjustments.
+
+**Solution (DB layer only)**: `WalletTransaction` model + migration 006 for immutable ledger.
+
+**Implementation:**
+| File | Change |
+|------|--------|
+| `libs/db/models.py` | Added `WalletTransactionType` enum, `WalletTransaction` model, `transactions` relationship to `PartnerWallet` |
+| `migrations/versions/006_wallet_transactions.py` | DDL for `billing.wallet_transactions` with indexes |
+
+**Table structure**:
+- `wallet_id` (FK to partner_wallets)
+- `transaction_type` (deposit, debit, refund, adjustment)
+- `amount_micros` (positive for deposit/refund, negative for debit)
+- `balance_after_micros` (snapshot for reconciliation)
+- Optional FKs: `deposit_id`, `job_id`, `tenant_id`
+
+**NOT implemented**:
+- ❌ Service layer: `deposit()` and `debit()` do NOT create transaction records
+- ❌ API endpoint: No `GET /api/v1/wallet/transactions`
+- ❌ Response models: No Pydantic schemas
+- ❌ Unit tests: No transaction creation tests
+
+**Reason**: User said "thats enouph we dont need the the continue of the wallet anymore"
+
+**Total unit tests after Phase 3.5: 114 (106 billing/auth + 8 OTT)**
+
+**Documentation**: See [docs/stream-ott-security.md](stream-ott-security.md) and [docs/wallet-transactions-ledger.md](wallet-transactions-ledger.md)
 
 ---
 
