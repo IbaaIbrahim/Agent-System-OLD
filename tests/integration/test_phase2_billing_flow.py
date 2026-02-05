@@ -66,8 +66,8 @@ class TestJobPersistence:
         # Validate job_id is a valid UUID
         uuid.UUID(data["job_id"])
 
-        # Validate stream_url contains the job_id
-        assert data["job_id"] in data["stream_url"]
+        # Validate stream_url contains the stream_token
+        assert data["stream_token"] in data["stream_url"]
 
     @pytest.mark.asyncio
     async def test_chat_completion_with_system_prompt_and_tools(
