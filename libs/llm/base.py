@@ -1,6 +1,8 @@
 """Base classes for LLM providers."""
 
+import json
 from abc import ABC, abstractmethod
+
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import Enum
@@ -109,7 +111,7 @@ class LLMMessage:
                     "type": "function",
                     "function": {
                         "name": tc.name,
-                        "arguments": str(tc.arguments),
+                        "arguments": json.dumps(tc.arguments),
                     },
                 }
                 for tc in self.tool_calls
