@@ -155,11 +155,24 @@ migrate-reset:
 # TESTING
 # ===================
 
+
 test:
 	pytest tests/ -v
+	
+test-all:
+	pytest tests/unit/api-gateway -v
+	pytest tests/unit/archiver -v
+	pytest tests/unit/orchestrator -v
+	pytest tests/unit/tool-workers -v
+	pytest tests/unit/common -v
+	pytest tests/integration/ -v
 
 test-unit:
-	pytest tests/unit/ -v
+	pytest tests/unit/api-gateway -v
+	pytest tests/unit/archiver -v
+	pytest tests/unit/orchestrator -v
+	pytest tests/unit/tool-workers -v
+	pytest tests/unit/common -v
 
 test-int:
 	pytest tests/integration/ -v

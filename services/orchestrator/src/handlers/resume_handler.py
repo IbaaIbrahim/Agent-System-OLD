@@ -13,6 +13,7 @@ from ..engine.state import AgentState, AgentStatus
 from ..services.llm_service import LLMService
 from ..services.snapshot_service import SnapshotService
 from ..services.state_lock import DistributedStateLock
+from ..services.event_publisher import EventPublisher
 from .tool_handler import ToolHandler
 
 logger = get_logger(__name__)
@@ -40,6 +41,7 @@ class ResumeHandler:
         self.tool_handler = tool_handler
         self.config = get_config()
         self.lock = DistributedStateLock(ttl=self.config.job_lock_ttl_seconds)
+        self.event_publisher = EventPublisher()
 
     async def handle_resume(
         self,
@@ -189,27 +191,8 @@ class ResumeHandler:
             event_type: Event type
             data: Event payload
         """
-        # Publish to pub/sub for real-time delivery
-        pubsub = RedisPubSub()
-        await pubsub.connect()
-
-        channel = f"job:{job_id}"
-        message = {
-            "type": event_type,
-            "data": data,
-        }
-
-        await pubsub.publish(channel, message)
-        await pubsub.disconnect()
-
-        # Also store in streams for catch-up
-        streams = RedisStreams()
-        stream_key = f"events:{job_id}"
-
-        await streams.add(
-            stream=stream_key,
-            data={
-                "type": event_type,
-                "data": data,
-            },
+        await self.event_publisher.publish_event(
+            job_id=job_id,
+            event_type=event_type,
+            data=data,
         )
