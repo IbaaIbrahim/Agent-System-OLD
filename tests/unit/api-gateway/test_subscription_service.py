@@ -11,10 +11,20 @@ from uuid import uuid4
 
 import pytest
 
-# api-gateway uses a hyphen, which is not a valid Python package name.
-_SERVICE_ROOT = str(Path(__file__).resolve().parents[2] / "services" / "api-gateway")
-if _SERVICE_ROOT not in sys.path:
-    sys.path.insert(0, _SERVICE_ROOT)
+
+
+
+# Fix paths for imports to ensure both project root (for libs) and service root (for src) are in sys.path
+_TEST_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _TEST_DIR.parent.parent.parent
+_SERVICE_ROOT = _PROJECT_ROOT / "services" / "api-gateway"
+
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+
+if str(_SERVICE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SERVICE_ROOT))
 
 from src.services.subscription import (  # noqa: E402
     SubscriptionService,
