@@ -165,7 +165,28 @@ async def main() -> None:
     # Start consumer
     try:
         await consumer.start()
-        await consumer.run()
+        
+        # Create task for consumer
+        consumer_task = asyncio.create_task(consumer.run())
+        
+        # Wait for shutdown signal or task to finish
+        wait_for_shutdown = asyncio.create_task(shutdown_event.wait())
+        
+        done, pending = await asyncio.wait(
+            [consumer_task, wait_for_shutdown],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        if wait_for_shutdown in done:
+            logger.info("Shutdown signal received, stopping consumer...")
+        
+        # Cancel tasks
+        for task in [consumer_task, wait_for_shutdown]:
+            if not task.done():
+                task.cancel()
+        
+        await asyncio.gather(consumer_task, return_exceptions=True)
+
     except asyncio.CancelledError:
         pass
     finally:

@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from libs.common import get_logger
 from libs.db import get_session_context
@@ -29,7 +30,7 @@ async def health_check() -> HealthResponse:
     # Check PostgreSQL
     try:
         async with get_session_context() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
         dependencies["postgres"] = "healthy"
     except Exception as e:
         dependencies["postgres"] = f"unhealthy: {str(e)}"
@@ -69,7 +70,7 @@ async def readiness() -> dict[str, str]:
     # Check if we can connect to critical dependencies
     try:
         async with get_session_context() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
 
         redis = await get_redis_client()
         await redis.client.ping()

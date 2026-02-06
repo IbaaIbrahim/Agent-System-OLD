@@ -221,94 +221,112 @@ class AgentExecutor:
 
                 # Stream LLM response
                 content_buffer = ""
+                reasoning_buffer = ""
                 tool_calls = []
 
                 async for chunk in self.llm_service.stream(state):
-                    if chunk.content:
-                        content_buffer += chunk.content
-                        await self._emit_event(state, "delta", {
-                            "content": chunk.content,
-                        })
-
-                    if chunk.tool_calls:
-                        tool_calls.extend(chunk.tool_calls)
-
-                    if chunk.is_final:
-                        state.increment_tokens(
-                            chunk.input_tokens or 0,
-                            chunk.output_tokens or 0,
+                    if chunk:
+                        logger.debug(
+                            "Stream chunk",
+                            job_id=str(state.job_id),
+                            chunk=chunk,
                         )
+                        
+                        if chunk.content:
+                            content_buffer += chunk.content
+                            await self._emit_event(state, "delta", {
+                                "content": chunk.content,
+                            })
 
-                        if tool_calls:
-                            # Handle tool calls
-                            state.add_assistant_message(
-                                content=content_buffer if content_buffer else None,
-                                tool_calls=tool_calls,
+                        if chunk.reasoning_content:
+                            reasoning_buffer += chunk.reasoning_content
+                            await self._emit_event(state, "reasoning_delta", {
+                                "content": chunk.reasoning_content,
+                            })
+
+                        if chunk.tool_calls:
+                            tool_calls.extend(chunk.tool_calls)
+
+                        if chunk.is_final:
+                            state.increment_tokens(
+                                chunk.input_tokens or 0,
+                                chunk.output_tokens or 0,
                             )
 
-                            for tc in tool_calls:
-                                await self._emit_event(state, "tool_call", {
-                                    "id": tc.id,
-                                    "name": tc.name,
-                                    "arguments": tc.arguments,
-                                })
-
-                            # Check feature flag for suspend/resume
-                            if self.config.enable_suspend_resume:
-                                # SUSPEND: Save state and exit
-                                state.mark_waiting_tool(tool_calls)
-
-                                # Save snapshot before dispatching tools
-                                await self.snapshot_service.save_snapshot(state)
-                                await self.snapshot_service.update_job(state)
-
-                                # Dispatch tools asynchronously (no waiting)
-                                await self.tool_handler.dispatch_tools_async(state, tool_calls)
-
-                                # Emit suspended event
-                                await self._emit_event(state, "suspended", {
-                                    "pending_tools": [
-                                        {"id": tc.id, "name": tc.name}
-                                        for tc in tool_calls
-                                    ],
-                                    "snapshot_sequence": state.iteration,
-                                })
-
-                                logger.info(
-                                    "Orchestrator suspended (streaming)",
-                                    job_id=str(state.job_id),
-                                    tool_count=len(tool_calls),
-                                    snapshot_sequence=state.iteration,
+                            if tool_calls:
+                                # Handle tool calls
+                                state.add_assistant_message(
+                                    content=content_buffer if content_buffer else None,
+                                    tool_calls=tool_calls,
                                 )
 
-                                # EXIT - free CPU, wait for resume signal
-                                return state
-                            else:
-                                # FALLBACK: Old blocking behavior
-                                results = await self.tool_handler.execute_tools(
-                                    state,
-                                    tool_calls,
-                                )
-
-                                for tc, result in zip(tool_calls, results, strict=True):
-                                    state.add_tool_result(tc.id, result)
-                                    await self._emit_event(state, "tool_result", {
-                                        "tool_call_id": tc.id,
-                                        "result": result[:500],
+                                for tc in tool_calls:
+                                    await self._emit_event(state, "tool_call", {
+                                        "id": tc.id,
+                                        "name": tc.name,
+                                        "arguments": tc.arguments,
                                     })
 
-                        elif content_buffer:
-                            state.add_assistant_message(content=content_buffer)
+                                # Check feature flag for suspend/resume
+                                if self.config.enable_suspend_resume:
+                                    # SUSPEND: Save state and exit
+                                    state.mark_waiting_tool(tool_calls)
 
-                        if chunk.finish_reason in ("end_turn", "stop") and not tool_calls:
-                            state.mark_completed()
-                            await self._emit_event(state, "complete", {
-                                "total_input_tokens": state.total_input_tokens,
-                                "total_output_tokens": state.total_output_tokens,
-                            })
-                            return state
+                                    # Save snapshot before dispatching tools
+                                    await self.snapshot_service.save_snapshot(state)
+                                    await self.snapshot_service.update_job(state)
 
-                        break
+                                    # Dispatch tools asynchronously (no waiting)
+                                    await self.tool_handler.dispatch_tools_async(state, tool_calls)
+
+                                    # Emit suspended event
+                                    await self._emit_event(state, "suspended", {
+                                        "pending_tools": [
+                                            {"id": tc.id, "name": tc.name}
+                                            for tc in tool_calls
+                                        ],
+                                        "snapshot_sequence": state.iteration,
+                                    })
+
+                                    logger.info(
+                                        "Orchestrator suspended (streaming)",
+                                        job_id=str(state.job_id),
+                                        tool_count=len(tool_calls),
+                                        snapshot_sequence=state.iteration,
+                                    )
+
+                                    # EXIT - free CPU, wait for resume signal
+                                    return state
+                                else:
+                                    # FALLBACK: Old blocking behavior
+                                    results = await self.tool_handler.execute_tools(
+                                        state,
+                                        tool_calls,
+                                    )
+
+                                    for tc, result in zip(tool_calls, results, strict=True):
+                                        state.add_tool_result(tc.id, result)
+                                        await self._emit_event(state, "tool_result", {
+                                            "tool_call_id": tc.id,
+                                            "result": result[:500],
+                                        })
+
+                            elif content_buffer or reasoning_buffer:
+                                if reasoning_buffer:
+                                    state.reasoning_content = (state.reasoning_content or "") + reasoning_buffer
+                                
+                                state.add_assistant_message(content=content_buffer if content_buffer else None)
+
+                            if chunk.finish_reason in ("end_turn", "stop") and not tool_calls:
+                                state.mark_completed()
+                                await self._emit_event(state, "complete", {
+                                    "total_input_tokens": state.total_input_tokens,
+                                    "total_output_tokens": state.total_output_tokens,
+                                    "reasoning_content": state.reasoning_content,
+                                })
+                                return state
+
+                            break
 
             # Max iterations
             state.mark_failed("Max iterations reached")

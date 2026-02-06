@@ -100,17 +100,24 @@ async def event_generator(
             retry=config.sse_retry_ms,
         )
 
-        # Handle catch-up if reconnecting
-        if last_event_id:
-            catchup_handler = CatchupHandler()
-            async for event in catchup_handler.get_catchup_events(job_id, last_event_id):
-                if not connection.is_active:
-                    break
-                yield format_sse_event(
-                    data=event["data"],
-                    event_type=event["type"],
-                    event_id=event["id"],
-                )
+        last_yielded_id = last_event_id
+
+        # Always handle catch-up to ensure no events missed between job creation and SSE connection
+        catchup_handler = CatchupHandler()
+        async for event in catchup_handler.get_catchup_events(job_id, last_event_id):
+            if not connection.is_active:
+                break
+            
+            event_id = event.get("id")
+            yield format_sse_event(
+                data=event["data"],
+                event_type=event["type"],
+                event_id=event_id,
+            )
+            
+            if event_id:
+                last_yielded_id = event_id
+                connection.last_event_id = event_id
 
         # Listen for real-time events
         keepalive_task = asyncio.create_task(
@@ -131,6 +138,14 @@ async def event_generator(
                 event_id = event_data.get("id")
                 payload = event_data.get("data", event_data)
 
+                # De-duplicate: skip if already yielded via catch-up
+                if event_id and last_yielded_id:
+                    # Redis Stream IDs are timestamp-seq, so simple string comparison works
+                    # for most cases, but we should be careful. 
+                    # If event_id <= last_yielded_id, skip it.
+                    if event_id <= last_yielded_id:
+                        continue
+
                 yield format_sse_event(
                     data=payload,
                     event_type=event_type,
@@ -139,6 +154,7 @@ async def event_generator(
 
                 # Update last event ID
                 if event_id:
+                    last_yielded_id = event_id
                     connection.last_event_id = event_id
 
                 # Check for completion events

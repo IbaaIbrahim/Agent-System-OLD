@@ -41,6 +41,9 @@ class AgentState:
     messages: list[LLMMessage] = field(default_factory=list)
     iteration: int = 0
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
+    
+    # Reasoning tracking
+    reasoning_content: str | None = None
 
     # Token tracking
     total_input_tokens: int = 0
