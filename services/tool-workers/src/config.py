@@ -25,6 +25,11 @@ class ToolWorkersConfig(Settings):
     code_executor_timeout: int = 30
     code_executor_memory_limit_mb: int = 256
 
+    # Web search configuration
+    web_search_provider: str = "duckduckgo"  # "duckduckgo" or "brave"
+    brave_api_key: str = ""  # Optional, only needed if provider="brave"
+    web_search_timeout: int = 10
+
 
 @lru_cache
 def get_config() -> ToolWorkersConfig:

@@ -4,6 +4,7 @@ from typing import Any
 
 from libs.common import get_logger
 
+from .config import get_config
 from .tools.base import BaseTool
 from .tools.code_executor import CodeExecutorTool
 from .tools.web_search import WebSearchTool
@@ -71,8 +72,16 @@ class ToolRegistry:
 
     def register_all(self) -> None:
         """Register all built-in tools."""
-        # Web search tool
-        self.register(WebSearchTool())
+        config = get_config()
+
+        # Web search tool with config
+        self.register(
+            WebSearchTool(
+                provider=config.web_search_provider,
+                api_key=config.brave_api_key or None,
+                timeout=config.web_search_timeout,
+            )
+        )
 
         # Code executor tool
         self.register(CodeExecutorTool())
