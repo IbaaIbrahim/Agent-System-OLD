@@ -11,7 +11,7 @@ from libs.llm import (
     ToolDefinition,
     get_provider,
 )
-from services.orchestrator.src.engine.state import AgentState
+from ..engine.state import AgentState
 
 logger = get_logger(__name__)
 

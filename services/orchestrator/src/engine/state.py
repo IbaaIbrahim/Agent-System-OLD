@@ -168,10 +168,23 @@ class StateManager:
         llm_messages = []
         for msg in messages:
             role = MessageRole(msg["role"])
+            
+            # Convert tool_calls dicts to ToolCall objects if present
+            tool_calls = msg.get("tool_calls")
+            if tool_calls:
+                tool_calls = [
+                    ToolCall(
+                        id=tc.get("id", ""),
+                        name=tc.get("name", "unknown"),
+                        arguments=tc.get("arguments", {}),
+                    ) if isinstance(tc, dict) else tc
+                    for tc in tool_calls
+                ]
+                
             llm_messages.append(LLMMessage(
                 role=role,
                 content=msg.get("content"),
-                tool_calls=msg.get("tool_calls"),
+                tool_calls=tool_calls,
                 tool_call_id=msg.get("tool_call_id"),
             ))
 

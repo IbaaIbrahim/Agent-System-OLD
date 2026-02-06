@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from libs.llm import LLMMessage, MessageRole, ToolCall
-from services.orchestrator.src.engine.state import AgentState, AgentStatus
+from .state import AgentState, AgentStatus
 
 
 class StateSerializer:
@@ -137,8 +137,8 @@ class StateSerializer:
     def _deserialize_tool_call(data: dict[str, Any]) -> ToolCall:
         """Deserialize a ToolCall."""
         return ToolCall(
-            id=data["id"],
-            name=data["name"],
+            id=data.get("id", ""),
+            name=data.get("name", "unknown"),
             arguments=data.get("arguments", {}),
         )
 

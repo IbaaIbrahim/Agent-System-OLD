@@ -7,7 +7,7 @@ from uuid import UUID
 
 from libs.common import get_logger
 from libs.messaging.redis import RedisStreams
-from services.stream_edge.src.config import get_config
+from ..config import get_config
 
 logger = get_logger(__name__)
 
