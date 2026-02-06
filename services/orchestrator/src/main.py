@@ -2,6 +2,7 @@
 
 import asyncio
 import signal
+import sys
 
 from libs.common import get_logger, setup_logging
 from libs.db import close_db, init_db
@@ -65,8 +66,11 @@ async def main() -> None:
         _shutdown = True
         logger.info("Shutdown signal received")
 
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, signal_handler)
+    if sys.platform != "win32":
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, signal_handler)
+    else:
+        logger.info("Signal handlers skipped (not supported on Windows asyncio loop)")
 
     logger.info("Orchestrator started successfully")
 

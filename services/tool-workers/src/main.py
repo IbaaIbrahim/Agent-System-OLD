@@ -2,6 +2,7 @@
 
 import asyncio
 import signal
+import sys
 from typing import Any
 
 from libs.common import get_logger, setup_logging
@@ -153,8 +154,11 @@ async def main() -> None:
         shutdown_event.set()
         logger.info("Shutdown signal received")
 
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, signal_handler)
+    if sys.platform != "win32":
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, signal_handler)
+    else:
+        logger.info("Signal handlers skipped (not supported on Windows asyncio loop)")
 
     logger.info("Tool Workers started successfully")
 
