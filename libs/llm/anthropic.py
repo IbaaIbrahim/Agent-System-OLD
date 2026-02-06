@@ -68,16 +68,27 @@ class AnthropicProvider(LLMProvider):
         if tools:
             request_kwargs["tools"] = [t.to_anthropic() for t in tools]
 
+        # Enable extended thinking if budget tokens specified
+        thinking_budget = kwargs.get("thinking_budget_tokens")
+        if thinking_budget:
+            request_kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": thinking_budget,
+            }
+
         try:
             response = await self.client.messages.create(**request_kwargs)
 
             # Parse response
             content = None
             tool_calls = None
+            reasoning_content = None
 
             for block in response.content:
                 if block.type == "text":
                     content = block.text
+                elif block.type == "thinking":
+                    reasoning_content = block.thinking
                 elif block.type == "tool_use":
                     if tool_calls is None:
                         tool_calls = []
@@ -91,6 +102,7 @@ class AnthropicProvider(LLMProvider):
 
             return LLMResponse(
                 content=content,
+                reasoning_content=reasoning_content,
                 tool_calls=tool_calls,
                 input_tokens=response.usage.input_tokens,
                 output_tokens=response.usage.output_tokens,
@@ -145,6 +157,14 @@ class AnthropicProvider(LLMProvider):
         if tools:
             request_kwargs["tools"] = [t.to_anthropic() for t in tools]
 
+        # Enable extended thinking if budget tokens specified
+        thinking_budget = kwargs.get("thinking_budget_tokens")
+        if thinking_budget:
+            request_kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": thinking_budget,
+            }
+
         try:
             async with self.client.messages.stream(**request_kwargs) as stream:
                 current_tool_calls: dict[int, dict[str, Any]] = {}
@@ -163,10 +183,14 @@ class AnthropicProvider(LLMProvider):
                                 "name": event.content_block.name,
                                 "arguments": "",
                             }
+                        # Thinking blocks are tracked but content comes via deltas
 
                     elif event.type == "content_block_delta":
                         if event.delta.type == "text_delta":
                             yield LLMStreamChunk(content=event.delta.text)
+                        elif event.delta.type == "thinking_delta":
+                            # Stream thinking/reasoning content
+                            yield LLMStreamChunk(reasoning_content=event.delta.thinking)
                         elif event.delta.type == "input_json_delta":
                             if event.index in current_tool_calls:
                                 current_tool_calls[event.index][
