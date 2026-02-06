@@ -29,28 +29,9 @@ class EventPublisher:
             event_type: Event type (e.g., "delta", "start", "complete")
             data: Event payload
         """
-        # Publish to pub/sub for real-time delivery (SSE)
-        # Note: We don't call pubsub.connect() because we only use publish(),
-        # which uses the direct Redis client and doesn't require a dedicated 
-        # PubSub listener connection (and thus doesn't log spammy connects).
-        channel = f"job:{job_id}"
-        message = {
-            "type": event_type,
-            "data": data,
-        }
-
-        try:
-            await self.pubsub.publish(channel, message)
-        except Exception as e:
-            logger.error(
-                "Failed to publish to Pub/Sub",
-                job_id=str(job_id),
-                event_type=event_type,
-                error=str(e),
-            )
-
         # Store in streams for durable catch-up
         stream_key = f"events:{job_id}"
+        event_id = None
         try:
             event_id = await self.streams.add(
                 stream=stream_key,
@@ -59,11 +40,27 @@ class EventPublisher:
                     "data": data,
                 },
             )
-            # Update message with event ID for consistency if needed by future logic
-            message["id"] = event_id
         except Exception as e:
             logger.error(
                 "Failed to add to Redis stream",
+                job_id=str(job_id),
+                event_type=event_type,
+                error=str(e),
+            )
+
+        # Publish to pub/sub for real-time delivery (SSE)
+        channel = f"job:{job_id}"
+        message = {
+            "type": event_type,
+            "data": data,
+            "id": event_id,
+        }
+
+        try:
+            await self.pubsub.publish(channel, message)
+        except Exception as e:
+            logger.error(
+                "Failed to publish to Pub/Sub",
                 job_id=str(job_id),
                 event_type=event_type,
                 error=str(e),

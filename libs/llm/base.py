@@ -101,10 +101,11 @@ class LLMMessage:
         """Convert to OpenAI message format."""
         msg: dict[str, Any] = {"role": self.role.value}
 
-        if self.content:
+        if self.content is not None:
             msg["content"] = self.content
 
-        if self.tool_calls:
+        # tool_calls only allowed/valid for assistant role
+        if self.role == MessageRole.ASSISTANT and self.tool_calls:
             msg["tool_calls"] = [
                 {
                     "id": tc.id,
@@ -117,7 +118,8 @@ class LLMMessage:
                 for tc in self.tool_calls
             ]
 
-        if self.tool_call_id:
+        # tool_call_id only allowed/required for tool role
+        if self.role == MessageRole.TOOL and self.tool_call_id:
             msg["tool_call_id"] = self.tool_call_id
 
         if self.name:
@@ -131,6 +133,7 @@ class LLMResponse:
     """Response from an LLM provider."""
 
     content: str | None = None
+    reasoning_content: str | None = None
     tool_calls: list[ToolCall] | None = None
     input_tokens: int = 0
     output_tokens: int = 0
@@ -144,6 +147,7 @@ class LLMStreamChunk:
     """A chunk from a streaming LLM response."""
 
     content: str | None = None
+    reasoning_content: str | None = None
     tool_calls: list[ToolCall] | None = None
     is_final: bool = False
     finish_reason: str | None = None

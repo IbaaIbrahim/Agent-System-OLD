@@ -86,7 +86,7 @@ restart: down up
 
 # Infrastructure only (for local development)
 infra:
-	docker compose up -d postgres redis zookeeper kafka kafka-init
+	docker compose up -d postgres redis zookeeper kafka kafka-init pgadmin
 	@echo "Infrastructure services started"
 
 # ===================
@@ -103,6 +103,8 @@ install:
 dev: infra
 	@echo "Starting services in development mode..."
 	@echo "Run 'make migrate' first"
+	@echo "Infrastructure (Postgres, Redis, Kafka, pgAdmin) is running."
+	@echo "  pgAdmin: http://localhost:5050 (admin@admin.com / admin)"
 	@echo "Run each service in separate terminals:"
 	@echo "  make api"
 	@echo "  make stream"
@@ -113,16 +115,28 @@ api:
 	PYTHONPATH=$(PWD) uvicorn services.api-gateway.src.main:app --reload --port 8000 --host $(or $(API_HOST),localhost)
 
 stream:
-	PYTHONPATH=$(PWD) uvicorn services.stream-edge.src.main:app --reload --port 8001
+	PYTHONPATH=$(PWD) uvicorn services.stream-edge.src.main:app --reload --port 8001 --host $(or $(API_HOST),localhost)
 
 orchestrator:
-	PYTHONPATH=$(PWD) python -m services.orchestrator.src.main
+	@if command -v watchfiles > /dev/null; then \
+		PYTHONPATH=$(PWD) watchfiles "python -m services.orchestrator.src.main"; \
+	else \
+		PYTHONPATH=$(PWD) python -m services.orchestrator.src.main; \
+	fi
 
 workers:
-	PYTHONPATH=$(PWD) python -m services.tool-workers.src.main
+	@if command -v watchfiles > /dev/null; then \
+		PYTHONPATH=$(PWD) watchfiles "python -m services.tool-workers.src.main"; \
+	else \
+		PYTHONPATH=$(PWD) python -m services.tool-workers.src.main; \
+	fi
 
 archiver:
-	PYTHONPATH=$(PWD) python -m services.archiver.src.main
+	@if command -v watchfiles > /dev/null; then \
+		PYTHONPATH=$(PWD) watchfiles "python -m services.archiver.src.main"; \
+	else \
+		PYTHONPATH=$(PWD) python -m services.archiver.src.main; \
+	fi
 
 frontend:
 	cd frontend/apps/demo && npm run dev

@@ -60,10 +60,10 @@ async def main() -> None:
 
     # Setup signal handlers
     loop = asyncio.get_event_loop()
+    shutdown_event = asyncio.Event()
 
     def signal_handler():
-        global _shutdown
-        _shutdown = True
+        shutdown_event.set()
         logger.info("Shutdown signal received")
 
     if sys.platform != "win32":
@@ -105,10 +105,31 @@ async def main() -> None:
             await job_consumer.start()
             await resume_consumer.start()
 
-            await asyncio.gather(
-                job_consumer.run(),
-                resume_consumer.run(),
+            # Create tasks for consumers
+            job_task = asyncio.create_task(job_consumer.run())
+            resume_task = asyncio.create_task(resume_consumer.run())
+
+            # Wait for shutdown signal or tasks to finish
+            wait_for_shutdown = asyncio.create_task(shutdown_event.wait())
+            
+            done, pending = await asyncio.wait(
+                [job_task, resume_task, wait_for_shutdown],
+                return_when=asyncio.FIRST_COMPLETED,
             )
+
+            if wait_for_shutdown in done:
+                logger.info("Shutdown signal received, stopping consumers...")
+            else:
+                logger.warning("One of the consumers stopped unexpectedly")
+
+            # Shutdown signal received or consumer stopped, cancel tasks
+            for task in [job_task, resume_task, wait_for_shutdown]:
+                if not task.done():
+                    task.cancel()
+            
+            # Wait for tasks to clean up
+            await asyncio.gather(job_task, resume_task, return_exceptions=True)
+
         except asyncio.CancelledError:
             pass
         finally:
@@ -122,7 +143,28 @@ async def main() -> None:
         logger.info("Running in legacy blocking mode")
         try:
             await job_consumer.start()
-            await job_consumer.run()
+            
+            # Create task for consumer
+            job_task = asyncio.create_task(job_consumer.run())
+            
+            # Wait for shutdown signal or task to finish
+            wait_for_shutdown = asyncio.create_task(shutdown_event.wait())
+            
+            done, pending = await asyncio.wait(
+                [job_task, wait_for_shutdown],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if wait_for_shutdown in done:
+                logger.info("Shutdown signal received, stopping consumer...")
+            
+            # Cancel tasks
+            for task in [job_task, wait_for_shutdown]:
+                if not task.done():
+                    task.cancel()
+            
+            await asyncio.gather(job_task, return_exceptions=True)
+
         except asyncio.CancelledError:
             pass
         finally:

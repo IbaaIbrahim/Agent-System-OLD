@@ -3,6 +3,7 @@
 import json
 from collections.abc import AsyncIterator
 from typing import Any
+import sys
 
 import openai
 
@@ -60,16 +61,35 @@ class OpenAIProvider(LLMProvider):
             else:
                 openai_messages.append(msg.to_openai())
 
+        # DEBUG: Print model info
+        print(f"XXX DEBUG: complete model='{model}' type={type(model)}")
+        sys.stdout.flush()
+
         # Build request
         request_kwargs: dict[str, Any] = {
             "model": model,
             "messages": openai_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
         }
+
+        # Handle params for different models
+        if model.startswith("o1") or model.startswith("gpt-5-mini"):
+            request_kwargs["max_completion_tokens"] = max_tokens
+            # o1 models don't support temperature (fixed at 1)
+        elif model.startswith("o3"):
+            request_kwargs["max_completion_tokens"] = max_tokens
+            request_kwargs["temperature"] = temperature
+        else:
+            request_kwargs["max_tokens"] = max_tokens
+            request_kwargs["temperature"] = temperature
 
         if tools:
             request_kwargs["tools"] = [t.to_openai() for t in tools]
+
+        # DEBUG: Print final kwargs
+        print(f"XXX DEBUG: complete kwargs={list(request_kwargs.keys())}")
+        sys.stdout.flush()
+
+        logger.info(f"DEBUG: OpenAI complete final kwargs keys: {list(request_kwargs.keys())}")
 
         try:
             response = await self.client.chat.completions.create(**request_kwargs)
@@ -99,6 +119,7 @@ class OpenAIProvider(LLMProvider):
 
             return LLMResponse(
                 content=content,
+                reasoning_content=getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None),
                 tool_calls=tool_calls,
                 input_tokens=response.usage.prompt_tokens if response.usage else 0,
                 output_tokens=response.usage.completion_tokens if response.usage else 0,
@@ -144,18 +165,38 @@ class OpenAIProvider(LLMProvider):
             else:
                 openai_messages.append(msg.to_openai())
 
+        # DEBUG: Print model info
+        print(f"XXX DEBUG: stream model='{model}' type={type(model)}")
+        sys.stdout.flush()
+
         # Build request
         request_kwargs: dict[str, Any] = {
             "model": model,
             "messages": openai_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
             "stream": True,
             "stream_options": {"include_usage": True},
         }
 
+
+        # Handle params for different models
+        if model.startswith("o1") or model.startswith("gpt-5-mini"):
+            request_kwargs["max_completion_tokens"] = max_tokens
+            # o1 models don't support temperature (fixed at 1)
+        elif model.startswith("o3"):
+            request_kwargs["max_completion_tokens"] = max_tokens
+            request_kwargs["temperature"] = temperature
+        else:
+            request_kwargs["max_tokens"] = max_tokens
+            request_kwargs["temperature"] = temperature
+
         if tools:
             request_kwargs["tools"] = [t.to_openai() for t in tools]
+
+        # DEBUG: Print final kwargs
+        print(f"XXX DEBUG: stream kwargs={list(request_kwargs.keys())}")
+        sys.stdout.flush()
+
+        logger.info(f"DEBUG: OpenAI stream final kwargs keys: {list(request_kwargs.keys())}")
 
         try:
             stream = await self.client.chat.completions.create(**request_kwargs)
@@ -163,6 +204,7 @@ class OpenAIProvider(LLMProvider):
             current_tool_calls: dict[int, dict[str, Any]] = {}
             input_tokens = 0
             output_tokens = 0
+            finish_reason = None
 
             async for chunk in stream:
                 if not chunk.choices:
@@ -175,9 +217,17 @@ class OpenAIProvider(LLMProvider):
                 choice = chunk.choices[0]
                 delta = choice.delta
 
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+
                 # Handle content
                 if delta.content:
                     yield LLMStreamChunk(content=delta.content)
+
+                # Handle reasoning content (for o1 models)
+                reasoning_content = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                if reasoning_content:
+                    yield LLMStreamChunk(reasoning_content=reasoning_content)
 
                 # Handle tool calls
                 if delta.tool_calls:
@@ -199,9 +249,9 @@ class OpenAIProvider(LLMProvider):
                                     "arguments"
                                 ] += tc.function.arguments
 
-                # Handle finish
+                # Handle finish (but wait for usage chunks to arrive before yielding is_final)
                 if choice.finish_reason:
-                    # Emit any pending tool calls
+                    # Emit any pending tool calls immediately
                     if current_tool_calls:
                         tool_calls = []
                         for tc_data in current_tool_calls.values():
@@ -217,13 +267,16 @@ class OpenAIProvider(LLMProvider):
                                 )
                             )
                         yield LLMStreamChunk(tool_calls=tool_calls)
+                        # Clear to avoid double yielding
+                        current_tool_calls = {}
 
-                    yield LLMStreamChunk(
-                        is_final=True,
-                        finish_reason=choice.finish_reason,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                    )
+            # Yield one final chunk with all accumulated metadata
+            yield LLMStreamChunk(
+                is_final=True,
+                finish_reason=finish_reason,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
 
         except openai.APIError as e:
             logger.error(
