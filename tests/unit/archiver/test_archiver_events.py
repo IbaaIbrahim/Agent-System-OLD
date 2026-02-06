@@ -7,10 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-# Handle hyphenated service directory import
-sys.path.insert(0, "services/archiver")
-
-from src.services.postgres_writer import PostgresWriter
+from services.archiver.src.services.postgres_writer import PostgresWriter
+import services.archiver.src.services.postgres_writer as pw_module
 
 
 class TestPostgresWriterInit:
@@ -59,9 +57,7 @@ class TestMessageEvents:
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -92,9 +88,7 @@ class TestMessageEvents:
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -125,9 +119,7 @@ class TestMessageEvents:
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -162,9 +154,7 @@ class TestMessageEvents:
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -204,9 +194,7 @@ class TestLifecycleEvents:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -249,9 +237,7 @@ class TestLifecycleEvents:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -294,9 +280,7 @@ class TestLifecycleEvents:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -336,9 +320,7 @@ class TestLifecycleEvents:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -378,9 +360,7 @@ class TestLifecycleEvents:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -420,9 +400,7 @@ class TestUnknownEvents:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -538,9 +516,7 @@ class TestJobNotFound:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -581,9 +557,7 @@ class TestNullMetadata:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -620,9 +594,7 @@ class TestNullMetadata:
         )
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "src.services.postgres_writer.get_session_context"
-        ) as mock_context:
+        with patch.object(pw_module, "get_session_context") as mock_context:
             mock_context.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_context.return_value.__aexit__ = AsyncMock(return_value=None)
 

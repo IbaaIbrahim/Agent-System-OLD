@@ -5,10 +5,31 @@ import sys
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Handle hyphenated service directory import
-sys.path.insert(0, "services/tool-workers")
+WebSearchTool = None
 
-from src.tools.web_search import WebSearchTool
+def setup_module(module):
+    """Setup module by ensuring correct src package is loaded."""
+    global WebSearchTool
+    
+    # Handle hyphenated service directory import
+    service_path = "services/tool-workers"
+    if service_path not in sys.path:
+        sys.path.insert(0, service_path)
+
+    # If src is already loaded but lacks tools, it's the wrong src (e.g. from another service)
+    if "src" in sys.modules:
+        try:
+            import src.tools
+        except ImportError:
+            # Wrong src loaded, unload it to force reload from our path
+            del sys.modules["src"]
+            for k in list(sys.modules.keys()):
+                if k.startswith("src."):
+                    del sys.modules[k]
+
+    from src.tools.web_search import WebSearchTool as WST
+    WebSearchTool = WST
+    module.WebSearchTool = WST
 
 
 class TestWebSearchToolInit:
