@@ -79,6 +79,10 @@ class LLMService:
             message_count=len(state.messages),
         )
 
+        # Pass thinking/reasoning configuration from metadata if present
+        thinking_budget = state.metadata.get("thinking_budget_tokens")  # Anthropic
+        reasoning_effort = state.metadata.get("reasoning_effort")  # OpenAI
+
         response = await provider.complete(
             messages=state.messages,
             model=state.model,
@@ -86,6 +90,8 @@ class LLMService:
             tools=tools,
             temperature=state.temperature,
             max_tokens=state.max_tokens,
+            thinking_budget_tokens=thinking_budget,
+            reasoning_effort=reasoning_effort,
         )
 
         logger.debug(
@@ -118,6 +124,10 @@ class LLMService:
             model=state.model,
         )
 
+        # Pass thinking/reasoning configuration from metadata if present
+        thinking_budget = state.metadata.get("thinking_budget_tokens")  # Anthropic
+        reasoning_effort = state.metadata.get("reasoning_effort")  # OpenAI
+
         async for chunk in provider.stream(
             messages=state.messages,
             model=state.model,
@@ -125,6 +135,8 @@ class LLMService:
             tools=tools,
             temperature=state.temperature,
             max_tokens=state.max_tokens,
+            thinking_budget_tokens=thinking_budget,
+            reasoning_effort=reasoning_effort,
         ):
             yield chunk
 

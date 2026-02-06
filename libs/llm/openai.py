@@ -61,9 +61,7 @@ class OpenAIProvider(LLMProvider):
             else:
                 openai_messages.append(msg.to_openai())
 
-        # DEBUG: Print model info
-        print(f"XXX DEBUG: complete model='{model}' type={type(model)}")
-        sys.stdout.flush()
+
 
         # Build request
         request_kwargs: dict[str, Any] = {
@@ -72,22 +70,27 @@ class OpenAIProvider(LLMProvider):
         }
 
         # Handle params for different models
-        if model.startswith("o1") or model.startswith("gpt-5-mini"):
+        is_reasoning_model = (
+            model.startswith("o1") or
+            model.startswith("o3") or
+            model.startswith("gpt-5-mini")
+        )
+
+        if is_reasoning_model:
             request_kwargs["max_completion_tokens"] = max_tokens
-            # o1 models don't support temperature (fixed at 1)
-        elif model.startswith("o3"):
-            request_kwargs["max_completion_tokens"] = max_tokens
-            request_kwargs["temperature"] = temperature
+            # Only o3 supports temperature, o1 and gpt-5-mini have fixed temperature
+            if model.startswith("o3"):
+                request_kwargs["temperature"] = temperature
+
+            # Enable reasoning output for reasoning models
+            reasoning_effort = kwargs.get("reasoning_effort", "medium")
+            request_kwargs["reasoning"] = {"effort": reasoning_effort}
         else:
             request_kwargs["max_tokens"] = max_tokens
             request_kwargs["temperature"] = temperature
 
         if tools:
             request_kwargs["tools"] = [t.to_openai() for t in tools]
-
-        # DEBUG: Print final kwargs
-        print(f"XXX DEBUG: complete kwargs={list(request_kwargs.keys())}")
-        sys.stdout.flush()
 
         logger.info(f"DEBUG: OpenAI complete final kwargs keys: {list(request_kwargs.keys())}")
 
@@ -117,9 +120,17 @@ class OpenAIProvider(LLMProvider):
                         )
                     )
 
+            # Extract reasoning content robustly
+            reasoning_content = (
+                getattr(message, "reasoning_content", None) or 
+                getattr(message, "reasoning", None)
+            )
+            if reasoning_content is None and hasattr(message, "model_extra") and message.model_extra:
+                reasoning_content = message.model_extra.get("reasoning_content") or message.model_extra.get("reasoning")
+
             return LLMResponse(
                 content=content,
-                reasoning_content=getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None),
+                reasoning_content=reasoning_content,
                 tool_calls=tool_calls,
                 input_tokens=response.usage.prompt_tokens if response.usage else 0,
                 output_tokens=response.usage.completion_tokens if response.usage else 0,
@@ -165,9 +176,7 @@ class OpenAIProvider(LLMProvider):
             else:
                 openai_messages.append(msg.to_openai())
 
-        # DEBUG: Print model info
-        print(f"XXX DEBUG: stream model='{model}' type={type(model)}")
-        sys.stdout.flush()
+
 
         # Build request
         request_kwargs: dict[str, Any] = {
@@ -179,22 +188,27 @@ class OpenAIProvider(LLMProvider):
 
 
         # Handle params for different models
-        if model.startswith("o1") or model.startswith("gpt-5-mini"):
+        is_reasoning_model = (
+            model.startswith("o1") or
+            model.startswith("o3") or
+            model.startswith("gpt-5-mini")
+        )
+
+        if is_reasoning_model:
             request_kwargs["max_completion_tokens"] = max_tokens
-            # o1 models don't support temperature (fixed at 1)
-        elif model.startswith("o3"):
-            request_kwargs["max_completion_tokens"] = max_tokens
-            request_kwargs["temperature"] = temperature
+            # Only o3 supports temperature, o1 and gpt-5-mini have fixed temperature
+            if model.startswith("o3"):
+                request_kwargs["temperature"] = temperature
+
+            # Enable reasoning output for reasoning models
+            reasoning_effort = kwargs.get("reasoning_effort", "medium")
+            request_kwargs["reasoning"] = {"effort": reasoning_effort}
         else:
             request_kwargs["max_tokens"] = max_tokens
             request_kwargs["temperature"] = temperature
 
         if tools:
             request_kwargs["tools"] = [t.to_openai() for t in tools]
-
-        # DEBUG: Print final kwargs
-        print(f"XXX DEBUG: stream kwargs={list(request_kwargs.keys())}")
-        sys.stdout.flush()
 
         logger.info(f"DEBUG: OpenAI stream final kwargs keys: {list(request_kwargs.keys())}")
 
@@ -224,9 +238,26 @@ class OpenAIProvider(LLMProvider):
                 if delta.content:
                     yield LLMStreamChunk(content=delta.content)
 
-                # Handle reasoning content (for o1 models)
-                reasoning_content = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                # Handle reasoning content (for reasoning models like o1, o3, gpt-5-mini)
+                reasoning_content = None
+                try:
+                    # Try direct attributes first
+                    reasoning_content = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+
+                    # Fallback to model_extra if SDK hasn't mapped the fields yet
+                    if reasoning_content is None and hasattr(delta, "model_extra") and delta.model_extra:
+                        extra = delta.model_extra
+                        if extra:
+                            reasoning_content = extra.get("reasoning_content") or extra.get("reasoning")
+
+                    # Debug log to see what fields are available
+                    if hasattr(delta, "model_extra") and delta.model_extra:
+                        logger.debug(f"Delta model_extra keys: {list(delta.model_extra.keys())}")
+                except Exception as e:
+                    logger.warning(f"Error extracting reasoning content: {e}")
+
                 if reasoning_content:
+                    logger.debug(f"Yielding reasoning content chunk: {len(reasoning_content)} chars")
                     yield LLMStreamChunk(reasoning_content=reasoning_content)
 
                 # Handle tool calls
