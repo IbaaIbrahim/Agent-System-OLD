@@ -53,19 +53,53 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, signal_handler)
 
+    # Periodic cleanup task
+    async def periodic_cleanup():
+        """Clean up old Redis streams periodically."""
+        while not shutdown_event.is_set():
+            try:
+                # Sleep for cleanup interval (default 1 hour)
+                await asyncio.wait_for(
+                    shutdown_event.wait(),
+                    timeout=config.cleanup_interval,
+                )
+                # If we get here, shutdown was triggered
+                break
+            except asyncio.TimeoutError:
+                # Timeout means it's time to cleanup
+                try:
+                    await reader.cleanup_old_streams()
+                    logger.info("Periodic stream cleanup completed")
+                except Exception as e:
+                    logger.error("Stream cleanup failed", error=str(e))
+
     logger.info("Archiver started successfully")
 
     # Start processing
     try:
+        # Start writer's periodic flush
+        await writer.start()
+
+        # Start reader and cleanup concurrently
         reader_task = asyncio.create_task(reader.start())
+        cleanup_task = asyncio.create_task(periodic_cleanup())
+
+        # Wait for shutdown signal
         await shutdown_event.wait()
 
         # Graceful shutdown
         reader.stop()
         await reader_task
 
+        # Cancel cleanup task
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+
         # Flush remaining data
-        await writer.flush()
+        await writer.stop()
 
     except asyncio.CancelledError:
         pass

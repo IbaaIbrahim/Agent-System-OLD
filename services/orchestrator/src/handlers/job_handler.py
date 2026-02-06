@@ -11,6 +11,7 @@ from ..engine.state import StateManager
 from ..services.llm_service import LLMService
 from ..services.snapshot_service import SnapshotService
 from .tool_handler import ToolHandler
+from ..services.event_publisher import EventPublisher
 
 logger = get_logger(__name__)
 
@@ -24,6 +25,7 @@ class JobHandler:
         self.llm_service = LLMService()
         self.tool_handler = ToolHandler()
         self.snapshot_service = SnapshotService()
+        self.event_publisher = EventPublisher()
 
     async def handle_job(
         self,
@@ -120,32 +122,8 @@ class JobHandler:
             event_type: Event type
             data: Event payload
         """
-        from libs.messaging.redis import RedisStreams
-
-        # Publish to pub/sub for real-time delivery
-        pubsub = RedisPubSub()
-        await pubsub.connect()
-
-        channel = f"job:{job_id}"
-        message = {
-            "type": event_type,
-            "data": data,
-        }
-
-        await pubsub.publish(channel, message)
-        await pubsub.disconnect()
-
-        # Also store in streams for catch-up
-        streams = RedisStreams()
-        stream_key = f"events:{job_id}"
-
-        event_id = await streams.add(
-            stream=stream_key,
-            data={
-                "type": event_type,
-                "data": data,
-            },
+        await self.event_publisher.publish_event(
+            job_id=job_id,
+            event_type=event_type,
+            data=data,
         )
-
-        # Update message with event ID
-        message["id"] = event_id

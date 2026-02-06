@@ -16,8 +16,8 @@ Frontend (React) → API Gateway (Control Plane, 8000) → Kafka → Orchestrato
 - **api-gateway** (port 8000): FastAPI REST — auth, rate limiting, job creation → Kafka `agent.jobs`
 - **stream-edge** (port 8001): FastAPI SSE streaming to clients via Redis Pub/Sub (`events:{job_id}`), secured with one-time tokens (OTT)
 - **orchestrator**: Kafka consumer running the agent loop (Think → Act → Observe). Supports **suspend/resume**: serializes state to `job_snapshots`, dispatches tool tasks to Kafka, exits to free CPU, then resumes from snapshot when tool results arrive
-- **tool-workers**: Stateless tool executors via Kafka (`agent.tools` → results in Redis)
-- **archiver**: Moves completed events from Redis (hot) to PostgreSQL (cold)
+- **tool-workers**: Stateless tool executors via Kafka (`agent.tools` → results in Redis). Real web search via **DuckDuckGo API** (default) or **Brave Search API** (optional, requires key)
+- **archiver**: Moves completed events from Redis (hot) to PostgreSQL (cold). Handles **all 9 event types** (message, delta, tool_result, tool_call, start, complete, error, cancelled, suspended). **Periodic stream cleanup** (hourly, 24h retention)
 - **frontend**: React 18 + TypeScript + Vite + Zustand + Tailwind CSS (port 3000)
 
 **Key data flows:**
@@ -104,7 +104,7 @@ All backend `make` targets set `PYTHONPATH=$(PWD)` for module resolution from re
 - **Config pattern**: service configs extend base `pydantic-settings` from `libs/common/config.py`. Base: `get_settings()`. Service-specific: `get_config()`.
 - **DB models**: SQLAlchemy 2.0 `Mapped[]` columns with `TimestampMixin`, organized into PostgreSQL schemas (`tenants`, `billing`, `jobs`).
 - **Migrations**: sequential numbering `001_`–`006_` in `migrations/versions/`. Current: `001_tenants_users`, `002_pricing_ledger`, `003_jobs_messages`, `004_partners`, `005_billing_plans`, `006_wallet_transactions`.
-- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. 138 unit tests (106 billing/auth + 8 OTT + 24 suspend/resume), 5 integration test files.
+- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. 162 unit tests (106 billing/auth + 8 OTT + 24 suspend/resume + 24 web search/archiver), 5 integration test files.
 - **Test imports**: Hyphenated service directories (e.g. `services/api-gateway`) require `sys.path.insert(0, "services/api-gateway")` before importing `src.*` modules in unit tests.
 
 ## Adding New Tools
@@ -153,6 +153,9 @@ class MyTool(BaseTool):
 | Distributed state lock | `services/orchestrator/src/services/state_lock.py` |
 | Resume handler (suspend/resume) | `services/orchestrator/src/handlers/resume_handler.py` |
 | Tool base class | `services/tool-workers/src/tools/base.py` |
+| Web search tool (real API) | `services/tool-workers/src/tools/web_search.py` |
+| Tool workers config | `services/tool-workers/src/config.py` |
+| Archiver postgres writer | `services/archiver/src/services/postgres_writer.py` |
 | Kafka topic setup | `infrastructure/docker/kafka/create-topics.sh` |
 | DB init SQL | `infrastructure/docker/postgres/init.sql` |
 | Partner migration | `migrations/versions/004_partners.py` |
@@ -161,6 +164,8 @@ class MyTool(BaseTool):
 | OTT unit tests | `tests/unit/test_stream_ott.py` |
 | Suspend/resume unit tests | `tests/unit/test_suspend_resume.py` |
 | Suspend/resume integration tests | `tests/integration/test_suspend_resume_flow.py` |
+| Web search unit tests | `tests/unit/test_web_search.py` |
+| Archiver events unit tests | `tests/unit/test_archiver_events.py` |
 | Frontend chat state | `frontend/src/hooks/useChat.ts` |
 | Architecture design doc | `docs/rebuild.md` |
 | Project plan | `docs/plan.md` |
