@@ -274,18 +274,13 @@ class OpenAIProvider(LLMProvider):
             else:
                 raise
 
-        logger.info("OpenAI stream created, consuming chunks")
         try:
             current_tool_calls: dict[int, dict[str, Any]] = {}
             input_tokens = 0
             output_tokens = 0
             finish_reason = None
-            first_chunk = True
 
             async for chunk in stream:
-                if first_chunk:
-                    logger.info("First stream chunk received")
-                    first_chunk = False
                 if not chunk.choices:
                     # Usage info comes in final chunk
                     if chunk.usage:
