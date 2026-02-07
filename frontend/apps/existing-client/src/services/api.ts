@@ -55,6 +55,30 @@ export interface JobStatus {
   metadata: Record<string, unknown>
 }
 
+export interface ToolResultRequest {
+  tool_call_id: string
+  tool_name: string
+  result: string
+}
+
+export interface ToolResultResponse {
+  status: string
+  tool_call_id: string
+}
+
+export interface AvailableToolInfo {
+  name: string
+  description: string
+  category: 'builtin' | 'configurable' | 'client_side'
+  plan_allowed: boolean
+  user_enabled: boolean
+  required_plan: string | null
+}
+
+export interface AvailableToolsResponse {
+  tools: AvailableToolInfo[]
+}
+
 export class ApiClient {
   private apiKey: string
 
@@ -113,6 +137,26 @@ export class ApiClient {
     return this.fetch(`/jobs/${jobId}`, {
       method: 'DELETE',
     })
+  }
+
+  /**
+   * Submit a client-side tool result.
+   */
+  async submitToolResult(
+    jobId: string,
+    request: ToolResultRequest
+  ): Promise<ToolResultResponse> {
+    return this.fetch(`/tools/jobs/${jobId}/tool-results`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+  }
+
+  /**
+   * Get available tools with plan and user status.
+   */
+  async getAvailableTools(): Promise<AvailableToolsResponse> {
+    return this.fetch('/tools/available')
   }
 }
 

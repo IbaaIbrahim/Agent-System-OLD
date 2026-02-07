@@ -5,6 +5,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { create } from 'zustand'
 import { getClient, ChatMessage as ApiMessage, ChatCompletionRequest } from '../services/api'
+import { executeClientTool } from '../services/clientTools'
 import { useSSE } from './useSSE'
 
 export interface Message {
@@ -161,6 +162,41 @@ export function useChat() {
             content: (event.data.result as string) || '',
             toolCallId: event.data.tool_call_id as string,
           })
+          break
+
+        case 'client_tool_call':
+          // Client-side tool call - execute locally and submit result
+          (async () => {
+            const toolName = event.data.tool_name as string
+            const toolCallId = event.data.tool_call_id as string
+            const jobId = event.data.job_id as string
+            const args = event.data.arguments as Record<string, unknown>
+
+            try {
+              const result = await executeClientTool(toolName, args)
+              const client = getClient()
+              await client.submitToolResult(jobId, {
+                tool_call_id: toolCallId,
+                tool_name: toolName,
+                result: result.success
+                  ? result.result
+                  : `Error: ${result.error}`,
+              })
+            } catch (error) {
+              console.error('Client tool execution failed:', error)
+              // Try to submit error result
+              try {
+                const client = getClient()
+                await client.submitToolResult(jobId, {
+                  tool_call_id: toolCallId,
+                  tool_name: toolName,
+                  result: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                })
+              } catch {
+                // Ignore submission error
+              }
+            }
+          })()
           break
 
         case 'complete':

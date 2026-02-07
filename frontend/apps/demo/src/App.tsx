@@ -11,8 +11,9 @@ import {
     MessageProps,
     PendingMessageList
 } from '@chatbot-ui/core'
-import { MockChatClient } from './api/MockChatClient';
-import { ChatState } from './api/types';
+import { RealChatClient } from './api/RealChatClient';
+import { AuthClient } from './api/AuthClient';
+import { ChatState, ChatClient } from './api/types';
 
 function App() {
     const [mode, setMode] = useState<ChatMode>('sidebar');
@@ -26,14 +27,59 @@ function App() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
 
+    // Auth & Client State
+    const [accessToken, setAccessToken] = useState<string | null>(null);
+    const [client, setClient] = useState<ChatClient | null>(null);
+
     // Robustly track which messages have finished animating to prevent race conditions
     const finishedMessageIdsRef = useRef<Set<string>>(new Set());
+
+    // Initialize Auth & Client
+    useEffect(() => {
+        const initAuth = async () => {
+            try {
+                console.log('Fetching initial token...');
+                const token = await AuthClient.getInitialToken();
+                console.log('Token received:', token);
+                setAccessToken(token);
+                setClient(new RealChatClient(token));
+            } catch (error) {
+                console.error('Failed to initialize auth:', error);
+                // Fallback to Mock? Or just show error? 
+                // For now, we leave client as null, blocking chat.
+            }
+        };
+
+        initAuth();
+
+        // Refresh token every 45 minutes
+        const REFRESH_INTERVAL = 45 * 60 * 1000;
+        const intervalId = setInterval(async () => {
+            try {
+                console.log('Refreshing token...');
+                const newToken = await AuthClient.refreshToken();
+                setAccessToken(newToken);
+                // Update client with new token if it's an instance of RealChatClient
+                setClient(prev => {
+                    if (prev instanceof RealChatClient) {
+                        prev.setToken(newToken);
+                        return prev;
+                    }
+                    return new RealChatClient(newToken);
+                });
+            } catch (error) {
+                console.error('Failed to refresh token:', error);
+            }
+        }, REFRESH_INTERVAL);
+
+        return () => clearInterval(intervalId);
+    }, []);
 
     // Watch queue and processing state
     useEffect(() => {
         const processQueue = async () => {
             // 1. Basic Locks
-            if (isProcessing) return;
+            if (!client) return; // Wait for client to be ready
             if (messageQueue.length === 0) return;
             if (chatState.isThinking) return;
 
@@ -93,7 +139,7 @@ function App() {
     const prevMsgCountRef = useRef(0);
 
     // Initialize Client (Memoized to persist across renders)
-    const client = useMemo(() => new MockChatClient(), []);
+    // REMOVED: const client = useMemo(() => new MockChatClient(), []);
 
     const handleSend = (text: string) => {
         // Enqueue message
@@ -101,7 +147,7 @@ function App() {
     };
 
     const startNewChat = () => {
-        client.reset(setChatState);
+        if (client) client.reset(setChatState);
         setMessageQueue([]);
         setIsProcessing(false);
         setIsTyping(false);

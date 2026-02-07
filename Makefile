@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator workers archiver frontend postman openapi
+.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend postman openapi
 
 # Default target
 help:
@@ -47,6 +47,9 @@ help:
 	@echo "  make api         - Run API Gateway locally"
 	@echo "  make stream      - Run Stream Edge locally"
 	@echo "  make orchestrator- Run Orchestrator locally"
+	@echo "  make auth-broker - Run Auth Broker locally"
+	@echo "  make workers     - Run Tool Workers locally"
+	@echo "  make archiver    - Run Archiver locally"
 	@echo "  make frontend    - Run Frontend locally"
 	@echo "  make postman      - Generate Postman Collection"
 	@echo "  make openapi      - Generate OpenAPI Schema"
@@ -109,6 +112,9 @@ dev: infra
 	@echo "  make api"
 	@echo "  make stream"
 	@echo "  make orchestrator"
+	@echo "  make auth-broker"
+	@echo "  make workers"
+	@echo "  make archiver"
 	@echo "  make frontend"
 
 api:
@@ -137,6 +143,9 @@ archiver:
 	else \
 		PYTHONPATH=$(PWD) python -m services.archiver.src.main; \
 	fi
+
+auth-broker:
+	cd services/auth-broker && ../../.venv/bin/python main.py
 
 frontend:
 	cd frontend/apps/demo && npm run dev

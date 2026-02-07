@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "auth-broker"
+version = "0.1.0"
+description = "Test OAuth token broker for Flowdit"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "httpx>=0.25.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+auth-broker = "main:main"
+
+[tool.hatch.envs.default]
+python = "3.11"
+
+[tool.hatch.build.targets.wheel]
+packages = ["main.py"]

@@ -23,18 +23,18 @@ from libs.llm.base import (
 
 logger = get_logger(__name__)
 
-# Cache whether the installed OpenAI SDK supports the 'reasoning' parameter
+# Cache whether the installed OpenAI SDK supports the 'reasoning_effort' parameter
 _sdk_supports_reasoning: bool | None = None
 
 
 def _openai_sdk_supports_reasoning() -> bool:
-    """Return True if the installed OpenAI SDK accepts a 'reasoning' kwarg on chat.completions.create."""
+    """Return True if the installed OpenAI SDK accepts 'reasoning_effort' kwarg on chat.completions.create."""
     global _sdk_supports_reasoning
     if _sdk_supports_reasoning is not None:
         return _sdk_supports_reasoning
     try:
         sig = inspect.signature(openai.AsyncOpenAI().chat.completions.create)
-        _sdk_supports_reasoning = "reasoning" in sig.parameters
+        _sdk_supports_reasoning = "reasoning_effort" in sig.parameters
     except Exception:
         _sdk_supports_reasoning = False
     return _sdk_supports_reasoning
@@ -103,7 +103,7 @@ class OpenAIProvider(LLMProvider):
             # Enable reasoning output for reasoning models (only if SDK supports it)
             if _openai_sdk_supports_reasoning():
                 reasoning_effort = kwargs.get("reasoning_effort", "medium")
-                request_kwargs["reasoning"] = {"effort": reasoning_effort}
+                request_kwargs["reasoning_effort"] = reasoning_effort
         else:
             request_kwargs["max_tokens"] = max_tokens
             request_kwargs["temperature"] = temperature
@@ -121,71 +121,13 @@ class OpenAIProvider(LLMProvider):
                 msg = str(e)
             except Exception:
                 msg = ""
-            if "reasoning" in msg and "unexpected" in msg.lower():
-                logger.warning("OpenAI SDK rejected 'reasoning' kwarg, retrying without it", error=msg)
-                request_kwargs.pop("reasoning", None)
+            if "reasoning_effort" in msg and "unexpected" in msg.lower():
+                logger.warning("OpenAI SDK rejected 'reasoning_effort' kwarg, retrying without it", error=msg)
+                request_kwargs.pop("reasoning_effort", None)
                 response = await self.client.chat.completions.create(**request_kwargs)
             else:
                 raise
-
-            # Parse response
-            choice = response.choices[0]
-            message = choice.message
-
-            content = message.content
-            tool_calls = None
-
-            if message.tool_calls:
-                tool_calls = []
-                for tc in message.tool_calls:
-                    try:
-                        args = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        args = {}
-
-                    tool_calls.append(
-                        ToolCall(
-                            id=tc.id,
-                            name=tc.function.name,
-                            arguments=args,
-                        )
-                    )
-
-            # Extract reasoning content robustly
-            reasoning_content = (
-                getattr(message, "reasoning_content", None) or 
-                getattr(message, "reasoning", None)
-            )
-            if reasoning_content is None and hasattr(message, "model_extra") and message.model_extra:
-                reasoning_content = message.model_extra.get("reasoning_content") or message.model_extra.get("reasoning")
-
-            return LLMResponse(
-                content=content,
-                reasoning_content=reasoning_content,
-                tool_calls=tool_calls,
-                input_tokens=response.usage.prompt_tokens if response.usage else 0,
-                output_tokens=response.usage.completion_tokens if response.usage else 0,
-                finish_reason=choice.finish_reason,
-                model=response.model,
-                raw_response=response,
-            )
-
-        except Exception as e:
-            # Also log exception via structured logger so it appears in container logs
-            logger.exception("Exception while calling OpenAI create", error=str(e), model=model)
-            if isinstance(e, openai.APIError):
-                logger.error(
-                    "OpenAI API error",
-                    error=str(e),
-                    model=model,
-                )
-                raise LLMError(
-                    provider="openai",
-                    message=f"OpenAI API error: {e}",
-                    details={"error_type": type(e).__name__},
-                )
-            else:
-                raise
+        except openai.APIError as e:
             logger.error(
                 "OpenAI API error",
                 error=str(e),
@@ -196,6 +138,48 @@ class OpenAIProvider(LLMProvider):
                 message=f"OpenAI API error: {e}",
                 details={"error_type": type(e).__name__},
             )
+
+        # Parse response
+        choice = response.choices[0]
+        message = choice.message
+
+        content = message.content
+        tool_calls = None
+
+        if message.tool_calls:
+            tool_calls = []
+            for tc in message.tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments)
+                except json.JSONDecodeError:
+                    args = {}
+
+                tool_calls.append(
+                    ToolCall(
+                        id=tc.id,
+                        name=tc.function.name,
+                        arguments=args,
+                    )
+                )
+
+        # Extract reasoning content robustly
+        reasoning_content = (
+            getattr(message, "reasoning_content", None) or
+            getattr(message, "reasoning", None)
+        )
+        if reasoning_content is None and hasattr(message, "model_extra") and message.model_extra:
+            reasoning_content = message.model_extra.get("reasoning_content") or message.model_extra.get("reasoning")
+
+        return LLMResponse(
+            content=content,
+            reasoning_content=reasoning_content,
+            tool_calls=tool_calls,
+            input_tokens=response.usage.prompt_tokens if response.usage else 0,
+            output_tokens=response.usage.completion_tokens if response.usage else 0,
+            finish_reason=choice.finish_reason,
+            model=response.model,
+            raw_response=response,
+        )
 
     async def stream(
         self,
@@ -249,7 +233,7 @@ class OpenAIProvider(LLMProvider):
             # Enable reasoning output for reasoning models (only if SDK supports it)
             if _openai_sdk_supports_reasoning():
                 reasoning_effort = kwargs.get("reasoning_effort", "medium")
-                request_kwargs["reasoning"] = {"effort": reasoning_effort}
+                request_kwargs["reasoning_effort"] = reasoning_effort
         else:
             request_kwargs["max_tokens"] = max_tokens
             request_kwargs["temperature"] = temperature
@@ -268,7 +252,7 @@ class OpenAIProvider(LLMProvider):
             except Exception:
                 msg = ""
             if "reasoning" in msg and "unexpected" in msg.lower():
-                logger.warning("OpenAI SDK rejected 'reasoning' kwarg for stream, retrying without it", error=msg)
+                logger.warning("OpenAI SDK rejected 'reasoning_effort' kwarg for stream, retrying without it", error=msg)
                 request_kwargs.pop("reasoning", None)
                 stream = await self.client.chat.completions.create(**request_kwargs)
             else:
@@ -306,6 +290,11 @@ class OpenAIProvider(LLMProvider):
                 # Handle reasoning content (for reasoning models like o1, o3, gpt-5-mini)
                 reasoning_content = None
                 try:
+                    # Log all delta attributes for debugging
+                    delta_attrs = {k: v for k, v in vars(delta).items() if not k.startswith('_') and v is not None}
+                    if delta_attrs and not delta.content:
+                        logger.info(f"Delta non-null attrs (no content): {delta_attrs}")
+
                     # Try direct attributes first
                     reasoning_content = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
 
@@ -313,11 +302,8 @@ class OpenAIProvider(LLMProvider):
                     if reasoning_content is None and hasattr(delta, "model_extra") and delta.model_extra:
                         extra = delta.model_extra
                         if extra:
+                            logger.info(f"Delta model_extra: {extra}")
                             reasoning_content = extra.get("reasoning_content") or extra.get("reasoning")
-
-                    # Debug log to see what fields are available
-                    if hasattr(delta, "model_extra") and delta.model_extra:
-                        logger.debug(f"Delta model_extra keys: {list(delta.model_extra.keys())}")
                 except Exception as e:
                     logger.warning(f"Error extracting reasoning content: {e}")
 
@@ -389,3 +375,109 @@ class OpenAIProvider(LLMProvider):
                     details={"error_type": type(e).__name__},
                 )
             raise
+
+    async def complete_structured(
+        self,
+        system: str,
+        user_message: str,
+        json_schema: dict[str, Any],
+        schema_name: str = "StructuredOutput",
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """Generate structured output following a JSON schema.
+
+        Uses OpenAI's Responses API with strict JSON schema validation.
+
+        Args:
+            system: System prompt
+            user_message: User message/prompt
+            json_schema: JSON schema to validate output against
+            schema_name: Name for the schema (default: "StructuredOutput")
+            model: Model to use (default: gpt-4o)
+
+        Returns:
+            Parsed JSON object matching the schema
+
+        Raises:
+            LLMError: If generation or parsing fails
+        """
+        model = model or "gpt-4o"
+
+        logger.info(
+            "OpenAI structured output request",
+            model=model,
+            schema_name=schema_name,
+        )
+
+        try:
+            response = await self.client.responses.create(
+                model=model,
+                input=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_message},
+                ],
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": schema_name,
+                        "schema": json_schema,
+                        "strict": True,
+                    }
+                },
+            )
+
+            logger.info(
+                "OpenAI structured output received",
+                output_count=len(response.output or []),
+            )
+
+            # Extract JSON from response
+            if not response.output:
+                raise LLMError(
+                    provider="openai",
+                    message="Empty response from OpenAI Responses API",
+                    details={"model": model},
+                )
+
+            first_block = response.output[0]
+            payload = None
+
+            # Try different ways to extract text content
+            if getattr(first_block, "type", None) == "output_text":
+                payload = first_block.text
+            else:
+                content = getattr(first_block, "content", None)
+                if content and len(content) > 0 and hasattr(content[0], "text"):
+                    payload = content[0].text
+
+            if payload is None:
+                raise LLMError(
+                    provider="openai",
+                    message="Unexpected response format from OpenAI Responses API",
+                    details={"model": model, "first_block_type": type(first_block).__name__},
+                )
+
+            return json.loads(payload)
+
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Failed to parse structured output JSON",
+                error=str(e),
+                model=model,
+            )
+            raise LLMError(
+                provider="openai",
+                message=f"Failed to parse structured output: {e}",
+                details={"error_type": "JSONDecodeError"},
+            )
+        except openai.APIError as e:
+            logger.error(
+                "OpenAI API error during structured output",
+                error=str(e),
+                model=model,
+            )
+            raise LLMError(
+                provider="openai",
+                message=f"OpenAI API error: {e}",
+                details={"error_type": type(e).__name__},
+            )

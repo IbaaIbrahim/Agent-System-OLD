@@ -1,7 +1,16 @@
 """Base tool class for all tools."""
 
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any
+
+
+class ToolCategory(str, Enum):
+    """Tool category determining visibility and execution location."""
+
+    BUILTIN = "builtin"  # Always enabled, not shown in UI (web_search, get_current_time)
+    CONFIGURABLE = "configurable"  # User can toggle in UI (generate_checklist)
+    CLIENT_SIDE = "client_side"  # Executes in frontend (read_page, get_element)
 
 
 class BaseTool(ABC):
@@ -10,6 +19,7 @@ class BaseTool(ABC):
     name: str = "base_tool"
     description: str = "Base tool description"
     parameters: dict[str, Any] = {}
+    category: ToolCategory = ToolCategory.BUILTIN  # Default to built-in
 
     @abstractmethod
     async def execute(
@@ -32,12 +42,13 @@ class BaseTool(ABC):
         """Get tool definition for LLM.
 
         Returns:
-            Tool definition dictionary
+            Tool definition dictionary including category
         """
         return {
             "name": self.name,
             "description": self.description,
             "parameters": self.parameters,
+            "category": self.category.value,
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> list[str]:
