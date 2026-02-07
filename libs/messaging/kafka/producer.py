@@ -98,6 +98,14 @@ class KafkaProducer:
             kafka_headers = [(k, v.encode("utf-8")) for k, v in headers.items()]
 
         try:
+            # Info-level log about outgoing Kafka message
+            logger.info(
+                "Sending message to Kafka",
+                topic=topic,
+                key=key,
+                payload_size=len(json.dumps(message)) if message else 0,
+                headers_count=len(kafka_headers) if kafka_headers else 0,
+            )
             await self._producer.send_and_wait(
                 topic=topic,
                 value=message,

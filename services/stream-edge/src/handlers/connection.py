@@ -8,6 +8,8 @@ from typing import Any
 from uuid import UUID
 
 from libs.common import get_logger
+import time
+import json
 
 logger = get_logger(__name__)
 
@@ -118,10 +120,12 @@ class ConnectionManager:
                         "data": data,
                         "id": event_id,
                     }
+
                     await asyncio.wait_for(
                         connection.queue.put(event),
                         timeout=1.0,
                     )
+
                     sent_count += 1
                 except TimeoutError:
                     logger.warning(

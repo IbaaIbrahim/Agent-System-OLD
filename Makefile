@@ -119,7 +119,7 @@ stream:
 
 orchestrator:
 	@if command -v watchfiles > /dev/null; then \
-		PYTHONPATH=$(PWD) watchfiles "python -m services.orchestrator.src.main"; \
+		PYTHONPATH=$(PWD) watchfiles --ignore-paths .cursor "python -m services.orchestrator.src.main"; \
 	else \
 		PYTHONPATH=$(PWD) python -m services.orchestrator.src.main; \
 	fi

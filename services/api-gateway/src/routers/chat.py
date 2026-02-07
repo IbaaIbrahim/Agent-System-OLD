@@ -87,6 +87,16 @@ async def create_chat_completion(
     """
     config = get_config()
 
+    # Entry log for request (don't log sensitive tokens)
+    logger.info(
+        "Create chat completion request received",
+        tenant_id=str(tenant_id),
+        provider=body.provider,
+        model=body.model,
+        message_count=len(body.messages),
+        stream=body.stream,
+    )
+
     # Generate job ID
     job_id = uuid.uuid4()
 
@@ -207,20 +217,44 @@ async def create_chat_completion(
     }
 
     producer = await get_producer()
-    await producer.send(
-        topic=config.jobs_topic,
-        message=job_payload,
-        key=str(tenant_id),
-        headers={
-            "job_id": str(job_id),
-            "tenant_id": str(tenant_id),
-            "partner_id": str(partner_id) if partner_id else "",
-            "internal_token": internal_token,
-        },
-    )
+    # Log summary before sending to Kafka
+    try:
+        logger.info(
+            "Publishing job to Kafka",
+            job_id=str(job_id),
+            topic=config.jobs_topic,
+            provider=provider,
+            model=model,
+            message_size=len(str(job_payload)) if job_payload else 0,
+            headers_count=4,
+        )
+        await producer.send(
+            topic=config.jobs_topic,
+            message=job_payload,
+            key=str(tenant_id),
+            headers={
+                "job_id": str(job_id),
+                "tenant_id": str(tenant_id),
+                "partner_id": str(partner_id) if partner_id else "",
+                # do NOT log internal_token value to avoid leaking secrets
+                "internal_token": "present" if internal_token else "",
+            },
+        )
+        logger.info(
+            "Chat completion job published to Kafka (confirmed send)",
+            job_id=str(job_id),
+            topic=config.jobs_topic,
+        )
+    except Exception as e:
+        logger.exception(
+            "Failed to publish chat completion job to Kafka",
+            job_id=str(job_id),
+            error=str(e),
+        )
+        raise
 
-    logger.info(
-        "Chat completion job published to Kafka",
+    logger.debug(
+        "Chat completion job metadata",
         job_id=str(job_id),
         tenant_id=str(tenant_id),
         provider=provider,
