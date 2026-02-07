@@ -57,20 +57,7 @@ class EventPublisher:
         }
 
         try:
-            subscriber_count = await self.pubsub.publish(channel, message)
-            logger.info(
-                "Published event",
-                job_id=str(job_id),
-                event_type=event_type,
-                subscribers=subscriber_count,
-            )
-            if subscriber_count == 0:
-                logger.warning(
-                    "Published event but no subscribers - stream client may not be connected for this job",
-                    job_id=str(job_id),
-                    event_type=event_type,
-                    channel=channel,
-                )
+            await self.pubsub.publish(channel, message)
         except Exception as e:
             logger.error(
                 "Failed to publish to Pub/Sub",
