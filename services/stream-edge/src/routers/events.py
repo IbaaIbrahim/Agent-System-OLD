@@ -3,6 +3,7 @@
 import asyncio
 import json
 import uuid
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -93,6 +94,10 @@ async def event_generator(
     await pubsub.subscribe(channel)
 
     try:
+        # Send an immediate SSE comment so the client receives a chunk right away (avoids blank
+        # stream due to buffering and confirms the connection is live).
+        yield ": connected\n\n"
+
         # Send initial retry interval
         yield format_sse_event(
             data={"status": "connected", "job_id": str(job_id)},
@@ -104,26 +109,40 @@ async def event_generator(
 
         # Always handle catch-up to ensure no events missed between job creation and SSE connection
         catchup_handler = CatchupHandler()
+        catchup_count = 0
         async for event in catchup_handler.get_catchup_events(job_id, last_event_id):
             if not connection.is_active:
                 break
-            
+
             event_id = event.get("id")
             yield format_sse_event(
                 data=event["data"],
                 event_type=event["type"],
                 event_id=event_id,
             )
-            
+            catchup_count += 1
+
             if event_id:
                 last_yielded_id = event_id
                 connection.last_event_id = event_id
 
+        if catchup_count > 0:
+            logger.info(
+                "Stream-edge: catchup yielded events",
+                job_id=str(job_id),
+                count=catchup_count,
+            )
+
         # Listen for real-time events
+        logger.info(
+            "Stream-edge: subscribed to Redis, waiting for events",
+            job_id=str(job_id),
+        )
         keepalive_task = asyncio.create_task(
             keepalive_generator(connection, config.sse_keepalive_interval)
         )
 
+        first_received = True
         try:
             async for _event_channel, event_data in pubsub.listen():
                 if not connection.is_active:
@@ -138,14 +157,27 @@ async def event_generator(
                 event_id = event_data.get("id")
                 payload = event_data.get("data", event_data)
 
+                if first_received:
+                    logger.info(
+                        "Stream-edge: first event from Redis",
+                        job_id=str(job_id),
+                        event_type=event_type,
+                    )
+                    first_received = False
+
                 # De-duplicate: skip if already yielded via catch-up
                 if event_id and last_yielded_id:
                     # Redis Stream IDs are timestamp-seq, so simple string comparison works
-                    # for most cases, but we should be careful. 
+                    # for most cases, but we should be careful.
                     # If event_id <= last_yielded_id, skip it.
                     if event_id <= last_yielded_id:
                         continue
 
+                logger.debug(
+                    "Stream-edge: yielding to client",
+                    job_id=str(job_id),
+                    event_type=event_type,
+                )
                 yield format_sse_event(
                     data=payload,
                     event_type=event_type,

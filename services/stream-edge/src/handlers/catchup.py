@@ -8,6 +8,8 @@ from uuid import UUID
 from libs.common import get_logger
 from libs.messaging.redis import RedisStreams
 from ..config import get_config
+import time
+import json
 
 logger = get_logger(__name__)
 
@@ -40,8 +42,11 @@ class CatchupHandler:
         """
         if not last_event_id:
             # No last event ID, start from beginning of hot window
+            events = []
             async for event in self._hot_catchup(job_id, "0"):
+                events.append(event)
                 yield event
+
             return
 
         # Parse last event ID to determine if hot or cold
@@ -51,14 +56,22 @@ class CatchupHandler:
 
         if timestamp and timestamp >= hot_window_start:
             # Event is within hot window, use Redis streams
+            events = []
             async for event in self._hot_catchup(job_id, last_event_id):
+                events.append(event)
                 yield event
+
         else:
             # Event is older, need cold catch-up from database
+            cold_events = []
             async for event in self._cold_catchup(job_id, last_event_id):
+                cold_events.append(event)
                 yield event
+
             # Then continue with hot events
+            hot_events = []
             async for event in self._hot_catchup(job_id, "0"):
+                hot_events.append(event)
                 yield event
 
     async def _hot_catchup(

@@ -1,9 +1,11 @@
 """OpenAI LLM provider implementation."""
 
+import inspect
 import json
 from collections.abc import AsyncIterator
 from typing import Any
 import sys
+import time
 
 import openai
 
@@ -20,6 +22,22 @@ from libs.llm.base import (
 )
 
 logger = get_logger(__name__)
+
+# Cache whether the installed OpenAI SDK supports the 'reasoning' parameter
+_sdk_supports_reasoning: bool | None = None
+
+
+def _openai_sdk_supports_reasoning() -> bool:
+    """Return True if the installed OpenAI SDK accepts a 'reasoning' kwarg on chat.completions.create."""
+    global _sdk_supports_reasoning
+    if _sdk_supports_reasoning is not None:
+        return _sdk_supports_reasoning
+    try:
+        sig = inspect.signature(openai.AsyncOpenAI().chat.completions.create)
+        _sdk_supports_reasoning = "reasoning" in sig.parameters
+    except Exception:
+        _sdk_supports_reasoning = False
+    return _sdk_supports_reasoning
 
 
 class OpenAIProvider(LLMProvider):
@@ -82,9 +100,10 @@ class OpenAIProvider(LLMProvider):
             if model.startswith("o3"):
                 request_kwargs["temperature"] = temperature
 
-            # Enable reasoning output for reasoning models
-            reasoning_effort = kwargs.get("reasoning_effort", "medium")
-            request_kwargs["reasoning"] = {"effort": reasoning_effort}
+            # Enable reasoning output for reasoning models (only if SDK supports it)
+            if _openai_sdk_supports_reasoning():
+                reasoning_effort = kwargs.get("reasoning_effort", "medium")
+                request_kwargs["reasoning"] = {"effort": reasoning_effort}
         else:
             request_kwargs["max_tokens"] = max_tokens
             request_kwargs["temperature"] = temperature
@@ -96,6 +115,18 @@ class OpenAIProvider(LLMProvider):
 
         try:
             response = await self.client.chat.completions.create(**request_kwargs)
+        except TypeError as e:
+            # Retry without 'reasoning' if the SDK doesn't accept it
+            try:
+                msg = str(e)
+            except Exception:
+                msg = ""
+            if "reasoning" in msg and "unexpected" in msg.lower():
+                logger.warning("OpenAI SDK rejected 'reasoning' kwarg, retrying without it", error=msg)
+                request_kwargs.pop("reasoning", None)
+                response = await self.client.chat.completions.create(**request_kwargs)
+            else:
+                raise
 
             # Parse response
             choice = response.choices[0]
@@ -139,7 +170,22 @@ class OpenAIProvider(LLMProvider):
                 raw_response=response,
             )
 
-        except openai.APIError as e:
+        except Exception as e:
+            # Also log exception via structured logger so it appears in container logs
+            logger.exception("Exception while calling OpenAI create", error=str(e), model=model)
+            if isinstance(e, openai.APIError):
+                logger.error(
+                    "OpenAI API error",
+                    error=str(e),
+                    model=model,
+                )
+                raise LLMError(
+                    provider="openai",
+                    message=f"OpenAI API error: {e}",
+                    details={"error_type": type(e).__name__},
+                )
+            else:
+                raise
             logger.error(
                 "OpenAI API error",
                 error=str(e),
@@ -200,9 +246,10 @@ class OpenAIProvider(LLMProvider):
             if model.startswith("o3"):
                 request_kwargs["temperature"] = temperature
 
-            # Enable reasoning output for reasoning models
-            reasoning_effort = kwargs.get("reasoning_effort", "medium")
-            request_kwargs["reasoning"] = {"effort": reasoning_effort}
+            # Enable reasoning output for reasoning models (only if SDK supports it)
+            if _openai_sdk_supports_reasoning():
+                reasoning_effort = kwargs.get("reasoning_effort", "medium")
+                request_kwargs["reasoning"] = {"effort": reasoning_effort}
         else:
             request_kwargs["max_tokens"] = max_tokens
             request_kwargs["temperature"] = temperature
@@ -210,17 +257,35 @@ class OpenAIProvider(LLMProvider):
         if tools:
             request_kwargs["tools"] = [t.to_openai() for t in tools]
 
-        logger.info(f"DEBUG: OpenAI stream final kwargs keys: {list(request_kwargs.keys())}")
+        logger.debug("OpenAI stream request kwargs keys: %s", list(request_kwargs.keys()))
 
         try:
             stream = await self.client.chat.completions.create(**request_kwargs)
+        except TypeError as e:
+            # Retry without 'reasoning' if the SDK doesn't accept it
+            try:
+                msg = str(e)
+            except Exception:
+                msg = ""
+            if "reasoning" in msg and "unexpected" in msg.lower():
+                logger.warning("OpenAI SDK rejected 'reasoning' kwarg for stream, retrying without it", error=msg)
+                request_kwargs.pop("reasoning", None)
+                stream = await self.client.chat.completions.create(**request_kwargs)
+            else:
+                raise
 
+        logger.info("OpenAI stream created, consuming chunks")
+        try:
             current_tool_calls: dict[int, dict[str, Any]] = {}
             input_tokens = 0
             output_tokens = 0
             finish_reason = None
+            first_chunk = True
 
             async for chunk in stream:
+                if first_chunk:
+                    logger.info("First stream chunk received")
+                    first_chunk = False
                 if not chunk.choices:
                     # Usage info comes in final chunk
                     if chunk.usage:
@@ -309,14 +374,18 @@ class OpenAIProvider(LLMProvider):
                 output_tokens=output_tokens,
             )
 
-        except openai.APIError as e:
-            logger.error(
-                "OpenAI streaming error",
-                error=str(e),
-                model=model,
-            )
-            raise LLMError(
-                provider="openai",
-                message=f"OpenAI streaming error: {e}",
-                details={"error_type": type(e).__name__},
-            )
+        except Exception as e:
+            # Also log exception via structured logger so it appears in container logs
+            logger.exception("Exception while calling OpenAI stream create", error=str(e), model=model)
+            if isinstance(e, openai.APIError):
+                logger.error(
+                    "OpenAI streaming error",
+                    error=str(e),
+                    model=model,
+                )
+                raise LLMError(
+                    provider="openai",
+                    message=f"OpenAI streaming error: {e}",
+                    details={"error_type": type(e).__name__},
+                )
+            raise

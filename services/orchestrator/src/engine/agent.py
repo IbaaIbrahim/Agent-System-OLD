@@ -69,7 +69,23 @@ class AgentExecutor:
                 )
 
                 # Call LLM
+                logger.debug(
+                    "Calling llm_service.complete",
+                    job_id=str(state.job_id),
+                    model=state.model,
+                    message_count=len(state.messages),
+                    metadata=state.metadata,
+                )
                 response = await self.llm_service.complete(state)
+                logger.debug(
+                    "llm_service.complete returned",
+                    job_id=str(state.job_id),
+                    input_tokens=response.input_tokens,
+                    output_tokens=response.output_tokens,
+                    has_content=bool(response.content),
+                    has_reasoning=bool(response.reasoning_content),
+                    has_tool_calls=bool(response.tool_calls),
+                )
 
                 # Update token counts
                 state.increment_tokens(
@@ -228,12 +244,34 @@ class AgentExecutor:
                 reasoning_buffer = ""
                 tool_calls = []
 
+                logger.info(
+                    "Calling llm_service.stream now",
+                    job_id=str(state.job_id),
+                    provider=state.provider,
+                    model=state.model,
+                    message_count=len(state.messages),
+                )
                 async for chunk in self.llm_service.stream(state):
                     if chunk:
+                        # Log summary of chunk content for debugging without dumping large payloads
+                        try:
+                            content_len = len(chunk.content) if chunk.content else 0
+                        except Exception:
+                            content_len = 0
+                        try:
+                            reasoning_len = len(chunk.reasoning_content) if chunk.reasoning_content else 0
+                        except Exception:
+                            reasoning_len = 0
+                        tool_calls_count = len(chunk.tool_calls) if chunk.tool_calls else 0
+
                         logger.debug(
-                            "Stream chunk",
+                            "Stream chunk received",
                             job_id=str(state.job_id),
-                            chunk=chunk,
+                            content_len=content_len,
+                            reasoning_len=reasoning_len,
+                            tool_calls_count=tool_calls_count,
+                            is_final=bool(chunk.is_final),
+                            finish_reason=chunk.finish_reason,
                         )
                         
                         if chunk.content:
