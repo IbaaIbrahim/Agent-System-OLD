@@ -8,4 +8,5 @@ export interface ChatState {
 export interface ChatClient {
     sendMessage: (content: string, onUpdate: (state: ChatState) => void) => Promise<void>;
     reset: (onUpdate: (state: ChatState) => void) => void;
+    setModel: (model: string | null) => void;
 }

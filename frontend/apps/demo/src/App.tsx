@@ -18,6 +18,9 @@ import { ChatState, ChatClient } from './api/types';
 function App() {
     const [mode, setMode] = useState<ChatMode>('sidebar');
     const [isOpen, setIsOpen] = useState(true);
+    const [selectedModel, setSelectedModel] = useState<string>('auto');
+    const [isConfigOpen, setIsConfigOpen] = useState(false);
+
 
     // State managed by Client
     const [chatState, setChatState] = useState<ChatState>({ messages: [], isThinking: false });
@@ -74,6 +77,14 @@ function App() {
 
         return () => clearInterval(intervalId);
     }, []);
+
+    // Sync Model to Client
+    useEffect(() => {
+        if (client) {
+            client.setModel(selectedModel);
+        }
+    }, [client, selectedModel]);
+
 
     // Watch queue and processing state
     useEffect(() => {
@@ -205,12 +216,28 @@ function App() {
     return (
         <div style={{ padding: '0', fontFamily: 'sans-serif', background: '#333', height: '100vh', width: '100vw' }}>
             {/* Controls for Demo */}
-            <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10000, background: 'white', padding: 5, borderRadius: 4 }}>
-                <button onClick={() => { setMode('floating'); setIsOpen(true); }}>Floating</button>
-                <button onClick={() => { setMode('sidebar'); setIsOpen(true); }}>Sidebar</button>
-                <button onClick={() => { setMode('fullscreen'); setIsOpen(true); }}>Fullscreen</button>
-                <button onClick={() => setIsOpen(!isOpen)}>Toggle Open/Close</button>
+            <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10000, background: 'rgba(255,255,255,0.9)', padding: 10, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontWeight: 'bold', marginRight: 5 }}>Demo Controls:</span>
+                <button onClick={() => { setMode('floating'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Floating</button>
+                <button onClick={() => { setMode('sidebar'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Sidebar</button>
+                <button onClick={() => { setMode('fullscreen'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Fullscreen</button>
+                <button onClick={() => setIsOpen(!isOpen)} style={{ cursor: 'pointer', padding: '4px 8px' }}>Toggle View</button>
+
+                <div style={{ borderLeft: '1px solid #ccc', height: '20px', margin: '0 5px' }}></div>
+
+                <label style={{ fontSize: '14px' }}>Model: </label>
+                <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
+                >
+                    <option value="auto">Auto (Default)</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="gpt-4o-mini">GPT-4o Mini</option>
+                    <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
+                </select>
             </div>
+
 
             <ChatContainer
                 mode={mode}

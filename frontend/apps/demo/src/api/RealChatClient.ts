@@ -7,6 +7,10 @@ const GATEWAY_URL = 'http://localhost:8000/api';
 export class RealChatClient implements ChatClient {
     private accessToken: string | null = null;
     private messages: MessageProps[] = [];
+    private currentModel: string | null = null;
+    private currentProvider: string | null = null;
+
+
 
     constructor(token: string) {
         this.accessToken = token;
@@ -15,6 +19,20 @@ export class RealChatClient implements ChatClient {
     setToken(token: string) {
         this.accessToken = token;
     }
+
+    setModel(model: string | null) {
+        // If 'auto', we send null to let the gateway use its defaults
+        if (model === 'auto' || !model) {
+            this.currentModel = null;
+            this.currentProvider = null;
+        } else {
+            this.currentModel = model;
+            // Basic inference: gpt* -> openai, else anthropic (adjust as needed)
+            this.currentProvider = model.startsWith('gpt') ? 'openai' : 'anthropic';
+        }
+    }
+
+
 
     async sendMessage(content: string, onUpdate: (state: ChatState) => void): Promise<void> {
         if (!this.accessToken) {
@@ -48,7 +66,8 @@ export class RealChatClient implements ChatClient {
                 },
                 body: JSON.stringify({
                     messages: apiMessages,
-                    model: 'gpt-4o', // Defaulting to a model, can be made configurable
+                    model: this.currentModel,
+                    provider: this.currentProvider,
                     stream: true
                 })
             });
@@ -85,57 +104,41 @@ export class RealChatClient implements ChatClient {
             const eventSource = new EventSource(stream_url);
             let fullContent = '';
 
-            eventSource.onmessage = (event) => {
-                // Determine if event data is JSON or plain text
+            // Listen for 'delta' events for content updates
+            eventSource.addEventListener('delta', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
-
-                    // Handle different event types if structured, or assume content delta
-                    // Setup based on typical SSE delta format: { delta: "text" } or just "text"
-                    // Adjust based on actual Stream Edge implementation.
-                    // Assuming structure: { content: "token", ... } or similar.
-                    // If stream edge sends raw tokens as data, valid JSON might not be guaranteed for partials, 
-                    // but usually it sends JSON objects.
-
                     if (data.content) {
                         fullContent += data.content;
-                        // Update the last message
                         this.messages = this.messages.map(m =>
                             m.id === assistantMsgId ? { ...m, content: fullContent } : m
                         );
                         onUpdate({ messages: this.messages, isThinking: true });
                     }
-
-                    if (data.status === 'completed' || data.done) {
-                        eventSource.close();
-                        onUpdate({ messages: this.messages, isThinking: false });
-                    }
-
                 } catch (e) {
-                    // If not JSON, maybe raw text?
-                    console.warn('SSE Parse Error or limit reached', e);
+                    console.warn('Failed to parse delta event data', e);
                 }
-            };
+            });
 
-            eventSource.onerror = (err) => {
-                console.error('EventSource failed:', err);
-                eventSource.close();
-                onUpdate({ messages: this.messages, isThinking: false });
-
-                if (fullContent.length === 0) {
-                    // If we failed before getting anything
-                    this.messages = this.messages.map(m =>
-                        m.id === assistantMsgId ? { ...m, content: 'Error: Connection to stream failed.' } : m
-                    );
-                    onUpdate({ messages: this.messages, isThinking: false });
-                }
-            };
-
-            // Listen for specific event types if backend sends named events
-            eventSource.addEventListener('completion', () => {
+            // Listen for 'complete' event to close connection
+            eventSource.addEventListener('complete', () => {
                 eventSource.close();
                 onUpdate({ messages: this.messages, isThinking: false });
             });
+
+            // Handle errors
+            eventSource.onerror = (err) => {
+                console.error('EventSource failed:', err);
+                eventSource.close();
+
+                if (fullContent.length === 0) {
+                    this.messages = this.messages.map(m =>
+                        m.id === assistantMsgId ? { ...m, content: 'Error: Connection to stream failed.' } : m
+                    );
+                }
+                onUpdate({ messages: this.messages, isThinking: false });
+            };
+
 
 
         } catch (error: any) {
