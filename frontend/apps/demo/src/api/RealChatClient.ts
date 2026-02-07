@@ -9,6 +9,7 @@ export class RealChatClient implements ChatClient {
     private messages: MessageProps[] = [];
     private currentModel: string | null = null;
     private currentProvider: string | null = null;
+    private enabledTools: string[] = [];
 
 
 
@@ -32,6 +33,9 @@ export class RealChatClient implements ChatClient {
         }
     }
 
+    setEnabledTools(tools: string[]) {
+        this.enabledTools = tools;
+    }
 
 
     async sendMessage(content: string, onUpdate: (state: ChatState) => void): Promise<void> {
@@ -68,7 +72,10 @@ export class RealChatClient implements ChatClient {
                     messages: apiMessages,
                     model: this.currentModel,
                     provider: this.currentProvider,
-                    stream: true
+                    stream: true,
+                    metadata: {
+                        enabled_tools: this.enabledTools
+                    }
                 })
             });
 
@@ -110,13 +117,117 @@ export class RealChatClient implements ChatClient {
                     const data = JSON.parse(event.data);
                     if (data.content) {
                         fullContent += data.content;
-                        this.messages = this.messages.map(m =>
-                            m.id === assistantMsgId ? { ...m, content: fullContent } : m
-                        );
+                        this.messages = this.messages.map(m => {
+                            if (m.id === assistantMsgId) {
+                                let updatedM = { ...m, content: fullContent };
+
+                                // If we are in "steps mode", we must sync the content to a text step
+                                if (m.steps && m.steps.length > 0) {
+                                    const steps = [...m.steps];
+                                    const lastStep = steps[steps.length - 1];
+
+                                    if (lastStep && lastStep.type === 'text') {
+                                        // Update the existing last text step
+                                        steps[steps.length - 1] = {
+                                            ...lastStep,
+                                            content: (lastStep.content || '') + data.content
+                                        };
+                                    } else {
+                                        // Create a new text step
+                                        steps.push({
+                                            id: `text-${Date.now()}`,
+                                            type: 'text',
+                                            content: data.content
+                                        });
+                                    }
+                                    updatedM.steps = steps;
+                                }
+                                return updatedM;
+                            }
+                            return m;
+                        });
                         onUpdate({ messages: this.messages, isThinking: true });
                     }
                 } catch (e) {
                     console.warn('Failed to parse delta event data', e);
+                }
+            });
+
+            // Listen for 'tool_call' events (for informational display)
+            eventSource.addEventListener('tool_call', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Tool call received:', data);
+
+                    this.messages = this.messages.map(m => {
+                        if (m.id === assistantMsgId) {
+                            let steps = m.steps ? [...m.steps] : [];
+
+                            // Transition from simple content to steps:
+                            // Move existing top-level content to a text step so it remains visible
+                            if (steps.length === 0 && fullContent) {
+                                steps.push({
+                                    id: `text-pre-${Date.now()}`,
+                                    type: 'text',
+                                    content: fullContent
+                                });
+                            }
+
+                            const newStep: MessageStep = {
+                                id: data.id || `tool-${Date.now()}`,
+                                type: 'tool-call',
+                                toolName: data.name || data.tool_name,
+                                toolArgs: data.arguments,
+                                toolStatus: 'running'
+                            };
+                            return { ...m, steps: [...steps, newStep] };
+                        }
+                        return m;
+                    });
+                    onUpdate({ messages: this.messages, isThinking: true });
+                } catch (e) {
+                    console.warn('Failed to parse tool_call event data', e);
+                }
+            });
+
+            // Listen for 'tool_result' events (when tools complete)
+            eventSource.addEventListener('tool_result', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Tool result received:', data);
+
+                    this.messages = this.messages.map(m => {
+                        if (m.id === assistantMsgId && m.steps) {
+                            const steps = m.steps.map(s => {
+                                // Match by tool call ID or name if ID is missing
+                                if (s.type === 'tool-call' && (s.id === data.tool_call_id || s.toolName === data.tool_name)) {
+                                    return {
+                                        ...s,
+                                        toolStatus: 'completed',
+                                        toolResult: data.result
+                                    } as MessageStep;
+                                }
+                                return s;
+                            });
+                            return { ...m, steps };
+                        }
+                        return m;
+                    });
+                    onUpdate({ messages: this.messages, isThinking: true });
+                } catch (e) {
+                    console.warn('Failed to parse tool_result event data', e);
+                }
+            });
+
+            // Listen for 'suspended' events (when job waits for tool execution)
+            eventSource.addEventListener('suspended', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Job suspended, waiting for tools:', data.pending_tools);
+                    // Job is suspended waiting for tool results - keep connection open
+                    // Backend will handle tool execution and resume
+                } catch (e) {
+                    console.warn('Failed to parse suspended event data', e);
                 }
             });
 

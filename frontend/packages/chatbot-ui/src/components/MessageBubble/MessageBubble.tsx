@@ -18,6 +18,7 @@ export interface MessageStep {
     toolName?: string;
     toolArgs?: any;
     toolStatus?: 'running' | 'completed' | 'failed';
+    toolResult?: any;
     isFinished?: boolean;
     thoughts?: string[];
 }
@@ -33,6 +34,7 @@ export interface MessageProps {
         toolName: string;
         args: any;
         status: 'running' | 'completed' | 'failed';
+        result?: any;
     };
     onAnimationComplete?: () => void;
     shouldAnimate?: boolean;
@@ -84,6 +86,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                             toolName={step.toolName || 'Tool'}
                                             args={step.toolArgs}
                                             status={step.toolStatus as any}
+                                            result={step.toolResult}
                                         />
                                     </div>
                                 );
@@ -315,6 +318,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                         toolName={toolInvocation.toolName}
                         args={toolInvocation.args}
                         status={toolInvocation.status}
+                        result={toolInvocation.result}
                     />
                 </div>
             </div>

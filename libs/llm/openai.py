@@ -49,9 +49,10 @@ class OpenAIProvider(LLMProvider):
         self,
         api_key: str,
         default_model: str = "gpt-4-turbo-preview",
+        timeout: int = 60,
     ) -> None:
-        super().__init__(api_key, default_model)
-        self.client = openai.AsyncOpenAI(api_key=api_key)
+        super().__init__(api_key, default_model, timeout)
+        self.client = openai.AsyncOpenAI(api_key=api_key, timeout=timeout)
 
     async def complete(
         self,

@@ -5,16 +5,28 @@ interface MenuProps {
    onClose: () => void;
 }
 
-export const ReasoningMenu: React.FC<MenuProps> = ({ onClose }) => {
+export interface ReasoningMenuProps extends MenuProps {
+   webSearchEnabled?: boolean;
+   onWebSearchChange?: (enabled: boolean) => void;
+}
+
+export const ReasoningMenu: React.FC<ReasoningMenuProps> = ({
+   onClose,
+   webSearchEnabled = false,
+   onWebSearchChange
+}) => {
    const [reasoning, setReasoning] = useState<'rovo' | 'deep' | 'research'>('rovo');
    const [toggles, setToggles] = useState({
-      web: false,
       knowledge: true,
       autoApply: true
    });
 
    const toggle = (key: keyof typeof toggles) => {
       setToggles(prev => ({ ...prev, [key]: !prev[key] }));
+   };
+
+   const handleWebToggle = () => {
+      onWebSearchChange?.(!webSearchEnabled);
    };
 
    return (
@@ -60,12 +72,12 @@ export const ReasoningMenu: React.FC<MenuProps> = ({ onClose }) => {
                <span>Sources</span>
             </div>
             <div className="cb-menu-section">
-               <div className="cb-menu-toggle-item" onClick={() => toggle('web')}>
+               <div className="cb-menu-toggle-item" onClick={handleWebToggle}>
                   <div className="cb-menu-icon-circle">
                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
                   </div>
                   <span>Include web results</span>
-                  <div className={`cb-toggle ${toggles.web ? 'on' : 'off'}`}></div>
+                  <div className={`cb-toggle ${webSearchEnabled ? 'on' : 'off'}`}></div>
                </div>
                <div className="cb-menu-toggle-item" onClick={() => toggle('knowledge')}>
                   <div className="cb-menu-icon-circle">

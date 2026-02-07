@@ -45,6 +45,7 @@ class ToolDefinition(BaseModel):
     name: str
     description: str
     parameters: dict[str, Any]
+    category: str = "builtin"  # builtin, configurable, or client_side
 
 
 class ChatCompletionRequest(BaseModel):
@@ -125,6 +126,48 @@ async def create_chat_completion(
         else:
             model = config.anthropic_default_model
 
+    # --- Step 0.5: Inject builtin tools based on enabled_tools ---
+    # If the frontend specifies enabled_tools in metadata, we inject tool definitions
+    builtin_tools_catalog = {
+        "web_search": ToolDefinition(
+            name="web_search",
+            description="Search the web for information. Use this when you need to find current information, facts, or data that may not be in your training data.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query",
+                    },
+                    "num_results": {
+                        "type": "integer",
+                        "description": "Number of results to return (default: 5, max: 10)",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+    }
+
+    # Start with user-provided tools (if any)
+    final_tools = list(body.tools) if body.tools else []
+
+    # Check for enabled_tools in metadata and inject builtin tools
+    enabled_tools = (body.metadata or {}).get("enabled_tools", [])
+    for tool_name in enabled_tools:
+        if tool_name in builtin_tools_catalog:
+            # Check if tool is already in the list
+            if not any(t.name == tool_name for t in final_tools):
+                final_tools.append(builtin_tools_catalog[tool_name])
+
+    logger.debug(
+        "Final tools after injection",
+        job_id=str(job_id),
+        enabled_tools=enabled_tools,
+        final_tool_names=[t.name for t in final_tools],
+    )
+
     # --- Step 1: Billing pre-check (feature-flagged) ---
     credit_check_passed = True
     reservation_id: str | None = None
@@ -165,7 +208,7 @@ async def create_chat_completion(
             model_id=model,
             system_prompt=body.system,
             tools_config=(
-                [tool.model_dump() for tool in body.tools] if body.tools else None
+                [tool.model_dump() for tool in final_tools] if final_tools else None
             ),
             metadata_=body.metadata or {},
         )
@@ -194,7 +237,7 @@ async def create_chat_completion(
 
     # --- Step 2.5: Determine plan-allowed tools ---
     plan_tools: list[str] | None = None
-    if body.tools and partner_id:
+    if final_tools and partner_id:
         # Get tenant's subscription to find plan_id
         subscription_service = get_subscription_service()
         feature_service = get_feature_service()
@@ -204,7 +247,7 @@ async def create_chat_completion(
 
         # Check which tools are allowed by the plan
         allowed_tools = []
-        for tool in body.tools:
+        for tool in final_tools:
             # Map tool names to feature slugs (tool name = feature slug for simplicity)
             feature_slug = tool.name
             is_allowed = await feature_service.check_feature_enabled(
@@ -220,7 +263,7 @@ async def create_chat_completion(
             "Plan tools determined",
             job_id=str(job_id),
             plan_tools=plan_tools,
-            requested_tools=[t.name for t in body.tools],
+            requested_tools=[t.name for t in final_tools],
         )
 
     # --- Step 3: Generate internal transaction token ---
@@ -247,7 +290,7 @@ async def create_chat_completion(
         "model": model,
         "messages": [msg.model_dump() for msg in body.messages],
         "system": body.system,
-        "tools": [tool.model_dump() for tool in body.tools] if body.tools else None,
+        "tools": [tool.model_dump() for tool in final_tools] if final_tools else None,
         "temperature": body.temperature,
         "max_tokens": body.max_tokens,
         "stream": body.stream,

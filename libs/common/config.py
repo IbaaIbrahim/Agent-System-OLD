@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     default_llm_provider: Literal["anthropic", "openai"] = "anthropic"
     anthropic_default_model: str = "claude-sonnet-4-20250514"
     openai_default_model: str = "gpt-4-turbo-preview"
+    llm_timeout: int = Field(default=120, ge=10, description="Timeout for LLM provider calls in seconds")
 
     # Authentication
     jwt_secret: str = Field(

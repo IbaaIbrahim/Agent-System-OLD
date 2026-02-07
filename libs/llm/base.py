@@ -160,9 +160,10 @@ class LLMProvider(ABC):
 
     provider_name: str = "base"
 
-    def __init__(self, api_key: str, default_model: str | None = None) -> None:
+    def __init__(self, api_key: str, default_model: str | None = None, timeout: int = 60) -> None:
         self.api_key = api_key
         self.default_model = default_model
+        self.timeout = timeout
 
     @abstractmethod
     async def complete(

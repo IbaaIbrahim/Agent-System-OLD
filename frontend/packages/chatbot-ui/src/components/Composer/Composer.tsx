@@ -6,12 +6,16 @@ export interface ComposerProps {
     onSend?: (text: string) => void;
     disabled?: boolean;
     placeholder?: string;
+    webSearchEnabled?: boolean;
+    onWebSearchChange?: (enabled: boolean) => void;
 }
 
 export const Composer: React.FC<ComposerProps> = ({
     onSend,
     disabled = false,
-    placeholder = "Ask, @mention, or / for actions"
+    placeholder = "Ask, @mention, or / for actions",
+    webSearchEnabled = false,
+    onWebSearchChange
 }) => {
     const [input, setInput] = useState('');
     const [activeMenu, setActiveMenu] = useState<'plus' | 'reasoning' | null>(null);
@@ -43,7 +47,13 @@ export const Composer: React.FC<ComposerProps> = ({
 
     return (
         <div className="cb-composer" ref={menuRef}>
-            {activeMenu === 'reasoning' && <ReasoningMenu onClose={() => setActiveMenu(null)} />}
+            {activeMenu === 'reasoning' && (
+                <ReasoningMenu
+                    onClose={() => setActiveMenu(null)}
+                    webSearchEnabled={webSearchEnabled}
+                    onWebSearchChange={onWebSearchChange}
+                />
+            )}
             {activeMenu === 'plus' && <PlusMenu onClose={() => setActiveMenu(null)} />}
 
             <div className="cb-composer-input-wrapper">

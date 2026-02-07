@@ -45,7 +45,7 @@ def create_provider(
                 errors=[{"field": "api_key", "message": "Missing ANTHROPIC_API_KEY"}],
             )
         model = default_model or settings.anthropic_default_model
-        return AnthropicProvider(api_key=key, default_model=model)
+        return AnthropicProvider(api_key=key, default_model=model, timeout=settings.llm_timeout)
 
     elif provider_type == "openai":
         key = api_key or settings.openai_api_key
@@ -55,7 +55,7 @@ def create_provider(
                 errors=[{"field": "api_key", "message": "Missing OPENAI_API_KEY"}],
             )
         model = default_model or settings.openai_default_model
-        return OpenAIProvider(api_key=key, default_model=model)
+        return OpenAIProvider(api_key=key, default_model=model, timeout=settings.llm_timeout)
 
     else:
         raise ValidationError(
