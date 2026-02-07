@@ -67,7 +67,21 @@
 }
 
 .cb-markdown-content {
-    /* Placeholder for markdown styling */
+    word-break: break-word;
+}
+
+.cb-markdown-content a {
+    color: var(--cb-accent-primary);
+    text-decoration: none;
+}
+
+.cb-markdown-content a:hover {
+    text-decoration: underline;
+}
+
+.cb-markdown-content strong {
+    font-weight: 600;
+    color: var(--cb-text-primary);
 }
 
 @keyframes cb-fade-in {

@@ -13,9 +13,12 @@ export interface ToolInvocationProps {
 export const ToolInvocation: React.FC<ToolInvocationProps> = ({
     toolName,
     status,
-    args
+    args,
+    result
 }) => {
     const [expanded, setExpanded] = useState(false);
+
+    const isWebSearch = toolName === 'web_search' || toolName === 'search_web';
 
     return (
         <div className={`cb-tool-invocation ${status}`}>
@@ -48,9 +51,25 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
             </div>
             {expanded && (
                 <div className="cb-tool-details">
-                    <div className="cb-code-block">
-                        {JSON.stringify(args, null, 2)}
-                    </div>
+                    {isWebSearch && result ? (
+                        <div className="cb-web-search-results">
+                            <div style={{ marginBottom: '8px', opacity: 0.8, fontSize: '12px' }}>Search Results:</div>
+                            <div className="cb-markdown-content" style={{ fontSize: '13px', lineHeight: '1.6' }}>
+                                {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="cb-code-block">
+                            <div style={{ marginBottom: '4px', opacity: 0.5 }}>Arguments:</div>
+                            {JSON.stringify(args, null, 2)}
+                            {result && (
+                                <>
+                                    <div style={{ marginTop: '8px', marginBottom: '4px', opacity: 0.5 }}>Result:</div>
+                                    {JSON.stringify(result, null, 2)}
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

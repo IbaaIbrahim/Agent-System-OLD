@@ -29,9 +29,10 @@ class AnthropicProvider(LLMProvider):
         self,
         api_key: str,
         default_model: str = "claude-sonnet-4-20250514",
+        timeout: int = 60,
     ) -> None:
-        super().__init__(api_key, default_model)
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        super().__init__(api_key, default_model, timeout)
+        self.client = anthropic.AsyncAnthropic(api_key=api_key, timeout=timeout)
 
     async def complete(
         self,

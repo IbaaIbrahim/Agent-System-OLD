@@ -9,6 +9,7 @@ load_dotenv()
 
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8000")
 API_KEY = os.getenv("API_KEY", "test-api-key")
+USER_ID = os.getenv("USER_ID", "test-user-id")
 
 app = FastAPI(title="Auth Broker", version="1.0.0")
 
@@ -49,7 +50,7 @@ async def request_token():
             response = await client.post(
                 f"{GATEWAY_URL}/api/v1/auth/token",
                 headers={"Authorization": f"{API_KEY}"},
-                json={"user_id": "demo-user"}
+                json={"user_id": USER_ID}
             )
 
             if response.status_code != 200:

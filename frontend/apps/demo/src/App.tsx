@@ -20,6 +20,7 @@ function App() {
     const [isOpen, setIsOpen] = useState(true);
     const [selectedModel, setSelectedModel] = useState<string>('auto');
     const [isConfigOpen, setIsConfigOpen] = useState(false);
+    const [webSearchEnabled, setWebSearchEnabled] = useState(true);
 
 
     // State managed by Client
@@ -84,6 +85,14 @@ function App() {
             client.setModel(selectedModel);
         }
     }, [client, selectedModel]);
+
+    // Sync Enabled Tools to Client
+    useEffect(() => {
+        if (client) {
+            const tools = webSearchEnabled ? ['web_search'] : [];
+            client.setEnabledTools(tools);
+        }
+    }, [client, webSearchEnabled]);
 
 
     // Watch queue and processing state
@@ -222,20 +231,6 @@ function App() {
                 <button onClick={() => { setMode('sidebar'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Sidebar</button>
                 <button onClick={() => { setMode('fullscreen'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Fullscreen</button>
                 <button onClick={() => setIsOpen(!isOpen)} style={{ cursor: 'pointer', padding: '4px 8px' }}>Toggle View</button>
-
-                <div style={{ borderLeft: '1px solid #ccc', height: '20px', margin: '0 5px' }}></div>
-
-                <label style={{ fontSize: '14px' }}>Model: </label>
-                <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
-                >
-                    <option value="auto">Auto (Default)</option>
-                    <option value="gpt-4o">GPT-4o</option>
-                    <option value="gpt-4o-mini">GPT-4o Mini</option>
-                    <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
-                </select>
             </div>
 
 
@@ -255,6 +250,8 @@ function App() {
                             onSend={handleSend}
                             disabled={false}
                             placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}
+                            webSearchEnabled={webSearchEnabled}
+                            onWebSearchChange={setWebSearchEnabled}
                         />
                     </div>
                 }

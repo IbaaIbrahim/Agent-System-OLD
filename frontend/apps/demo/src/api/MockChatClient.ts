@@ -106,7 +106,11 @@ export class MockChatClient implements ChatClient {
 
         // 5. tool.completed for search
         const searchIndex = steps.findIndex(s => s.id === 'ws-search-1');
-        steps[searchIndex] = { ...steps[searchIndex], toolStatus: 'completed' };
+        steps[searchIndex] = {
+            ...steps[searchIndex],
+            toolStatus: 'completed',
+            toolResult: 'Found several patterns including ReAct, Plan-and-Solve, and Reflexion in recent research papers.'
+        };
         update(true);
         await this.delay(500);
 
@@ -130,7 +134,11 @@ export class MockChatClient implements ChatClient {
 
         // 8. tool.completed for search
         const search2Index = steps.findIndex(s => s.id === 'ws-search-2');
-        steps[search2Index] = { ...steps[search2Index], toolStatus: 'completed' };
+        steps[search2Index] = {
+            ...steps[search2Index],
+            toolStatus: 'completed',
+            toolResult: 'Implementation details for agentic systems include tool-use loops and persistent memory layers.'
+        };
         update(true);
         await this.delay(500);
 
@@ -296,5 +304,9 @@ I have updated the interface to reflect these patterns.`;
 
     setModel(model: string | null): void {
         // Mock client doesn't use the model, but we implement the interface
+    }
+
+    setEnabledTools(tools: string[]): void {
+        // Mock client doesn't use enabled tools, but we implement the interface
     }
 }
