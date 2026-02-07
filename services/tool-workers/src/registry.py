@@ -6,6 +6,7 @@ from libs.common import get_logger
 
 from .config import get_config
 from .tools.base import BaseTool
+from .tools.checklist_generator import ChecklistGeneratorTool
 from .tools.code_executor import CodeExecutorTool
 from .tools.web_search import WebSearchTool
 
@@ -85,6 +86,9 @@ class ToolRegistry:
 
         # Code executor tool
         self.register(CodeExecutorTool())
+
+        # Checklist generator tool (configurable - user can toggle)
+        self.register(ChecklistGeneratorTool())
 
         logger.info(f"Registered {len(self.tools)} tools")
 

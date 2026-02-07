@@ -1,0 +1,1825 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "title",
+    "description",
+    "is_template",
+    "options",
+    "is_sub",
+    "revision",
+    "parent_id",
+    "created_at",
+    "updated_at",
+    "items",
+    "template_id",
+    "language",
+    "contains_asset",
+    "has_draft_translations",
+    "act_as_global_items"
+  ],
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "is_template": {
+      "type": "boolean"
+    },
+    "is_sub": {
+      "type": "boolean"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "has_draft",
+        "published",
+        "version_title",
+        "version_id",
+        "language",
+        "contains_asset"
+      ],
+      "properties": {
+        "has_draft": {
+          "type": "boolean"
+        },
+        "published": {
+          "type": "boolean"
+        },
+        "version_title": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "version_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "language": {
+          "type": "string"
+        },
+        "contains_asset": {
+          "type": "boolean"
+        }
+      }
+    },
+    "parent_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/ChecklistItem"
+      }
+    },
+    "template_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "language": {
+      "type": "string"
+    },
+    "contains_asset": {
+      "type": "boolean"
+    },
+    "has_draft_translations": {
+      "type": "boolean"
+    },
+    "act_as_global_items": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "Scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_point": {
+          "type": [
+            "number",
+            "integer"
+          ]
+        },
+        "max_point": {
+          "type": [
+            "number",
+            "integer",
+            "null"
+          ]
+        },
+        "scoring_weight": {
+          "type": [
+            "number",
+            "integer"
+          ]
+        }
+      },
+      "required": [
+        "min_point",
+        "max_point",
+        "scoring_weight"
+      ]
+    },
+    "DateDefaultValue": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string"
+            },
+            "period": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            },
+            "period_type": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "period",
+            "period_type"
+          ]
+        }
+      ]
+    },
+    "ResponseOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uuid",
+        "global_option_id",
+        "label",
+        "color",
+        "score",
+        "rate",
+        "enable_score",
+        "failed"
+      ],
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "global_option_id": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "score": {
+          "type": [
+            "number",
+            "integer",
+            "null"
+          ]
+        },
+        "rate": {
+          "type": [
+            "number",
+            "integer",
+            "null"
+          ]
+        },
+        "enable_score": {
+          "type": "boolean"
+        },
+        "failed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uuid",
+        "options"
+      ],
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/ResponseOption"
+          }
+        }
+      }
+    },
+    "AcknowledgmentOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report"
+      ],
+      "additionalProperties": false
+    },
+    "AudioOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "allow_camera": {
+          "type": "boolean"
+        },
+        "photo_library": {
+          "type": "boolean"
+        },
+        "quality": {
+          "type": "string"
+        },
+        "max_length": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "required",
+        "allow_camera",
+        "photo_library",
+        "quality",
+        "max_length"
+      ],
+      "additionalProperties": false
+    },
+    "VideoOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "allow_camera": {
+          "type": "boolean"
+        },
+        "photo_library": {
+          "type": "boolean"
+        },
+        "quality": {
+          "type": "string"
+        },
+        "max_length": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "allow_camera",
+        "photo_library",
+        "quality",
+        "max_length"
+      ],
+      "additionalProperties": false
+    },
+    "BarcodeOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "required"
+      ],
+      "additionalProperties": false
+    },
+    "CheckboxOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "enable_score": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "default_value",
+        "enable_score"
+      ],
+      "additionalProperties": false
+    },
+    "ConstantOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "grouping_separator": {
+          "type": "boolean"
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unit_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "default_value",
+        "read_only",
+        "grouping_separator",
+        "units",
+        "unit_type"
+      ],
+      "additionalProperties": false
+    },
+    "CounterOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "count_type": {
+          "type": "string"
+        },
+        "count_scope": {
+          "type": "string"
+        },
+        "global_responses": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "global_responses_options": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": [
+              "integer",
+              "number"
+            ]
+          }
+        },
+        "rate": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": [
+              "integer",
+              "number"
+            ]
+          }
+        },
+        "categories": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "count_type",
+        "count_scope",
+        "global_responses",
+        "global_responses_options",
+        "rate",
+        "categories"
+      ],
+      "additionalProperties": false
+    },
+    "DateTimeOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "future_date": {
+          "type": "boolean"
+        },
+        "prior_date": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "require_media": {
+          "type": "boolean"
+        },
+        "require_note": {
+          "type": "boolean"
+        },
+        "enable_score": {
+          "type": "boolean"
+        },
+        "date": {
+          "type": "boolean"
+        },
+        "time": {
+          "type": "boolean"
+        },
+        "date_time_shape": {
+          "type": "string"
+        },
+        "default_value": {
+          "$ref": "#/definitions/DateDefaultValue"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "future_date",
+        "prior_date",
+        "required",
+        "require_media",
+        "require_note",
+        "enable_score",
+        "date",
+        "time",
+        "date_time_shape",
+        "default_value"
+      ],
+      "additionalProperties": false
+    },
+    "SelectionOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "options_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_set_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "multiple_selection": {
+          "type": "boolean"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "require_media": {
+          "type": "boolean"
+        },
+        "require_note": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "anyOf": [
+            {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "enable_score": {
+          "type": "boolean"
+        },
+        "scoring": {
+          "$ref": "#/definitions/Scoring"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "options_type",
+        "response_set_id",
+        "required",
+        "multiple_selection",
+        "read_only",
+        "require_media",
+        "require_note",
+        "default_value",
+        "enable_score",
+        "scoring"
+      ],
+      "additionalProperties": false
+    },
+    "InstructionOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "default_value"
+      ],
+      "additionalProperties": false
+    },
+    "LongTextOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "type": "string"
+        },
+        "min": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "max": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "manual_rating": {
+          "type": "boolean"
+        },
+        "enable_score": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "required",
+        "default_value",
+        "min",
+        "max",
+        "read_only",
+        "manual_rating",
+        "enable_score"
+      ],
+      "additionalProperties": false
+    },
+    "SectionOptions": {
+      "type": "object",
+      "properties": {
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "hidden",
+        "exclude_report"
+      ],
+      "additionalProperties": false
+    },
+    "ListOptions": {
+      "type": "object",
+      "properties": {
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "multiple_selection": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "hidden",
+        "exclude_report",
+        "multiple_selection",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    "ResponseOptions": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "NumberOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "decimal": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "min": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "max": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "default_value": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "grouping_separator": {
+          "type": "boolean"
+        },
+        "unit_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "secure": {
+          "type": "boolean"
+        },
+        "require_media": {
+          "type": "boolean"
+        },
+        "require_note": {
+          "type": "boolean"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "enable_score": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "decimal",
+        "min",
+        "max",
+        "default_value",
+        "grouping_separator",
+        "unit_type",
+        "units",
+        "required",
+        "secure",
+        "require_media",
+        "require_note",
+        "read_only",
+        "enable_score"
+      ],
+      "additionalProperties": false
+    },
+    "SliderOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "min": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "max": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "step": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "default_value": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "grouping_separator": {
+          "type": "boolean"
+        },
+        "unit_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "require_media": {
+          "type": "boolean"
+        },
+        "require_note": {
+          "type": "boolean"
+        },
+        "enable_score": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "min",
+        "max",
+        "step",
+        "default_value",
+        "grouping_separator",
+        "unit_type",
+        "units",
+        "required",
+        "require_media",
+        "require_note",
+        "enable_score"
+      ],
+      "additionalProperties": false
+    },
+    "TextAnswerOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "type": "string"
+        },
+        "min_length": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "max_length": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "manual_rating": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "secure": {
+          "type": "boolean"
+        },
+        "require_media": {
+          "type": "boolean"
+        },
+        "require_note": {
+          "type": "boolean"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "enable_score": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "default_value",
+        "min_length",
+        "max_length",
+        "manual_rating",
+        "required",
+        "secure",
+        "require_media",
+        "require_note",
+        "read_only",
+        "enable_score"
+      ],
+      "additionalProperties": false
+    },
+    "SignatureOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report",
+        "required"
+      ],
+      "additionalProperties": false
+    },
+    "PageOptions": {
+      "type": "object",
+      "properties": {
+        "maximum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "minimum_repetition": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "not_visible": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "exclude_report": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maximum_repetition",
+        "minimum_repetition",
+        "repeatable",
+        "not_visible",
+        "hidden",
+        "exclude_report"
+      ],
+      "additionalProperties": false
+    },
+    "LongTextItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "base_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "global_item_base_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "reference_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "longText"
+          ]
+        },
+        "options": {
+          "$ref": "#/definitions/LongTextOptions"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "parent_id",
+        "base_id",
+        "global_item_base_id",
+        "reference_key",
+        "visible",
+        "type",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    "ListItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "base_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "global_item_base_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "reference_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "list"
+          ]
+        },
+        "options": {
+          "$ref": "#/definitions/ListOptions"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "parent_id",
+        "base_id",
+        "global_item_base_id",
+        "reference_key",
+        "visible",
+        "type",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    "SectionItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "base_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "global_item_base_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "reference_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "section"
+          ]
+        },
+        "options": {
+          "$ref": "#/definitions/SectionOptions"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "parent_id",
+        "base_id",
+        "global_item_base_id",
+        "reference_key",
+        "visible",
+        "type",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    "NumberItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "base_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "global_item_base_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "reference_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "number"
+          ]
+        },
+        "options": {
+          "$ref": "#/definitions/NumberOptions"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "parent_id",
+        "base_id",
+        "global_item_base_id",
+        "reference_key",
+        "visible",
+        "type",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    "SliderItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "base_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "global_item_base_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "reference_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "slider"
+          ]
+        },
+        "options": {
+          "$ref": "#/definitions/SliderOptions"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "parent_id",
+        "base_id",
+        "global_item_base_id",
+        "reference_key",
+        "visible",
+        "type",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    "TextAnswerItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "base_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "global_item_base_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "reference_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "textAnswer"
+          ]
+        },
+        "options": {
+          "$ref": "#/definitions/TextAnswerOptions"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "parent_id",
+        "base_id",
+        "global_item_base_id",
+        "reference_key",
+        "visible",
+        "type",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    "ChecklistItem": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SectionItem"
+        },
+        {
+          "$ref": "#/definitions/ListItem"
+        },
+        {
+          "$ref": "#/definitions/LongTextItem"
+        },
+        {
+          "$ref": "#/definitions/NumberItem"
+        },
+        {
+          "$ref": "#/definitions/SliderItem"
+        },
+        {
+          "$ref": "#/definitions/TextAnswerItem"
+        }
+      ]
+    }
+  }
+}

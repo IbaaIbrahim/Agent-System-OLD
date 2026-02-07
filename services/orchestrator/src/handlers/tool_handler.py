@@ -1,7 +1,9 @@
 """Tool invocation handler."""
 
 import asyncio
+import json
 from datetime import UTC
+from typing import Any
 
 from libs.common import get_logger
 from libs.llm import ToolCall
@@ -19,6 +21,66 @@ class ToolHandler:
     def __init__(self) -> None:
         self.config = get_config()
         self._pending_results: dict[str, asyncio.Future] = {}
+
+    def _get_tool_category(
+        self,
+        tool_name: str,
+        tools: list[dict[str, Any]] | None,
+    ) -> str:
+        """Get the category of a tool from the tools list.
+
+        Args:
+            tool_name: Name of the tool
+            tools: List of tool definitions
+
+        Returns:
+            Tool category (builtin, configurable, or client_side)
+        """
+        if not tools:
+            return "builtin"
+
+        for tool in tools:
+            if tool.get("name") == tool_name:
+                return tool.get("category", "builtin")
+
+        return "builtin"
+
+    async def _emit_client_tool_event(
+        self,
+        state: AgentState,
+        tool_call: ToolCall,
+    ) -> None:
+        """Emit SSE event for client-side tool execution.
+
+        The frontend will receive this event, execute the tool locally,
+        and POST the result back to the API.
+
+        Args:
+            state: Current agent state
+            tool_call: Tool call to emit
+        """
+        from libs.messaging.redis import get_redis_client
+
+        redis = await get_redis_client()
+
+        event_data = {
+            "type": "client_tool_call",
+            "job_id": str(state.job_id),
+            "tool_call_id": tool_call.id,
+            "tool_name": tool_call.name,
+            "arguments": tool_call.arguments,
+        }
+
+        # Publish to job's event channel
+        channel = f"events:{state.job_id}"
+        await redis.publish(channel, json.dumps(event_data))
+
+        logger.info(
+            "Client-side tool event emitted",
+            job_id=str(state.job_id),
+            tool_name=tool_call.name,
+            tool_id=tool_call.id,
+        )
 
     async def execute_tools(
         self,
@@ -107,31 +169,43 @@ class ToolHandler:
                     tool_name=tc.name,
                 )
             else:
-                # Dispatch to tool workers
-                message = {
-                    "tool_call_id": tc.id,
-                    "job_id": str(state.job_id),
-                    "tenant_id": str(state.tenant_id),
-                    "tool_name": tc.name,
-                    "arguments": tc.arguments,
-                    "snapshot_sequence": state.iteration,
-                }
+                # Check if this is a client-side tool
+                category = self._get_tool_category(tc.name, state.tools)
 
-                await producer.send(
-                    topic=self.config.tools_topic,
-                    message=message,
-                    key=str(state.tenant_id),
-                    headers={
-                        "job_id": str(state.job_id),
+                if category == "client_side":
+                    # Emit SSE event for frontend to execute
+                    await self._emit_client_tool_event(state, tc)
+                    logger.info(
+                        "Client-side tool event emitted, waiting for frontend",
+                        job_id=str(state.job_id),
+                        tool_name=tc.name,
+                    )
+                else:
+                    # Dispatch to tool workers (builtin or configurable)
+                    message = {
                         "tool_call_id": tc.id,
-                    },
-                )
+                        "job_id": str(state.job_id),
+                        "tenant_id": str(state.tenant_id),
+                        "tool_name": tc.name,
+                        "arguments": tc.arguments,
+                        "snapshot_sequence": state.iteration,
+                    }
 
-                logger.debug(
-                    "Tool dispatched to worker queue",
-                    job_id=str(state.job_id),
-                    tool_name=tc.name,
-                )
+                    await producer.send(
+                        topic=self.config.tools_topic,
+                        message=message,
+                        key=str(state.tenant_id),
+                        headers={
+                            "job_id": str(state.job_id),
+                            "tool_call_id": tc.id,
+                        },
+                    )
+
+                    logger.debug(
+                        "Tool dispatched to worker queue",
+                        job_id=str(state.job_id),
+                        tool_name=tc.name,
+                    )
 
     async def _execute_single_tool(
         self,

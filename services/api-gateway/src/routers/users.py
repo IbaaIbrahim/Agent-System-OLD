@@ -366,3 +366,89 @@ async def deactivate_user(
         )
 
         return {"status": "deactivated", "user_id": str(user_id)}
+
+
+# ============================================================================
+# User Preferences Endpoints
+# ============================================================================
+
+
+class ToolPreferencesResponse(BaseModel):
+    """User tool preferences response."""
+
+    enabled_tools: list[str]
+
+
+class UpdateToolPreferencesRequest(BaseModel):
+    """Request to update user tool preferences."""
+
+    enabled_tools: list[str] = Field(..., description="List of enabled tool names")
+
+
+@router.get("/me/preferences/tools", response_model=ToolPreferencesResponse)
+async def get_tool_preferences(
+    request: Request,
+) -> ToolPreferencesResponse:
+    """Get the current user's tool preferences.
+
+    Requires JWT authentication (user context).
+    """
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="User authentication required",
+        )
+
+    async with get_session_context() as session:
+        result = await session.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        prefs = user.tool_preferences or {}
+        return ToolPreferencesResponse(
+            enabled_tools=prefs.get("enabled_tools", [])
+        )
+
+
+@router.patch("/me/preferences/tools", response_model=ToolPreferencesResponse)
+async def update_tool_preferences(
+    body: UpdateToolPreferencesRequest,
+    request: Request,
+) -> ToolPreferencesResponse:
+    """Update the current user's tool preferences.
+
+    Requires JWT authentication (user context).
+    """
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="User authentication required",
+        )
+
+    async with get_session_context() as session:
+        result = await session.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Update tool preferences
+        user.tool_preferences = {"enabled_tools": body.enabled_tools}
+        await session.commit()
+        await session.refresh(user)
+
+        logger.info(
+            "User tool preferences updated",
+            user_id=str(user_id),
+            enabled_tools=body.enabled_tools,
+        )
+
+        return ToolPreferencesResponse(enabled_tools=body.enabled_tools)

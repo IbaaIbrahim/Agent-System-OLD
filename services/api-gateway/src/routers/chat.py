@@ -22,6 +22,8 @@ from ..services.billing import (
     BillingService,
     estimate_tokens_from_messages,
 )
+from ..services.feature import get_feature_service
+from ..services.subscription import get_subscription_service
 
 logger = get_logger(__name__)
 
@@ -190,6 +192,37 @@ async def create_chat_completion(
         message_count=len(body.messages),
     )
 
+    # --- Step 2.5: Determine plan-allowed tools ---
+    plan_tools: list[str] | None = None
+    if body.tools and partner_id:
+        # Get tenant's subscription to find plan_id
+        subscription_service = get_subscription_service()
+        feature_service = get_feature_service()
+
+        subscription = await subscription_service.get_active_subscription(tenant_id)
+        plan_id = subscription.plan_id if subscription else None
+
+        # Check which tools are allowed by the plan
+        allowed_tools = []
+        for tool in body.tools:
+            # Map tool names to feature slugs (tool name = feature slug for simplicity)
+            feature_slug = tool.name
+            is_allowed = await feature_service.check_feature_enabled(
+                partner_id=partner_id,
+                plan_id=plan_id,
+                feature_slug=feature_slug,
+            )
+            if is_allowed:
+                allowed_tools.append(tool.name)
+
+        plan_tools = allowed_tools
+        logger.debug(
+            "Plan tools determined",
+            job_id=str(job_id),
+            plan_tools=plan_tools,
+            requested_tools=[t.name for t in body.tools],
+        )
+
     # --- Step 3: Generate internal transaction token ---
     internal_token = create_internal_transaction_token(
         job_id=job_id,
@@ -200,6 +233,11 @@ async def create_chat_completion(
     )
 
     # --- Step 4: Publish to Kafka ---
+    # Merge plan_tools into metadata
+    job_metadata = body.metadata.copy() if body.metadata else {}
+    if plan_tools is not None:
+        job_metadata["plan_tools"] = plan_tools
+
     job_payload = {
         "job_id": str(job_id),
         "tenant_id": str(tenant_id),
@@ -213,7 +251,7 @@ async def create_chat_completion(
         "temperature": body.temperature,
         "max_tokens": body.max_tokens,
         "stream": body.stream,
-        "metadata": body.metadata or {},
+        "metadata": job_metadata,
     }
 
     producer = await get_producer()

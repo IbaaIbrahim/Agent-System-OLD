@@ -27,6 +27,7 @@ from .routers import (
     partners,
     plans,
     subscriptions,
+    tools,
     topups,
     users,
     wallet,
@@ -195,6 +196,7 @@ def create_app() -> FastAPI:
     # Chat and job endpoints
     app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
     app.include_router(jobs.router, prefix="/api/v1", tags=["Jobs"])
+    app.include_router(tools.router, prefix="/api/v1", tags=["Tools"])
 
     # Billing and subscription endpoints
     app.include_router(wallet.router, prefix="/api", tags=["Wallet"])

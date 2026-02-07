@@ -293,4 +293,8 @@ I have updated the interface to reflect these patterns.`;
         this.messages = [];
         onUpdate({ messages: [], isThinking: false });
     }
+
+    setModel(model: string | null): void {
+        // Mock client doesn't use the model, but we implement the interface
+    }
 }

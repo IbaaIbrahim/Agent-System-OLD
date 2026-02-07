@@ -232,6 +232,9 @@ class User(Base, TimestampMixin):
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, default=dict
     )
+    tool_preferences: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, nullable=False, comment="User tool preferences"
+    )
 
     # Custom rate limits (NULL = inherit from tenant)
     custom_rpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)

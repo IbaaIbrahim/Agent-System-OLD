@@ -37,6 +37,107 @@ class LLMService:
             self._providers[provider_name] = get_provider(provider_name)
         return self._providers[provider_name]
 
+    def _filter_tools_by_config(
+        self,
+        tools: list[dict[str, Any]] | None,
+        plan_tools: list[str] | None,
+        enabled_tools: list[str] | None,
+    ) -> list[dict[str, Any]] | None:
+        """Filter tools based on plan access and user preferences.
+
+        Args:
+            tools: All available tool definitions
+            plan_tools: Tools allowed by subscription plan (from API Gateway)
+            enabled_tools: Tools enabled by user preference
+
+        Returns:
+            Filtered tools list
+        """
+        if not tools:
+            return None
+
+        filtered = []
+        for tool in tools:
+            category = tool.get("category", "builtin")
+            name = tool["name"]
+
+            if category == "builtin":
+                # Built-in tools are always included
+                filtered.append(tool)
+            elif category == "configurable":
+                # Configurable tools require both plan access and user enablement
+                plan_allowed = plan_tools is None or name in plan_tools
+                user_enabled = enabled_tools is None or name in enabled_tools
+                if plan_allowed and user_enabled:
+                    filtered.append(tool)
+            elif category == "client_side":
+                # Client-side tools only need plan access (frontend handles user toggle)
+                plan_allowed = plan_tools is None or name in plan_tools
+                if plan_allowed:
+                    filtered.append(tool)
+
+        return filtered if filtered else None
+
+    def _build_system_prompt_with_tool_info(
+        self,
+        base_prompt: str | None,
+        tools: list[dict[str, Any]] | None,
+        plan_tools: list[str] | None,
+        enabled_tools: list[str] | None,
+    ) -> str | None:
+        """Build system prompt with information about disabled tools.
+
+        Args:
+            base_prompt: Original system prompt
+            tools: All available tool definitions
+            plan_tools: Tools allowed by plan
+            enabled_tools: Tools enabled by user
+
+        Returns:
+            Enhanced system prompt or original prompt
+        """
+        if not tools:
+            return base_prompt
+
+        plan_locked = []
+        user_disabled = []
+
+        for tool in tools:
+            category = tool.get("category", "builtin")
+            name = tool["name"]
+
+            if category in ("configurable", "client_side"):
+                # Check plan access
+                if plan_tools is not None and name not in plan_tools:
+                    plan_locked.append(name)
+                # Check user enablement (only if plan allows)
+                elif enabled_tools is not None and name not in enabled_tools:
+                    user_disabled.append(name)
+
+        if not plan_locked and not user_disabled:
+            return base_prompt
+
+        # Build additional context for the agent
+        disabled_info_parts = []
+        if plan_locked:
+            disabled_info_parts.append(
+                f"The following tools require a plan upgrade: {', '.join(plan_locked)}. "
+                "If the user's request would benefit from one of these tools, politely inform "
+                "them that they can upgrade their plan to access this feature."
+            )
+        if user_disabled:
+            disabled_info_parts.append(
+                f"The following tools are available but currently disabled by the user: "
+                f"{', '.join(user_disabled)}. If the user's request would benefit from one "
+                "of these tools, politely inform them that they can enable it in the chat settings."
+            )
+
+        disabled_info = "\n\n".join(disabled_info_parts)
+
+        if base_prompt:
+            return f"{base_prompt}\n\n{disabled_info}"
+        return disabled_info
+
     def _build_tools(
         self,
         tools: list[dict[str, Any]] | None,
@@ -71,7 +172,21 @@ class LLMService:
             LLM response
         """
         provider = self._get_provider(state.provider)
-        tools = self._build_tools(state.tools)
+
+        # Extract tool config from metadata
+        plan_tools = state.metadata.get("plan_tools") if state.metadata else None
+        enabled_tools = state.metadata.get("enabled_tools") if state.metadata else None
+
+        # Filter tools based on plan and user preferences
+        filtered_tools = self._filter_tools_by_config(
+            state.tools, plan_tools, enabled_tools
+        )
+        tools = self._build_tools(filtered_tools)
+
+        # Enhance system prompt with disabled tool info
+        system_prompt = self._build_system_prompt_with_tool_info(
+            state.system_prompt, state.tools, plan_tools, enabled_tools
+        )
 
         logger.debug(
             "Calling LLM",
@@ -88,6 +203,7 @@ class LLMService:
             model=state.model,
             message_count=len(state.messages),
             metadata_keys=list(state.metadata.keys()) if state.metadata else None,
+            filtered_tools=[t["name"] for t in (filtered_tools or [])],
         )
 
         # Pass thinking/reasoning configuration from metadata if present
@@ -97,7 +213,7 @@ class LLMService:
         response = await provider.complete(
             messages=state.messages,
             model=state.model,
-            system=state.system_prompt,
+            system=system_prompt,
             tools=tools,
             temperature=state.temperature,
             max_tokens=state.max_tokens,
@@ -134,7 +250,21 @@ class LLMService:
             LLM stream chunks
         """
         provider = self._get_provider(state.provider)
-        tools = self._build_tools(state.tools)
+
+        # Extract tool config from metadata
+        plan_tools = state.metadata.get("plan_tools") if state.metadata else None
+        enabled_tools = state.metadata.get("enabled_tools") if state.metadata else None
+
+        # Filter tools based on plan and user preferences
+        filtered_tools = self._filter_tools_by_config(
+            state.tools, plan_tools, enabled_tools
+        )
+        tools = self._build_tools(filtered_tools)
+
+        # Enhance system prompt with disabled tool info
+        system_prompt = self._build_system_prompt_with_tool_info(
+            state.system_prompt, state.tools, plan_tools, enabled_tools
+        )
 
         logger.debug(
             "Starting LLM stream",
@@ -150,6 +280,7 @@ class LLMService:
             model=state.model,
             message_count=len(state.messages),
             metadata_keys=list(state.metadata.keys()) if state.metadata else None,
+            filtered_tools=[t["name"] for t in (filtered_tools or [])],
         )
 
         # Pass thinking/reasoning configuration from metadata if present
@@ -159,7 +290,7 @@ class LLMService:
         async for chunk in provider.stream(
             messages=state.messages,
             model=state.model,
-            system=state.system_prompt,
+            system=system_prompt,
             tools=tools,
             temperature=state.temperature,
             max_tokens=state.max_tokens,
