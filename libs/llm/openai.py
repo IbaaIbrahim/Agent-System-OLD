@@ -389,7 +389,7 @@ class OpenAIProvider(LLMProvider):
             user_message: User message/prompt
             json_schema: JSON schema to validate output against
             schema_name: Name for the schema (default: "StructuredOutput")
-            model: Model to use (default: gpt-4o)
+            model: Model to use (default: gpt-4o-mini)
 
         Returns:
             Parsed JSON object matching the schema
@@ -397,7 +397,7 @@ class OpenAIProvider(LLMProvider):
         Raises:
             LLMError: If generation or parsing fails
         """
-        model = model or "gpt-4o"
+        model = model or "gpt-4o-mini"
 
         logger.info(
             "OpenAI structured output request",

@@ -316,7 +316,7 @@ class FeatureService:
         else:
             # Default to generic chat
             provider = "openai"
-            model_id = "gpt-4o"
+            model_id = "gpt-4o-mini"
             weight_multiplier = 1.0
             feature_slug = "chat"
 

@@ -144,7 +144,7 @@ User Requirements:
                 user_message=user_prompt,
                 json_schema=schema,
                 schema_name="FlowditChecklist",
-                model="gpt-4o",
+                model="gpt-4o-mini",
             )
 
             logger.info(
