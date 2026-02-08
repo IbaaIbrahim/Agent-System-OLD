@@ -2,6 +2,13 @@
 -include .env
 export
 
+# Cross-platform sleep command (Windows uses timeout, Unix uses sleep)
+ifeq ($(OS),Windows_NT)
+	SLEEP = timeout /t
+else
+	SLEEP = sleep
+endif
+
 .PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend postman openapi
 
 # Default target
@@ -61,7 +68,7 @@ help:
 up:
 	docker compose up -d
 	@echo "Waiting for services to be healthy..."
-	@sleep 10
+	@$(SLEEP) 10
 	@docker compose ps
 
 down:
@@ -249,7 +256,7 @@ test-services-up:
 	@echo "Starting isolated test environment..."
 	docker compose -f docker-compose.test.yml up -d
 	@echo "Waiting for services to be healthy..."
-	@sleep 15
+	@$(SLEEP) 15
 	@docker compose -f docker-compose.test.yml ps
 
 # Stop test services and clean up volumes
