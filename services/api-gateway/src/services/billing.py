@@ -578,7 +578,7 @@ class BillingService:
         job_id: UUID | None = None,
         feature_slug: str | None = None,
         provider: str = "openai",
-        model_id: str = "gpt-4o",
+        model_id: str = "gpt-4o-mini",
         input_tokens: int = 0,
         output_tokens: int = 0,
         partner_cost_micros: int | None = None,

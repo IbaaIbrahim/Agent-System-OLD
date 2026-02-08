@@ -67,6 +67,7 @@ help:
 
 up:
 	docker compose up -d
+	make migrate
 	@echo "Waiting for services to be healthy..."
 	@$(SLEEP) 10
 	@docker compose ps

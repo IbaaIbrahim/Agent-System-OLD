@@ -63,7 +63,7 @@ class TestFeatureConfig:
             slug="test",
             name="Test",
             provider="openai",
-            model_id="gpt-4o",
+            model_id="gpt-4o-mini",
             weight_multiplier=1.0,
             is_enabled=True,
             requires_approval=False,
