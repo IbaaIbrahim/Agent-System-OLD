@@ -8,6 +8,8 @@ export interface ComposerProps {
     placeholder?: string;
     webSearchEnabled?: boolean;
     onWebSearchChange?: (enabled: boolean) => void;
+    pageContextEnabled?: boolean;
+    onPageContextChange?: (enabled: boolean) => void;
 }
 
 export const Composer: React.FC<ComposerProps> = ({
@@ -15,7 +17,9 @@ export const Composer: React.FC<ComposerProps> = ({
     disabled = false,
     placeholder = "Ask, @mention, or / for actions",
     webSearchEnabled = false,
-    onWebSearchChange
+    onWebSearchChange,
+    pageContextEnabled = false,
+    onPageContextChange
 }) => {
     const [input, setInput] = useState('');
     const [activeMenu, setActiveMenu] = useState<'plus' | 'reasoning' | null>(null);
@@ -52,6 +56,8 @@ export const Composer: React.FC<ComposerProps> = ({
                     onClose={() => setActiveMenu(null)}
                     webSearchEnabled={webSearchEnabled}
                     onWebSearchChange={onWebSearchChange}
+                    pageContextEnabled={pageContextEnabled}
+                    onPageContextChange={onPageContextChange}
                 />
             )}
             {activeMenu === 'plus' && <PlusMenu onClose={() => setActiveMenu(null)} />}

@@ -1,4 +1,4 @@
-import { MessageProps } from '@chatbot-ui/core';
+import { MessageProps } from '../components/MessageBubble/MessageBubble';
 
 export interface ChatState {
     messages: MessageProps[];
@@ -11,4 +11,5 @@ export interface ChatClient {
     setModel: (model: string | null) => void;
     setEnabledTools: (tools: string[]) => void;
     sendConfirmResponse?: (toolCallId: string, confirmed: boolean) => Promise<void>;
+    setPageReadingCallback?: (callback: (isReading: boolean) => void) => void;
 }

@@ -12,7 +12,7 @@ export interface ClientToolResult {
 }
 
 export type ClientToolExecutor = (
-  arguments: Record<string, unknown>
+  args: Record<string, unknown>
 ) => Promise<ClientToolResult>
 
 /**

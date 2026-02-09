@@ -8,12 +8,16 @@ interface MenuProps {
 export interface ReasoningMenuProps extends MenuProps {
    webSearchEnabled?: boolean;
    onWebSearchChange?: (enabled: boolean) => void;
+   pageContextEnabled?: boolean;
+   onPageContextChange?: (enabled: boolean) => void;
 }
 
 export const ReasoningMenu: React.FC<ReasoningMenuProps> = ({
    onClose,
    webSearchEnabled = false,
-   onWebSearchChange
+   onWebSearchChange,
+   pageContextEnabled = false,
+   onPageContextChange
 }) => {
    const [reasoning, setReasoning] = useState<'rovo' | 'deep' | 'research'>('rovo');
    const [toggles, setToggles] = useState({
@@ -27,6 +31,10 @@ export const ReasoningMenu: React.FC<ReasoningMenuProps> = ({
 
    const handleWebToggle = () => {
       onWebSearchChange?.(!webSearchEnabled);
+   };
+
+   const handlePageContextToggle = () => {
+      onPageContextChange?.(!pageContextEnabled);
    };
 
    return (
@@ -78,6 +86,19 @@ export const ReasoningMenu: React.FC<ReasoningMenuProps> = ({
                   </div>
                   <span>Include web results</span>
                   <div className={`cb-toggle ${webSearchEnabled ? 'on' : 'off'}`}></div>
+               </div>
+               <div className="cb-menu-toggle-item" onClick={handlePageContextToggle}>
+                  <div className="cb-menu-icon-circle">
+                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <line x1="10" y1="9" x2="8" y2="9" />
+                     </svg>
+                  </div>
+                  <span>Read page content</span>
+                  <div className={`cb-toggle ${pageContextEnabled ? 'on' : 'off'}`}></div>
                </div>
                <div className="cb-menu-toggle-item" onClick={() => toggle('knowledge')}>
                   <div className="cb-menu-icon-circle">

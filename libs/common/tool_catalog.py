@@ -21,6 +21,8 @@ class ToolMetadata(BaseModel):
     description: str
     parameters: dict  # JSON Schema for tool parameters
     behavior: ToolBehavior
+    # Execution location
+    client_side_execution: bool = False  # If True, executes in browser instead of backend workers
     # Model preferences (used when user doesn't specify a model)
     preferred_provider: str | None = None  # e.g., "anthropic", "openai"
     preferred_model: str | None = None  # e.g., "claude-3-5-sonnet-20241022"
@@ -145,6 +147,44 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         required_plan_feature="tools.checklist_generator",
         confirm_button_label="Generate Checklist",
         confirm_description_template="Create '{title}' checklist with {context}",
+    ),
+    "fetch_dom_context": ToolMetadata(
+        name="fetch_dom_context",
+        description=(
+            "Extract visible content and semantic structure from the current webpage. "
+            "Returns clean text content with preserved hierarchy (headings, lists, tables). "
+            "Use this to understand page context, find information, or guide user actions."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "selector": {
+                    "type": "string",
+                    "description": (
+                        "Optional CSS selector to limit extraction to a specific element. "
+                        "If not provided, extracts from entire document body."
+                    ),
+                },
+                "include_metadata": {
+                    "type": "boolean",
+                    "description": "Include page metadata (title, URL, timestamp)",
+                    "default": True,
+                },
+                "max_length": {
+                    "type": "integer",
+                    "description": "Maximum characters to return (default: 50000)",
+                    "default": 50000,
+                },
+            },
+            "required": [],
+        },
+        behavior=ToolBehavior.CONFIRM_REQUIRED,
+        client_side_execution=True,  # Executes in browser, but requires confirmation first
+        required_plan_feature=None,  # Available to all plans
+        toggle_label="Page Context",
+        toggle_description="Allow agent to read webpage content and structure",
+        confirm_button_label="Read Page",
+        confirm_description_template="Allow the agent to read the current webpage content?",
     ),
 }
 
