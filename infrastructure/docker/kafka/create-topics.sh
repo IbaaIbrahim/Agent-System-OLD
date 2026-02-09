@@ -67,6 +67,15 @@ kafka-topics --create \
     --config retention.ms=3600000 \
     --if-not-exists
 
+# User confirmation responses for CONFIRM_REQUIRED tools
+kafka-topics --create \
+    --bootstrap-server $KAFKA_BOOTSTRAP_SERVERS \
+    --topic agent.confirm \
+    --partitions 3 \
+    --replication-factor 1 \
+    --config retention.ms=3600000 \
+    --if-not-exists
+
 # Events for archiving (compact for deduplication)
 kafka-topics --create \
     --bootstrap-server $KAFKA_BOOTSTRAP_SERVERS \

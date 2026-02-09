@@ -1,11 +1,13 @@
 """Tool Workers - Entry point for tool execution workers."""
 
 import asyncio
+import json
 import signal
 import sys
 from typing import Any
 
 from libs.common import get_logger, setup_logging
+from libs.common.tool_catalog import ToolBehavior
 from libs.messaging.kafka import create_consumer
 from libs.messaging.redis import get_redis_client
 
@@ -15,11 +17,34 @@ from .registry import ToolRegistry
 logger = get_logger(__name__)
 
 
+def _create_error_result(error_code: str, message: str) -> str:
+    """Create a standardized error result JSON string.
+
+    Args:
+        error_code: Error code (e.g., "tool_not_found", "plan_access_denied")
+        message: Human-readable error message
+
+    Returns:
+        JSON string with error details
+    """
+    return json.dumps({
+        "error": error_code,
+        "message": message,
+        "success": False,
+    })
+
+
 async def handle_tool_request(
     message: dict[str, Any],
     headers: dict[str, str],
 ) -> None:
     """Handle an incoming tool execution request.
+
+    Validates tool access before execution:
+    1. Check if tool exists
+    2. Check plan access (required_plan_feature)
+    3. Check user-enabled status (for USER_ENABLED tools)
+    4. Execute tool
 
     Args:
         message: Tool request payload
@@ -30,6 +55,8 @@ async def handle_tool_request(
     arguments = message.get("arguments", {})
     job_id = message["job_id"]
     tenant_id = message["tenant_id"]
+    plan_features = message.get("plan_features", [])  # From ITT v2
+    enabled_tools = message.get("enabled_tools", [])  # From frontend (user toggles)
 
     logger.info(
         "Processing tool request",
@@ -43,10 +70,50 @@ async def handle_tool_request(
         registry = ToolRegistry()
         tool = registry.get_tool(tool_name)
 
-        if not tool:
-            result = f"Error: Unknown tool '{tool_name}'"
+        # 1. Check if tool exists
+        if tool is None:
+            logger.warning(
+                "Tool not found",
+                tool_name=tool_name,
+                job_id=job_id,
+            )
+            result = _create_error_result(
+                "tool_not_found",
+                f"Tool '{tool_name}' does not exist",
+            )
+        # 2. Check plan access
+        elif (
+            tool.required_plan_feature
+            and tool.required_plan_feature not in plan_features
+        ):
+            logger.warning(
+                "Plan access denied",
+                tool_name=tool_name,
+                required_feature=tool.required_plan_feature,
+                plan_features=plan_features,
+                job_id=job_id,
+            )
+            result = _create_error_result(
+                "plan_access_denied",
+                f"Tool '{tool_name}' requires plan feature: {tool.required_plan_feature}",
+            )
+        # 3. Check user enabled (for USER_ENABLED tools)
+        elif (
+            tool.behavior == ToolBehavior.USER_ENABLED
+            and tool_name not in enabled_tools
+        ):
+            logger.warning(
+                "Tool not enabled by user",
+                tool_name=tool_name,
+                enabled_tools=enabled_tools,
+                job_id=job_id,
+            )
+            result = _create_error_result(
+                "tool_not_enabled",
+                f"Tool '{tool_name}' is not enabled by user",
+            )
         else:
-            # Execute tool
+            # 4. Execute tool
             result = await tool.execute(
                 arguments=arguments,
                 context={
@@ -63,7 +130,10 @@ async def handle_tool_request(
             tool_name=tool_name,
             error=str(e),
         )
-        result = f"Error: {str(e)}"
+        result = _create_error_result(
+            "execution_failed",
+            str(e),
+        )
 
     # Store result in Redis for orchestrator to pick up
     redis = await get_redis_client()

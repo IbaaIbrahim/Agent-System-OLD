@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './MessageBubble.css';
 import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
+import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
 
 export interface Attachment {
     id: string;
@@ -9,7 +10,7 @@ export interface Attachment {
     name?: string;
 }
 
-export type MessageStepType = 'text' | 'thinking' | 'tool-call';
+export type MessageStepType = 'text' | 'thinking' | 'tool-call' | 'confirm-request';
 
 export interface MessageStep {
     id: string;
@@ -21,6 +22,11 @@ export interface MessageStep {
     toolResult?: any;
     isFinished?: boolean;
     thoughts?: string[];
+    // Confirm request fields
+    toolCallId?: string;
+    confirmLabel?: string;
+    confirmDescription?: string;
+    confirmStatus?: ConfirmStatus;
 }
 
 export interface MessageProps {
@@ -38,6 +44,8 @@ export interface MessageProps {
     };
     onAnimationComplete?: () => void;
     shouldAnimate?: boolean;
+    onConfirm?: (toolCallId: string) => void;
+    onReject?: (toolCallId: string) => void;
 }
 
 export const MessageBubble: React.FC<MessageProps> = (props) => {
@@ -87,6 +95,22 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                             args={step.toolArgs}
                                             status={step.toolStatus as any}
                                             result={step.toolResult}
+                                        />
+                                    </div>
+                                );
+                            }
+
+                            if (step.type === 'confirm-request') {
+                                return (
+                                    <div key={step.id} className="cb-step-confirm" style={{ marginBottom: 8 }}>
+                                        <ConfirmButtons
+                                            toolCallId={step.toolCallId || step.id}
+                                            toolName={step.toolName || 'Tool'}
+                                            label={step.confirmLabel || step.toolName || 'Confirm Action'}
+                                            description={step.confirmDescription}
+                                            status={step.confirmStatus || 'pending'}
+                                            onConfirm={props.onConfirm || (() => {})}
+                                            onReject={props.onReject || (() => {})}
                                         />
                                     </div>
                                 );

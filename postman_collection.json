@@ -400,7 +400,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"string\",\n  \"slug\": \"string\",\n  \"partner_id\": \"1ea206aa-2ea8-4df1-8947-2c87bd0995bf\",\n  \"rate_limit_rpm\": 0,\n  \"rate_limit_tpm\": 0,\n  \"settings\": {}\n}"
+              "raw": "{\n  \"name\": \"string\",\n  \"slug\": \"string\",\n  \"partner_id\": \"545867b0-0b6d-42a5-9b21-22a6d1b3962e\",\n  \"rate_limit_rpm\": 0,\n  \"rate_limit_tpm\": 0,\n  \"settings\": {}\n}"
             }
           }
         },
@@ -918,6 +918,78 @@
               ]
             }
           }
+        },
+        {
+          "name": "Get Tool Preferences",
+          "event": [],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenant-api-key}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/me/preferences/tools",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                "preferences",
+                "tools"
+              ],
+              "variable": []
+            }
+          }
+        },
+        {
+          "name": "Update Tool Preferences",
+          "event": [],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenant-api-key}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/me/preferences/tools",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                "preferences",
+                "tools"
+              ],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled_tools\": [\n    \"string\"\n  ]\n}"
+            }
+          }
         }
       ]
     },
@@ -1059,7 +1131,44 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"string\",\n      \"content\": \"string\",\n      \"tool_calls\": [\n        {}\n      ],\n      \"tool_call_id\": \"string\"\n    }\n  ],\n  \"model\": \"string\",\n  \"provider\": \"string\",\n  \"system\": \"string\",\n  \"tools\": [\n    {\n      \"name\": \"string\",\n      \"description\": \"string\",\n      \"parameters\": {}\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 4096,\n  \"stream\": true,\n  \"metadata\": {}\n}"
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"string\",\n      \"content\": \"string\",\n      \"tool_calls\": [\n        {}\n      ],\n      \"tool_call_id\": \"string\"\n    }\n  ],\n  \"model\": \"string\",\n  \"provider\": \"string\",\n  \"system\": \"string\",\n  \"tools\": [\n    {\n      \"name\": \"string\",\n      \"description\": \"string\",\n      \"parameters\": {},\n      \"category\": \"builtin\"\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 4096,\n  \"stream\": true,\n  \"metadata\": {}\n}"
+            }
+          }
+        },
+        {
+          "name": "Confirm Response",
+          "event": [],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user-access-token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/confirm-response",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "confirm-response"
+              ],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job_id\": \"string\",\n  \"tool_call_id\": \"string\",\n  \"confirmed\": false\n}"
             }
           }
         }
@@ -1188,6 +1297,87 @@
                   "disabled": true
                 }
               ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tools",
+      "item": [
+        {
+          "name": "Submit Tool Result",
+          "event": [],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user-access-token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tools/jobs/{{job_id}}/tool-results",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tools",
+                "jobs",
+                "{{job_id}}",
+                "tool-results"
+              ],
+              "variable": [
+                {
+                  "key": "job_id",
+                  "value": "",
+                  "description": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tool_call_id\": \"string\",\n  \"tool_name\": \"string\",\n  \"result\": \"string\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Available Tools",
+          "event": [],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user-access-token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tools/available",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tools",
+                "available"
+              ],
+              "variable": []
             }
           }
         }
@@ -1651,7 +1841,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"plan_id\": \"988d1e1b-89e9-4670-88d4-26b55cba2a5a\",\n  \"trial_days\": 0\n}"
+              "raw": "{\n  \"plan_id\": \"53ca2d20-ae8d-4145-ac51-95b292c7d537\",\n  \"trial_days\": 0\n}"
             }
           }
         },
@@ -1723,7 +1913,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"plan_id\": \"31614538-e917-4cd3-8520-7cf061108000\",\n  \"prorate\": true\n}"
+              "raw": "{\n  \"plan_id\": \"8c62f081-c9ef-4e6c-8001-322655fe70fb\",\n  \"prorate\": true\n}"
             }
           }
         },

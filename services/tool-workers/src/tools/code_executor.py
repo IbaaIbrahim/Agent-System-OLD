@@ -7,6 +7,7 @@ from io import StringIO
 from typing import Any
 
 from libs.common import get_logger
+from libs.common.tool_catalog import ToolBehavior
 
 from ..config import get_config
 from .base import BaseTool
@@ -38,6 +39,8 @@ class CodeExecutorTool(BaseTool):
         },
         "required": ["code"],
     }
+    behavior = ToolBehavior.AUTO_EXECUTE
+    required_plan_feature = "tools.code_executor"
 
     def __init__(self) -> None:
         self.config = get_config()

@@ -14,10 +14,12 @@ class OrchestratorConfig(Settings):
     tools_topic: str = "agent.tools"
     tool_results_topic: str = "agent.tool-results"
     resume_topic: str = "agent.job-resume"
+    confirm_topic: str = "agent.confirm"
 
     # Consumer settings
     consumer_group: str = "orchestrator"
     resume_consumer_group: str = "orchestrator-resume"
+    confirm_consumer_group: str = "orchestrator-confirm"
 
     # Agent settings
     max_iterations: int = 10

@@ -6,6 +6,7 @@ from datetime import UTC
 from typing import Any
 
 from libs.common import get_logger
+from libs.common.tool_catalog import ToolBehavior, get_tool_metadata
 from libs.llm import ToolCall
 from libs.messaging.kafka import get_producer
 
@@ -82,6 +83,63 @@ class ToolHandler:
             tool_id=tool_call.id,
         )
 
+    async def _emit_confirm_request(
+        self,
+        state: AgentState,
+        tool_call: ToolCall,
+    ) -> None:
+        """Emit confirm request event for CONFIRM_REQUIRED tools.
+
+        The frontend will display confirm/reject buttons. User's decision
+        is sent back via POST /confirm-response.
+
+        Args:
+            state: Current agent state
+            tool_call: Tool call requiring confirmation
+        """
+        from libs.messaging.redis import get_redis_client
+
+        redis = await get_redis_client()
+
+        # Get tool metadata for display info
+        metadata = get_tool_metadata(tool_call.name)
+
+        # Generate description from template
+        label = tool_call.name
+        description = None
+
+        if metadata:
+            label = metadata.confirm_button_label or f"Run {tool_call.name}"
+            if metadata.confirm_description_template and tool_call.arguments:
+                try:
+                    description = metadata.confirm_description_template.format(
+                        **tool_call.arguments
+                    )
+                except KeyError:
+                    # Template has placeholders not in arguments
+                    description = metadata.confirm_description_template
+
+        event_data = {
+            "type": "confirm_request",
+            "job_id": str(state.job_id),
+            "tool_call_id": tool_call.id,
+            "tool_name": tool_call.name,
+            "label": label,
+            "description": description,
+            "arguments": tool_call.arguments,
+        }
+
+        # Publish to job's event channel
+        channel = f"events:{state.job_id}"
+        await redis.publish(channel, json.dumps(event_data))
+
+        logger.info(
+            "Confirm request emitted",
+            job_id=str(state.job_id),
+            tool_name=tool_call.name,
+            tool_id=tool_call.id,
+        )
+
     async def execute_tools(
         self,
         state: AgentState,
@@ -123,6 +181,11 @@ class ToolHandler:
 
         Used in suspend/resume mode. Tools are dispatched and the
         orchestrator exits. Resume signals will trigger continuation.
+
+        Behavior-based routing:
+        - CONFIRM_REQUIRED: Emit confirm_request to client, wait for approval
+        - CLIENT_SIDE: Emit client_tool_call for frontend execution
+        - AUTO_EXECUTE / USER_ENABLED: Dispatch to tool workers
 
         Args:
             state: Current agent state
@@ -168,8 +231,30 @@ class ToolHandler:
                     job_id=str(state.job_id),
                     tool_name=tc.name,
                 )
+                continue
+
+            # Get tool metadata for behavior-based routing
+            metadata = get_tool_metadata(tc.name)
+
+            # Check behavior from catalog, fallback to legacy category
+            if metadata and metadata.behavior == ToolBehavior.CONFIRM_REQUIRED:
+                # Emit confirm request to client, job suspends
+                await self._emit_confirm_request(state, tc)
+                logger.info(
+                    "Confirm request emitted, waiting for user approval",
+                    job_id=str(state.job_id),
+                    tool_name=tc.name,
+                )
+            elif metadata and metadata.behavior == ToolBehavior.CLIENT_SIDE:
+                # Emit SSE event for frontend to execute
+                await self._emit_client_tool_event(state, tc)
+                logger.info(
+                    "Client-side tool event emitted, waiting for frontend",
+                    job_id=str(state.job_id),
+                    tool_name=tc.name,
+                )
             else:
-                # Check if this is a client-side tool
+                # Check legacy category for backward compatibility
                 category = self._get_tool_category(tc.name, state.tools)
 
                 if category == "client_side":
@@ -181,7 +266,8 @@ class ToolHandler:
                         tool_name=tc.name,
                     )
                 else:
-                    # Dispatch to tool workers (builtin or configurable)
+                    # Dispatch to tool workers (AUTO_EXECUTE, USER_ENABLED, or legacy)
+                    # Include plan_features and enabled_tools for worker validation
                     message = {
                         "tool_call_id": tc.id,
                         "job_id": str(state.job_id),
@@ -189,6 +275,8 @@ class ToolHandler:
                         "tool_name": tc.name,
                         "arguments": tc.arguments,
                         "snapshot_sequence": state.iteration,
+                        "plan_features": getattr(state, "plan_features", []),
+                        "enabled_tools": getattr(state, "enabled_tools", []),
                     }
 
                     await producer.send(

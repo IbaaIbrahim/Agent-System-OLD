@@ -25,6 +25,15 @@ from libs.common.exceptions import (
     ValidationError,
 )
 from libs.common.logging import get_logger, setup_logging
+from libs.common.tool_catalog import (
+    TOOL_CATALOG,
+    ToolBehavior,
+    ToolMetadata,
+    get_confirm_required_tools,
+    get_tool_metadata,
+    get_tools_for_plan,
+    get_user_toggleable_tools,
+)
 
 __all__ = [
     # Config
@@ -54,4 +63,12 @@ __all__ = [
     "create_stream_ott",
     "verify_stream_ott",
     "StreamOTTPayload",
+    # Tool catalog
+    "ToolBehavior",
+    "ToolMetadata",
+    "TOOL_CATALOG",
+    "get_tool_metadata",
+    "get_tools_for_plan",
+    "get_user_toggleable_tools",
+    "get_confirm_required_tools",
 ]

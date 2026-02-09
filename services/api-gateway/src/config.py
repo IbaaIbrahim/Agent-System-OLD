@@ -14,6 +14,9 @@ class APIGatewayConfig(Settings):
     # Job queue topic
     jobs_topic: str = "agent.jobs"
 
+    # Confirm response topic
+    confirm_topic: str = "agent.confirm"
+
     # Request timeout (seconds)
     request_timeout: int = 30
 

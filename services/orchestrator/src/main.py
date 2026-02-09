@@ -78,8 +78,15 @@ async def main() -> None:
     if config.enable_suspend_resume:
         # Create resume handler and consumer
         from .handlers.resume_handler import ResumeHandler
+        from .handlers.confirm_handler import ConfirmHandler
 
         resume_handler = ResumeHandler(
+            snapshot_service=snapshot_service,
+            llm_service=llm_service,
+            tool_handler=tool_handler,
+        )
+
+        confirm_handler = ConfirmHandler(
             snapshot_service=snapshot_service,
             llm_service=llm_service,
             tool_handler=tool_handler,
@@ -94,26 +101,43 @@ async def main() -> None:
             resume_handler.handle_resume,
         )
 
+        confirm_consumer = await create_consumer(
+            topics=[config.confirm_topic],
+            group_id=config.confirm_consumer_group,
+        )
+        confirm_consumer.register_handler(
+            config.confirm_topic,
+            confirm_handler.handle_confirmation,
+        )
+
         logger.info(
             "Resume consumer configured",
             topic=config.resume_topic,
             group_id=config.resume_consumer_group,
         )
 
-        # Run both consumers concurrently
+        logger.info(
+            "Confirm consumer configured",
+            topic=config.confirm_topic,
+            group_id=config.confirm_consumer_group,
+        )
+
+        # Run all consumers concurrently
         try:
             await job_consumer.start()
             await resume_consumer.start()
+            await confirm_consumer.start()
 
             # Create tasks for consumers
             job_task = asyncio.create_task(job_consumer.run())
             resume_task = asyncio.create_task(resume_consumer.run())
+            confirm_task = asyncio.create_task(confirm_consumer.run())
 
             # Wait for shutdown signal or tasks to finish
             wait_for_shutdown = asyncio.create_task(shutdown_event.wait())
-            
+
             done, pending = await asyncio.wait(
-                [job_task, resume_task, wait_for_shutdown],
+                [job_task, resume_task, confirm_task, wait_for_shutdown],
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
@@ -123,12 +147,14 @@ async def main() -> None:
                 logger.warning("One of the consumers stopped unexpectedly")
 
             # Shutdown signal received or consumer stopped, cancel tasks
-            for task in [job_task, resume_task, wait_for_shutdown]:
+            for task in [job_task, resume_task, confirm_task, wait_for_shutdown]:
                 if not task.done():
                     task.cancel()
-            
+
             # Wait for tasks to clean up
-            await asyncio.gather(job_task, resume_task, return_exceptions=True)
+            await asyncio.gather(
+                job_task, resume_task, confirm_task, return_exceptions=True
+            )
 
         except asyncio.CancelledError:
             pass
@@ -136,6 +162,7 @@ async def main() -> None:
             logger.info("Shutting down Orchestrator")
             await job_consumer.stop()
             await resume_consumer.stop()
+            await confirm_consumer.stop()
             await close_db()
             logger.info("Orchestrator shutdown complete")
     else:
