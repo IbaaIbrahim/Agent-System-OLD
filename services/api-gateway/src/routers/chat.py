@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from libs.common import get_logger
 from libs.common.auth import create_internal_transaction_token, create_stream_ott
 from libs.common.exceptions import ValidationError
-from libs.common.tool_catalog import TOOL_CATALOG
+from libs.common.tool_catalog import TOOL_CATALOG, ToolBehavior
 from libs.db.models import ChatMessage as ChatMessageModel
 from libs.db.models import Job, JobStatus, MessageRole
 from libs.db.session import get_session_context
@@ -127,32 +127,53 @@ async def create_chat_completion(
         else:
             model = config.anthropic_default_model
 
-    # --- Step 0.5: Inject tools from TOOL_CATALOG based on enabled_tools ---
-    # If the frontend specifies enabled_tools in metadata, we inject tool definitions
-    # from the unified TOOL_CATALOG
+    # --- Step 0.5: Inject tools from TOOL_CATALOG ---
+    # 1. All AUTO_EXECUTE (built-in) tools are always included
+    # 2. USER_ENABLED tools are included only if specified in enabled_tools metadata
+    # 3. CONFIRM_REQUIRED tools are included (confirmation happens at execution time)
+    # 4. CLIENT_SIDE tools are excluded (they are passed dynamically from frontend)
 
-    # Start with user-provided tools (if any)
+    # Start with user-provided tools (if any) - preserves frontend-sent tools
     final_tools = list(body.tools) if body.tools else []
 
-    # Check for enabled_tools in metadata and inject tools from catalog
+    # Get enabled_tools from metadata for USER_ENABLED tools
     enabled_tools = (body.metadata or {}).get("enabled_tools", [])
-    for tool_name in enabled_tools:
-        tool_metadata = TOOL_CATALOG.get(tool_name)
-        if tool_metadata:
-            # Check if tool is already in the list
-            if not any(t.name == tool_name for t in final_tools):
-                final_tools.append(
-                    ToolDefinition(
-                        name=tool_metadata.name,
-                        description=tool_metadata.description,
-                        parameters=tool_metadata.parameters,
-                    )
-                )
+
+    # Inject tools from catalog based on behavior
+    for tool_name, tool_metadata in TOOL_CATALOG.items():
+        # Skip if tool is already in the list (e.g., sent from frontend)
+        if any(t.name == tool_name for t in final_tools):
+            continue
+
+        # Skip CLIENT_SIDE tools - they are passed dynamically from frontend
+        if tool_metadata.behavior == ToolBehavior.CLIENT_SIDE:
+            continue
+
+        # Skip USER_ENABLED tools that are not explicitly enabled
+        if (
+            tool_metadata.behavior == ToolBehavior.USER_ENABLED
+            and tool_name not in enabled_tools
+        ):
+            continue
+
+        # Include all other tools (AUTO_EXECUTE, CONFIRM_REQUIRED, enabled USER_ENABLED)
+        final_tools.append(
+            ToolDefinition(
+                name=tool_metadata.name,
+                description=tool_metadata.description,
+                parameters=tool_metadata.parameters,
+            )
+        )
 
     logger.debug(
         "Final tools after injection",
         job_id=str(job_id),
         enabled_tools=enabled_tools,
+        auto_execute_tools=[
+            t.name
+            for t in TOOL_CATALOG.values()
+            if t.behavior == ToolBehavior.AUTO_EXECUTE
+        ],
         final_tool_names=[t.name for t in final_tools],
     )
 
