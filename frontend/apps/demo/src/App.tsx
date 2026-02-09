@@ -24,6 +24,7 @@ function App() {
     const [webSearchEnabled, setWebSearchEnabled] = useState(true);
     const [pageContextEnabled, setPageContextEnabled] = useState(false);
     const [isReadingPage, setIsReadingPage] = useState(false);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
 
     // State managed by Client
@@ -208,6 +209,7 @@ function App() {
         setIsTyping(false);
         finishedMessageIdsRef.current.clear();
         prevMsgCountRef.current = 0;
+        setIsDrawerOpen(false);
     };
 
     // When chat is closed, mark all messages as finished animating
@@ -320,6 +322,8 @@ function App() {
                     isOpen={isOpen}
                     onClose={() => setIsOpen(false)}
                     onOpen={() => setIsOpen(true)}
+                    isDrawerOpen={isDrawerOpen}
+                    onDrawerOpenChange={setIsDrawerOpen}
                     drawerContent={navContent}
                     footer={
                         <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
