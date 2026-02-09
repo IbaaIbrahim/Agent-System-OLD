@@ -1,20 +1,19 @@
 """Checklist generator tool using LLM structured output."""
 
 import json
-from pathlib import Path
 from typing import Any
 
 from libs.common import get_logger
+from libs.common.tool_catalog import ToolBehavior
 from libs.llm import get_provider
 
+from .assets import load_json_asset, load_text_asset
 from .base import BaseTool, ToolCategory
 
 logger = get_logger(__name__)
 
-# Resolve paths relative to repo root
-_REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
-_SCHEMA_PATH = _REPO_ROOT / "old" / "constants" / "data" / "schema.json"
-_SYSTEM_PROMPT_PATH = _REPO_ROOT / "old" / "constants" / "data" / "system_prompt.txt"
+# Tool asset folder name
+_TOOL_NAME = "checklist_generator"
 
 
 class ChecklistGeneratorTool(BaseTool):
@@ -59,6 +58,8 @@ class ChecklistGeneratorTool(BaseTool):
         "required": ["title", "context"],
     }
     category = ToolCategory.CONFIGURABLE
+    behavior = ToolBehavior.CONFIRM_REQUIRED
+    required_plan_feature = "tools.checklist_generator"
 
     def __init__(self) -> None:
         """Initialize the checklist generator tool.
@@ -71,23 +72,15 @@ class ChecklistGeneratorTool(BaseTool):
     def _load_schema(self) -> dict[str, Any]:
         """Load and cache the Flowdit checklist schema."""
         if self._schema is None:
-            if not _SCHEMA_PATH.exists():
-                raise FileNotFoundError(f"Checklist schema not found at: {_SCHEMA_PATH}")
-            with open(_SCHEMA_PATH, encoding="utf-8") as f:
-                self._schema = json.load(f)
-            logger.debug("Loaded Flowdit schema", path=str(_SCHEMA_PATH))
+            self._schema = load_json_asset(_TOOL_NAME, "schema.json")
+            logger.debug("Loaded Flowdit schema", tool=_TOOL_NAME)
         return self._schema
 
     def _load_system_prompt(self) -> str:
         """Load and cache the system prompt."""
         if self._system_prompt is None:
-            if not _SYSTEM_PROMPT_PATH.exists():
-                raise FileNotFoundError(
-                    f"System prompt not found at: {_SYSTEM_PROMPT_PATH}"
-                )
-            with open(_SYSTEM_PROMPT_PATH, encoding="utf-8") as f:
-                self._system_prompt = f.read().strip()
-            logger.debug("Loaded system prompt", path=str(_SYSTEM_PROMPT_PATH))
+            self._system_prompt = load_text_asset(_TOOL_NAME, "system_prompt.txt")
+            logger.debug("Loaded system prompt", tool=_TOOL_NAME)
         return self._system_prompt
 
     async def execute(

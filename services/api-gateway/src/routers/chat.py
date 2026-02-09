@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from libs.common import get_logger
 from libs.common.auth import create_internal_transaction_token, create_stream_ott
 from libs.common.exceptions import ValidationError
+from libs.common.tool_catalog import TOOL_CATALOG
 from libs.db.models import ChatMessage as ChatMessageModel
 from libs.db.models import Job, JobStatus, MessageRole
 from libs.db.session import get_session_context
@@ -126,40 +127,27 @@ async def create_chat_completion(
         else:
             model = config.anthropic_default_model
 
-    # --- Step 0.5: Inject builtin tools based on enabled_tools ---
+    # --- Step 0.5: Inject tools from TOOL_CATALOG based on enabled_tools ---
     # If the frontend specifies enabled_tools in metadata, we inject tool definitions
-    builtin_tools_catalog = {
-        "web_search": ToolDefinition(
-            name="web_search",
-            description="Search the web for information. Use this when you need to find current information, facts, or data that may not be in your training data.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query",
-                    },
-                    "num_results": {
-                        "type": "integer",
-                        "description": "Number of results to return (default: 5, max: 10)",
-                        "default": 5,
-                    },
-                },
-                "required": ["query"],
-            },
-        ),
-    }
+    # from the unified TOOL_CATALOG
 
     # Start with user-provided tools (if any)
     final_tools = list(body.tools) if body.tools else []
 
-    # Check for enabled_tools in metadata and inject builtin tools
+    # Check for enabled_tools in metadata and inject tools from catalog
     enabled_tools = (body.metadata or {}).get("enabled_tools", [])
     for tool_name in enabled_tools:
-        if tool_name in builtin_tools_catalog:
+        tool_metadata = TOOL_CATALOG.get(tool_name)
+        if tool_metadata:
             # Check if tool is already in the list
             if not any(t.name == tool_name for t in final_tools):
-                final_tools.append(builtin_tools_catalog[tool_name])
+                final_tools.append(
+                    ToolDefinition(
+                        name=tool_metadata.name,
+                        description=tool_metadata.description,
+                        parameters=tool_metadata.parameters,
+                    )
+                )
 
     logger.debug(
         "Final tools after injection",
@@ -362,3 +350,77 @@ async def create_chat_completion(
         status="pending",
         created_at=now.isoformat(),
     )
+
+
+class ConfirmResponseRequest(BaseModel):
+    """Request body for confirm/reject responses."""
+
+    job_id: str
+    tool_call_id: str
+    confirmed: bool
+
+
+class ConfirmResponseResponse(BaseModel):
+    """Response from confirm-response endpoint."""
+
+    status: str = "received"
+
+
+@router.post("/confirm-response", response_model=ConfirmResponseResponse)
+async def confirm_response(
+    body: ConfirmResponseRequest,
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+) -> ConfirmResponseResponse:
+    """Handle user's confirm/reject decision for CONFIRM_REQUIRED tools.
+
+    This endpoint receives the user's decision (confirm/reject) for tools
+    that require explicit user approval before execution.
+
+    Flow:
+    1. Validate request
+    2. Publish confirmation to Kafka (agent.confirm topic)
+    3. Return acknowledgment
+
+    Args:
+        body: Confirm response payload
+        tenant_id: Authenticated tenant ID
+
+    Returns:
+        Acknowledgment that the response was received
+    """
+    config = get_config()
+
+    logger.info(
+        "Confirm response received",
+        job_id=body.job_id,
+        tool_call_id=body.tool_call_id,
+        confirmed=body.confirmed,
+        tenant_id=str(tenant_id),
+    )
+
+    # Publish to Kafka confirm topic
+    producer = await get_producer()
+
+    await producer.send(
+        topic=config.confirm_topic,
+        message={
+            "job_id": body.job_id,
+            "tool_call_id": body.tool_call_id,
+            "confirmed": body.confirmed,
+            "tenant_id": str(tenant_id),
+        },
+        key=body.job_id,
+        headers={
+            "job_id": body.job_id,
+            "tool_call_id": body.tool_call_id,
+        },
+    )
+
+    logger.info(
+        "Confirm response published to Kafka",
+        job_id=body.job_id,
+        tool_call_id=body.tool_call_id,
+        topic=config.confirm_topic,
+    )
+
+    return ConfirmResponseResponse(status="received")

@@ -1,6 +1,6 @@
-# AGENTS.md
+# CLAUDE.md
 
-This file provides guidance to Agents when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Architecture
 
@@ -24,8 +24,32 @@ Frontend (React) → API Gateway (Control Plane, 8000) → Kafka → Orchestrato
 1. Chat request → API Gateway → Kafka `agent.jobs` → Orchestrator
 2. Agent events → Redis Pub/Sub `events:{job_id}` → Stream Edge → SSE to client
 3. Tool calls → Kafka `agent.tools` → Tool Workers → Redis `tool_result:{id}` → Orchestrator
+4. Tool confirmations → API Gateway → Kafka `agent.confirm` → Orchestrator (for CONFIRM_REQUIRED tools)
+
+**SSE event types:** `message`, `delta`, `tool_call`, `tool_result`, `start`, `complete`, `error`, `cancelled`, `suspended`, `confirm_request`, `confirm_response`
 
 **Reconnection strategy:** Stream Edge uses hot/cold fetch — recent history from Redis, archived messages from PostgreSQL, then live subscription.
+
+## Tool Management System
+
+Unified tool configuration with behavior-based execution flow. Tools are defined in `libs/common/tool_catalog.py`.
+
+**Tool Behaviors:**
+
+| Behavior | Description | Execution |
+|----------|-------------|-----------|
+| `AUTO_EXECUTE` | Executes automatically when LLM calls it | Plan-based, always on |
+| `USER_ENABLED` | Requires user to toggle ON in UI | Plan-based + user toggle |
+| `CONFIRM_REQUIRED` | Requires user approval per-call | Emits `confirm_request` SSE event |
+| `CLIENT_SIDE` | Executes in frontend | Sent to client |
+
+**Confirm flow for CONFIRM_REQUIRED tools:**
+1. LLM decides to call tool → Orchestrator emits `confirm_request` SSE event
+2. Frontend displays Confirm/Cancel buttons
+3. User clicks → `POST /confirm-response` → Kafka `agent.confirm`
+4. Orchestrator handles: confirmed → dispatch to workers; rejected → inject rejection result
+
+**Tool assets:** Each tool can have assets in `services/tool-workers/src/tools/assets/{tool_name}/` (e.g., schema.json, prompts). Use `load_json_asset()` / `load_text_asset()` from `assets/loader.py`.
 
 ## Multi-Tenancy & Auth Model
 
@@ -46,7 +70,7 @@ An **Internal Transaction Token v2** (signed JWT, HS256, 10-minute TTL) travels 
 
 ## Shared Libraries (`libs/`)
 
-- `libs/common/` — Base config (`pydantic-settings`), structured logging (`structlog`), auth (JWT/HS256, partner/tenant API key generation), exceptions
+- `libs/common/` — Base config (`pydantic-settings`), structured logging (`structlog`), auth (JWT/HS256, partner/tenant API key generation), exceptions, **tool catalog** (`ToolBehavior`, `ToolMetadata`)
 - `libs/db/` — SQLAlchemy 2.0 async models, session management. Three PostgreSQL schemas: `tenants`, `billing`, `jobs`
 - `libs/llm/` — Provider-agnostic LLM abstraction. `get_provider("anthropic"|"openai")`. `ToolDefinition` with `.to_anthropic()`/`.to_openai()` format conversion
 - `libs/messaging/` — Kafka async producer/consumer (with DLQ support) and Redis Pub/Sub client
@@ -109,18 +133,28 @@ All backend `make` targets set `PYTHONPATH=$(PWD)` for module resolution from re
 
 ## Adding New Tools
 
-Extend `BaseTool` in `services/tool-workers/src/tools/`, then register in `registry.py → register_all()`:
+1. Extend `BaseTool` in `services/tool-workers/src/tools/`, set behavior and plan feature:
 
 ```python
+from libs.common.tool_catalog import ToolBehavior
+
 class MyTool(BaseTool):
     name = "my_tool"
     description = "Does something"
     parameters = {"type": "object", "properties": {...}, "required": [...]}
+    behavior = ToolBehavior.AUTO_EXECUTE  # or USER_ENABLED, CONFIRM_REQUIRED
+    required_plan_feature = "tools.my_tool"  # Plan feature for access control
 
     async def execute(self, arguments: dict, context: dict) -> str:
         # context provides job_id, tenant_id
         return "result"
 ```
+
+2. Register in `registry.py → register_all()`
+
+3. Add to `libs/common/tool_catalog.py → TOOL_CATALOG` with metadata (for CONFIRM_REQUIRED tools, include `confirm_button_label` and `confirm_description_template`)
+
+4. (Optional) Add assets in `services/tool-workers/src/tools/assets/{tool_name}/`
 
 ## Key Files
 
@@ -152,7 +186,11 @@ class MyTool(BaseTool):
 | Agent state serializer | `services/orchestrator/src/engine/serializer.py` |
 | Distributed state lock | `services/orchestrator/src/services/state_lock.py` |
 | Resume handler (suspend/resume) | `services/orchestrator/src/handlers/resume_handler.py` |
+| Confirm handler (tool confirmations) | `services/orchestrator/src/handlers/confirm_handler.py` |
+| Tool handler (dispatch logic) | `services/orchestrator/src/handlers/tool_handler.py` |
+| Tool catalog (behavior config) | `libs/common/tool_catalog.py` |
 | Tool base class | `services/tool-workers/src/tools/base.py` |
+| Tool asset loader | `services/tool-workers/src/tools/assets/loader.py` |
 | Web search tool (real API) | `services/tool-workers/src/tools/web_search.py` |
 | Tool workers config | `services/tool-workers/src/config.py` |
 | Archiver postgres writer | `services/archiver/src/services/postgres_writer.py` |
@@ -167,6 +205,10 @@ class MyTool(BaseTool):
 | Web search unit tests | `tests/unit/test_web_search.py` |
 | Archiver events unit tests | `tests/unit/test_archiver_events.py` |
 | Frontend chat state | `frontend/src/hooks/useChat.ts` |
+| Frontend chat client | `frontend/apps/demo/src/api/RealChatClient.ts` |
+| ConfirmButtons component | `frontend/packages/chatbot-ui/src/components/ConfirmButtons/ConfirmButtons.tsx` |
+| MessageBubble component | `frontend/packages/chatbot-ui/src/components/MessageBubble/MessageBubble.tsx` |
 | Architecture design doc | `docs/rebuild.md` |
 | Project plan | `docs/plan.md` |
+| Tool management plan | `docs/tools-plan.md` |
 | Environment template | `.env.example` |

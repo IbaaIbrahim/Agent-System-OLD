@@ -5,6 +5,7 @@ from typing import Any, Literal
 import httpx
 
 from libs.common import get_logger
+from libs.common.tool_catalog import ToolBehavior
 
 from .base import BaseTool
 
@@ -37,6 +38,8 @@ class WebSearchTool(BaseTool):
         },
         "required": ["query"],
     }
+    behavior = ToolBehavior.USER_ENABLED
+    required_plan_feature = "tools.web_search"
 
     def __init__(
         self,

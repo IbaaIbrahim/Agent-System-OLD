@@ -8,4 +8,5 @@ export * from './components/WelcomeScreen/WelcomeScreen';
 export * from './components/NavigationSidebar/NavigationSidebar';
 export * from './components/ChatLauncher/ChatLauncher';
 export * from './components/PendingMessageList/PendingMessageList';
+export * from './components/ConfirmButtons/ConfirmButtons';
 

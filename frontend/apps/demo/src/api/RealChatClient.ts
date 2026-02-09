@@ -10,6 +10,7 @@ export class RealChatClient implements ChatClient {
     private currentModel: string | null = null;
     private currentProvider: string | null = null;
     private enabledTools: string[] = [];
+    private currentJobId: string | null = null;
 
 
 
@@ -92,6 +93,7 @@ export class RealChatClient implements ChatClient {
 
             // 4. Handle Streaming Response
             const { stream_url, job_id } = await response.json();
+            this.currentJobId = job_id;
 
             if (!stream_url) {
                 throw new Error('No stream URL received from gateway');
@@ -219,6 +221,73 @@ export class RealChatClient implements ChatClient {
                 }
             });
 
+            // Listen for 'confirm_request' events (for CONFIRM_REQUIRED tools)
+            eventSource.addEventListener('confirm_request', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Confirm request received:', data);
+
+                    this.messages = this.messages.map(m => {
+                        if (m.id === assistantMsgId) {
+                            let steps = m.steps ? [...m.steps] : [];
+
+                            // Move existing content to a text step if needed
+                            if (steps.length === 0 && fullContent) {
+                                steps.push({
+                                    id: `text-pre-${Date.now()}`,
+                                    type: 'text',
+                                    content: fullContent
+                                });
+                            }
+
+                            // Add confirm request step
+                            steps.push({
+                                id: data.tool_call_id,
+                                type: 'confirm-request',
+                                toolCallId: data.tool_call_id,
+                                toolName: data.tool_name,
+                                confirmLabel: data.label,
+                                confirmDescription: data.description,
+                                confirmStatus: 'pending',
+                            });
+                            return { ...m, steps };
+                        }
+                        return m;
+                    });
+                    onUpdate({ messages: this.messages, isThinking: true });
+                } catch (e) {
+                    console.warn('Failed to parse confirm_request event data', e);
+                }
+            });
+
+            // Listen for 'confirm_response' events (user's decision processed)
+            eventSource.addEventListener('confirm_response', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Confirm response received:', data);
+
+                    this.messages = this.messages.map(m => {
+                        if (m.id === assistantMsgId && m.steps) {
+                            const steps = m.steps.map(s => {
+                                if (s.type === 'confirm-request' && s.toolCallId === data.tool_call_id) {
+                                    return {
+                                        ...s,
+                                        confirmStatus: data.confirmed ? 'confirmed' : 'rejected',
+                                    } as MessageStep;
+                                }
+                                return s;
+                            });
+                            return { ...m, steps };
+                        }
+                        return m;
+                    });
+                    // Keep thinking if confirmed (tool will execute), stop if rejected
+                    onUpdate({ messages: this.messages, isThinking: data.confirmed });
+                } catch (e) {
+                    console.warn('Failed to parse confirm_response event data', e);
+                }
+            });
+
             // Listen for 'suspended' events (when job waits for tool execution)
             eventSource.addEventListener('suspended', (event: MessageEvent) => {
                 try {
@@ -268,6 +337,37 @@ export class RealChatClient implements ChatClient {
 
     reset(onUpdate: (state: ChatState) => void): void {
         this.messages = [];
+        this.currentJobId = null;
         onUpdate({ messages: [], isThinking: false });
+    }
+
+    async sendConfirmResponse(toolCallId: string, confirmed: boolean): Promise<void> {
+        if (!this.accessToken || !this.currentJobId) {
+            console.error('No access token or job ID available');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${GATEWAY_URL}/v1/confirm-response`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.accessToken}`,
+                },
+                body: JSON.stringify({
+                    job_id: this.currentJobId,
+                    tool_call_id: toolCallId,
+                    confirmed,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Confirm response failed: ${response.status}`);
+            }
+
+            console.log('Confirm response sent:', { toolCallId, confirmed });
+        } catch (error) {
+            console.error('Failed to send confirm response:', error);
+        }
     }
 }

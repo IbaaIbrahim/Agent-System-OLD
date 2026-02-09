@@ -4,9 +4,15 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
+from libs.common.tool_catalog import ToolBehavior
+
 
 class ToolCategory(str, Enum):
-    """Tool category determining visibility and execution location."""
+    """Tool category determining visibility and execution location.
+
+    DEPRECATED: Use ToolBehavior from libs.common.tool_catalog instead.
+    Kept for backwards compatibility.
+    """
 
     BUILTIN = "builtin"  # Always enabled, not shown in UI (web_search, get_current_time)
     CONFIGURABLE = "configurable"  # User can toggle in UI (generate_checklist)
@@ -19,7 +25,9 @@ class BaseTool(ABC):
     name: str = "base_tool"
     description: str = "Base tool description"
     parameters: dict[str, Any] = {}
-    category: ToolCategory = ToolCategory.BUILTIN  # Default to built-in
+    category: ToolCategory = ToolCategory.BUILTIN  # Legacy, use behavior instead
+    behavior: ToolBehavior = ToolBehavior.AUTO_EXECUTE  # New behavior-based system
+    required_plan_feature: str | None = None  # Plan feature required to use this tool
 
     @abstractmethod
     async def execute(
