@@ -19,6 +19,7 @@ class ToolMetadata(BaseModel):
 
     name: str
     description: str
+    parameters: dict  # JSON Schema for tool parameters
     behavior: ToolBehavior
     # Plan requirement (which plans include this tool)
     required_plan_feature: str | None = None  # e.g., "tools.web_search"
@@ -32,9 +33,60 @@ class ToolMetadata(BaseModel):
 
 # Master catalog - workers use this to validate and route
 TOOL_CATALOG: dict[str, ToolMetadata] = {
+    "get_current_time": ToolMetadata(
+        name="get_current_time",
+        description=(
+            "Get the current date and time. Use this when you need to know the current "
+            "time, date, day of week, or need to perform time-related calculations. "
+            "Supports different timezones and output formats."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "timezone": {
+                    "type": "string",
+                    "description": (
+                        "Timezone name (e.g., 'UTC', 'America/New_York', 'Europe/London', "
+                        "'Asia/Tokyo'). Defaults to UTC."
+                    ),
+                    "default": "UTC",
+                },
+                "format": {
+                    "type": "string",
+                    "description": (
+                        "Output format: 'iso' for ISO 8601 format, 'human' for "
+                        "human-readable format, 'unix' for Unix timestamp. Defaults to 'iso'."
+                    ),
+                    "enum": ["iso", "human", "unix"],
+                    "default": "iso",
+                },
+            },
+            "required": [],
+        },
+        behavior=ToolBehavior.AUTO_EXECUTE,
+        required_plan_feature=None,  # Always available
+    ),
     "web_search": ToolMetadata(
         name="web_search",
-        description="Search the web for information",
+        description=(
+            "Search the web for information. Use this when you need to find "
+            "current information, facts, or data that may not be in your training data."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query",
+                },
+                "num_results": {
+                    "type": "integer",
+                    "description": "Number of results to return (default: 5, max: 10)",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
         behavior=ToolBehavior.USER_ENABLED,
         required_plan_feature="tools.web_search",
         toggle_label="Web Search",
@@ -43,12 +95,41 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
     "code_executor": ToolMetadata(
         name="code_executor",
         description="Execute Python code in sandbox",
+        parameters={
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Python code to execute",
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Execution timeout in seconds (default: 30)",
+                    "default": 30,
+                },
+            },
+            "required": ["code"],
+        },
         behavior=ToolBehavior.AUTO_EXECUTE,
         required_plan_feature="tools.code_executor",
     ),
     "generate_checklist": ToolMetadata(
         name="generate_checklist",
         description="Generate a structured Flowdit checklist",
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Checklist title",
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Context or description for checklist generation",
+                },
+            },
+            "required": ["title", "context"],
+        },
         behavior=ToolBehavior.CONFIRM_REQUIRED,
         required_plan_feature="tools.checklist_generator",
         confirm_button_label="Generate Checklist",

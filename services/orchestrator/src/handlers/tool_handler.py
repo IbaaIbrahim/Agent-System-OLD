@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from datetime import UTC
 from typing import Any
 
 from libs.common import get_logger
@@ -191,10 +190,7 @@ class ToolHandler:
             state: Current agent state
             tool_calls: List of tool calls to dispatch
         """
-        from libs.messaging.redis import get_redis_client
-
         producer = await get_producer()
-        redis = await get_redis_client()
 
         for tc in tool_calls:
             logger.info(
@@ -203,35 +199,6 @@ class ToolHandler:
                 tool_name=tc.name,
                 tool_id=tc.id,
             )
-
-            # Check for built-in simple tools
-            if tc.name == "get_current_time":
-                # Store result immediately in Redis for resume handler
-                from datetime import datetime
-                result = datetime.now(UTC).isoformat()
-
-                result_key = f"tool_result:{tc.id}"
-                await redis.set(result_key, result, ex=300)
-
-                # Publish resume signal immediately
-                await producer.send(
-                    topic=self.config.resume_topic,
-                    message={
-                        "job_id": str(state.job_id),
-                        "tool_call_id": tc.id,
-                        "snapshot_sequence": state.iteration,
-                        "status": "completed",
-                        "tool_name": tc.name,
-                    },
-                    key=str(state.job_id),
-                )
-
-                logger.info(
-                    "Built-in tool executed and resume signal sent",
-                    job_id=str(state.job_id),
-                    tool_name=tc.name,
-                )
-                continue
 
             # Get tool metadata for behavior-based routing
             metadata = get_tool_metadata(tc.name)
@@ -319,12 +286,7 @@ class ToolHandler:
             tool_id=tool_call.id,
         )
 
-        # Check for built-in simple tools
-        if tool_call.name == "get_current_time":
-            from datetime import datetime
-            return datetime.now(UTC).isoformat()
-
-        # For other tools, dispatch to tool workers
+        # Dispatch to tool workers
         return await self._dispatch_to_worker(state, tool_call)
 
     async def _dispatch_to_worker(
