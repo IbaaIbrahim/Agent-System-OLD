@@ -12,6 +12,8 @@ export interface ChatContainerProps {
     children?: React.ReactNode;
     drawerContent?: React.ReactNode;
     footer?: React.ReactNode;
+    isDrawerOpen?: boolean;
+    onDrawerOpenChange?: (isOpen: boolean) => void;
 }
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({
@@ -21,10 +23,20 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     onOpen,
     children,
     drawerContent,
-    footer
+    footer,
+    isDrawerOpen: controlledIsDrawerOpen,
+    onDrawerOpenChange
 }) => {
     const [mounted, setMounted] = useState(false);
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [internalIsDrawerOpen, setInternalIsDrawerOpen] = useState(false);
+
+    const isDrawerOpen = controlledIsDrawerOpen !== undefined ? controlledIsDrawerOpen : internalIsDrawerOpen;
+
+    const setIsDrawerOpen = (open: boolean) => {
+        setInternalIsDrawerOpen(open);
+        onDrawerOpenChange?.(open);
+    };
+
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [isAtBottom, setIsAtBottom] = useState(true);
@@ -76,33 +88,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         return () => observer.disconnect();
     }, [isAtBottom]);
 
-    // Listen for size changes (e.g. Typewriter effect expanding a message)
-    useEffect(() => {
-        const currentRef = scrollRef.current;
-        if (!currentRef) return;
-
-        const observer = new ResizeObserver(() => {
-            // If we were at the bottom (or very close), keep sticking to bottom
-            // We increase tolerance here because the typewriter effect is fast
-            if (isAtBottom) {
-                scrollToBottom();
-            }
-        });
-
-        // Observe the children of the scroll view to detect height changes
-        // We can observe the scroll view itself, or better, its first child wrapper if it existed.
-        // Since children are direct, we observe the container's scrollHeight indirectly by observing the container? 
-        // No, ResizeObserver on the container fires when container resizes. 
-        // MutationObserver is better for content changes, OR observing a wrapper div.
-        // Let's wrap children in a div to observe it.
-        // For now, let's try observing the scrollRef, but that tracks container size.
-        // We need to wrap the messages in a div to observe their total height.
-    });
-
-    // Better Approach:
-    // We will wrap {children} in a div below and ref IT.
-
     if (!mounted) return null;
+
 
     if (!isOpen && mode === 'floating') {
         return <ChatLauncher onClick={() => onOpen?.()} />;
