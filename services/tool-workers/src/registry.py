@@ -8,6 +8,7 @@ from .config import get_config
 from .tools.base import BaseTool
 from .tools.checklist_generator import ChecklistGeneratorTool
 from .tools.code_executor import CodeExecutorTool
+from .tools.datetime_tool import DateTimeTool
 from .tools.web_search import WebSearchTool
 
 logger = get_logger(__name__)
@@ -86,6 +87,9 @@ class ToolRegistry:
 
         # Code executor tool
         self.register(CodeExecutorTool())
+
+        # Datetime tool (always available)
+        self.register(DateTimeTool())
 
         # Checklist generator tool (configurable - user can toggle)
         self.register(ChecklistGeneratorTool())
