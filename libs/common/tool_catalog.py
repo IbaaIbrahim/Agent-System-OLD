@@ -21,6 +21,9 @@ class ToolMetadata(BaseModel):
     description: str
     parameters: dict  # JSON Schema for tool parameters
     behavior: ToolBehavior
+    # Model preferences (used when user doesn't specify a model)
+    preferred_provider: str | None = None  # e.g., "anthropic", "openai"
+    preferred_model: str | None = None  # e.g., "claude-3-5-sonnet-20241022"
     # Plan requirement (which plans include this tool)
     required_plan_feature: str | None = None  # e.g., "tools.web_search"
     # For USER_ENABLED tools - UI display
@@ -64,6 +67,8 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
             "required": [],
         },
         behavior=ToolBehavior.AUTO_EXECUTE,
+        preferred_provider="anthropic",
+        preferred_model="claude-3-5-haiku-20241022",  # Simple tool, use fast model
         required_plan_feature=None,  # Always available
     ),
     "web_search": ToolMetadata(
@@ -88,6 +93,8 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
             "required": ["query"],
         },
         behavior=ToolBehavior.USER_ENABLED,
+        preferred_provider="anthropic",
+        preferred_model="claude-3-5-haiku-20241022",  # Search summarization, use fast model
         required_plan_feature="tools.web_search",
         toggle_label="Web Search",
         toggle_description="Allow agent to search the web for information",
@@ -111,6 +118,8 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
             "required": ["code"],
         },
         behavior=ToolBehavior.AUTO_EXECUTE,
+        preferred_provider="anthropic",
+        preferred_model="claude-3-5-sonnet-20241022",  # Code needs reasoning
         required_plan_feature="tools.code_executor",
     ),
     "generate_checklist": ToolMetadata(
@@ -131,6 +140,8 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
             "required": ["title", "context"],
         },
         behavior=ToolBehavior.CONFIRM_REQUIRED,
+        preferred_provider="anthropic",
+        preferred_model="claude-3-5-sonnet-20241022",  # Complex generation needs strong model
         required_plan_feature="tools.checklist_generator",
         confirm_button_label="Generate Checklist",
         confirm_description_template="Create '{title}' checklist with {context}",
@@ -191,3 +202,29 @@ def get_confirm_required_tools() -> list[ToolMetadata]:
         for tool in TOOL_CATALOG.values()
         if tool.behavior == ToolBehavior.CONFIRM_REQUIRED
     ]
+
+
+def get_tool_model_preference(
+    tool_name: str,
+    default_provider: str = "anthropic",
+    default_model: str = "claude-3-5-sonnet-20241022",
+) -> tuple[str, str]:
+    """Get the preferred provider and model for a tool.
+
+    If the tool has a preferred provider/model, use that.
+    Otherwise, fall back to the provided defaults.
+
+    Args:
+        tool_name: The name of the tool
+        default_provider: Fallback provider if tool has no preference
+        default_model: Fallback model if tool has no preference
+
+    Returns:
+        Tuple of (provider, model)
+    """
+    tool = TOOL_CATALOG.get(tool_name)
+    if tool:
+        provider = tool.preferred_provider or default_provider
+        model = tool.preferred_model or default_model
+        return (provider, model)
+    return (default_provider, default_model)
