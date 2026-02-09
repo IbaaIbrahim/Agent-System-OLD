@@ -145,13 +145,24 @@ async def create_chat_completion(
         if any(t.name == tool_name for t in final_tools):
             continue
 
-        # Skip CLIENT_SIDE tools - they are passed dynamically from frontend
+        # Handle CLIENT_SIDE tools
         if tool_metadata.behavior == ToolBehavior.CLIENT_SIDE:
-            continue
+            # If tool has toggle_label, it's user-toggleable (requires opt-in)
+            if tool_metadata.toggle_label and tool_name not in enabled_tools:
+                continue  # Skip if not enabled by user
+            # Include CLIENT_SIDE tools in LLM tool list (they execute in frontend)
 
         # Skip USER_ENABLED tools that are not explicitly enabled
         if (
             tool_metadata.behavior == ToolBehavior.USER_ENABLED
+            and tool_name not in enabled_tools
+        ):
+            continue
+
+        # Skip CONFIRM_REQUIRED tools with toggle_label if not enabled
+        if (
+            tool_metadata.behavior == ToolBehavior.CONFIRM_REQUIRED
+            and tool_metadata.toggle_label
             and tool_name not in enabled_tools
         ):
             continue

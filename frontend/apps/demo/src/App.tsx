@@ -9,11 +9,12 @@ import {
     NavigationSidebar,
     SidebarItem,
     MessageProps,
-    PendingMessageList
+    PendingMessageList,
+    RealChatClient,
+    AuthClient,
+    ChatState,
+    ChatClient
 } from '@chatbot-ui/core'
-import { RealChatClient } from './api/RealChatClient';
-import { AuthClient } from './api/AuthClient';
-import { ChatState, ChatClient } from './api/types';
 
 function App() {
     const [mode, setMode] = useState<ChatMode>('sidebar');
@@ -21,6 +22,8 @@ function App() {
     const [selectedModel, setSelectedModel] = useState<string>('auto');
     const [isConfigOpen, setIsConfigOpen] = useState(false);
     const [webSearchEnabled, setWebSearchEnabled] = useState(true);
+    const [pageContextEnabled, setPageContextEnabled] = useState(false);
+    const [isReadingPage, setIsReadingPage] = useState(false);
 
 
     // State managed by Client
@@ -89,10 +92,42 @@ function App() {
     // Sync Enabled Tools to Client
     useEffect(() => {
         if (client) {
-            const tools = webSearchEnabled ? ['web_search'] : [];
+            const tools: string[] = [];
+            if (webSearchEnabled) tools.push('web_search');
+            if (pageContextEnabled) tools.push('fetch_dom_context');
             client.setEnabledTools(tools);
         }
-    }, [client, webSearchEnabled]);
+    }, [client, webSearchEnabled, pageContextEnabled]);
+
+    // Set up page reading callback with delayed dismissal
+    useEffect(() => {
+        if (client && client.setPageReadingCallback) {
+            let dismissTimeout: NodeJS.Timeout | null = null;
+
+            client.setPageReadingCallback((isReading: boolean) => {
+                if (isReading) {
+                    // Clear any pending dismiss timeout
+                    if (dismissTimeout) {
+                        clearTimeout(dismissTimeout);
+                        dismissTimeout = null;
+                    }
+                    setIsReadingPage(true);
+                } else {
+                    // Delay dismissal by 2 seconds for visual confirmation
+                    dismissTimeout = setTimeout(() => {
+                        setIsReadingPage(false);
+                        dismissTimeout = null;
+                    }, 3500);
+                }
+            });
+
+            return () => {
+                if (dismissTimeout) {
+                    clearTimeout(dismissTimeout);
+                }
+            };
+        }
+    }, [client]);
 
 
     // Watch queue and processing state
@@ -196,6 +231,18 @@ function App() {
         });
     };
 
+    const handleConfirm = (toolCallId: string) => {
+        if (client && client.sendConfirmResponse) {
+            client.sendConfirmResponse(toolCallId, true);
+        }
+    };
+
+    const handleReject = (toolCallId: string) => {
+        if (client && client.sendConfirmResponse) {
+            client.sendConfirmResponse(toolCallId, false);
+        }
+    };
+
     const agents: SidebarItem[] = [
         { id: '1', label: 'Bug Report Assistant', icon: '🐞' },
         { id: '2', label: 'Comms Crafter', icon: '📝' },
@@ -223,65 +270,104 @@ function App() {
     );
 
     return (
-        <div style={{ padding: '0', fontFamily: 'sans-serif', background: '#333', height: '100vh', width: '100vw' }}>
-            {/* Controls for Demo */}
-            <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10000, background: 'rgba(255,255,255,0.9)', padding: 10, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span style={{ fontWeight: 'bold', marginRight: 5 }}>Demo Controls:</span>
-                <button onClick={() => { setMode('floating'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Floating</button>
-                <button onClick={() => { setMode('sidebar'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Sidebar</button>
-                <button onClick={() => { setMode('fullscreen'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Fullscreen</button>
-                <button onClick={() => setIsOpen(!isOpen)} style={{ cursor: 'pointer', padding: '4px 8px' }}>Toggle View</button>
-            </div>
-
-
-            <ChatContainer
-                mode={mode}
-                isOpen={isOpen}
-                onClose={() => setIsOpen(false)}
-                onOpen={() => setIsOpen(true)}
-                drawerContent={navContent}
-                footer={
-                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                        <PendingMessageList
-                            queue={messageQueue}
-                            onDelete={handleRemoveQueueItem}
-                        />
-                        <Composer
-                            onSend={handleSend}
-                            disabled={false}
-                            placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}
-                            webSearchEnabled={webSearchEnabled}
-                            onWebSearchChange={setWebSearchEnabled}
-                        />
-                    </div>
+        <>
+            {/* CSS for page reading animation */}
+            <style>{`
+                @keyframes page-reading-pulse {
+                    0%, 100% {
+                        box-shadow: inset 0 0 0 3px rgba(0, 120, 212, 0.4);
+                    }
+                    50% {
+                        box-shadow: inset 0 0 0 3px rgba(0, 120, 212, 0.8);
+                    }
                 }
-            >
-                {chatState.messages.length === 0 ? (
-                    <WelcomeScreen userName="Ibaa" actions={quickActions} />
-                ) : (
-                    <>
-                        {chatState.messages.map((msg) => (
-                            <MessageBubble
-                                key={msg.id}
-                                {...msg}
-                                shouldAnimate={!finishedMessageIdsRef.current.has(msg.id)}
-                                onAnimationComplete={() => handleAnimationComplete(msg.id)}
-                            />
-                        ))}
 
-                        {(chatState.isThinking || isProcessing) && (
-                            /* Only show global thinking if we don't have an assistant message at the end yet.
-                               If we DO have one, it likely has its own internal thinking indicator. */
-                            (!chatState.messages.length || chatState.messages[chatState.messages.length - 1].role !== 'assistant') && (
-                                <div style={{ paddingLeft: '16px' }}>
-                                    <ThinkingIndicator />
-                                </div>
-                            )
-                        )}
-                    </>
-                )}
-            </ChatContainer>
-        </div>
+                .page-reading-active {
+                    position: relative;
+                }
+
+                .page-reading-active::before {
+                    content: '';
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    border: 3px solid rgba(0, 120, 212, 0.6);
+                    animation: page-reading-pulse 1.5s ease-in-out infinite;
+                    pointer-events: none;
+                    z-index: 999999;
+                    border-radius: 8px;
+                }
+            `}</style>
+
+            <div
+                className={isReadingPage ? 'page-reading-active' : ''}
+                style={{ padding: '0', fontFamily: 'sans-serif', background: '#333', height: '100vh', width: '100vw' }}
+            >
+                {/* Controls for Demo */}
+                <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10000, background: 'rgba(255,255,255,0.9)', padding: 10, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 'bold', marginRight: 5 }}>Demo Controls:</span>
+                    <button onClick={() => { setMode('floating'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Floating</button>
+                    <button onClick={() => { setMode('sidebar'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Sidebar</button>
+                    <button onClick={() => { setMode('fullscreen'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Fullscreen</button>
+                    <button onClick={() => setIsOpen(!isOpen)} style={{ cursor: 'pointer', padding: '4px 8px' }}>Toggle View</button>
+                </div>
+
+
+                <ChatContainer
+                    mode={mode}
+                    isOpen={isOpen}
+                    onClose={() => setIsOpen(false)}
+                    onOpen={() => setIsOpen(true)}
+                    drawerContent={navContent}
+                    footer={
+                        <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                            <PendingMessageList
+                                queue={messageQueue}
+                                onDelete={handleRemoveQueueItem}
+                            />
+                            <Composer
+                                onSend={handleSend}
+                                disabled={false}
+                                placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}
+                                webSearchEnabled={webSearchEnabled}
+                                onWebSearchChange={setWebSearchEnabled}
+                                pageContextEnabled={pageContextEnabled}
+                                onPageContextChange={setPageContextEnabled}
+                            />
+                        </div>
+                    }
+                >
+                    {chatState.messages.length === 0 ? (
+                        <WelcomeScreen userName="Ibaa" actions={quickActions} />
+                    ) : (
+                        <>
+                            {chatState.messages.map((msg) => (
+                                <MessageBubble
+                                    key={msg.id}
+                                    {...msg}
+                                    shouldAnimate={!finishedMessageIdsRef.current.has(msg.id)}
+                                    onAnimationComplete={() => handleAnimationComplete(msg.id)}
+                                    onConfirm={handleConfirm}
+                                    onReject={handleReject}
+                                />
+                            ))}
+
+                            {(chatState.isThinking || isProcessing) && (
+                                /* Only show global thinking if we don't have an assistant message at the end yet.
+                                   If we DO have one, it likely has its own internal thinking indicator. */
+                                (!chatState.messages.length || chatState.messages[chatState.messages.length - 1].role !== 'assistant') && (
+                                    <div style={{ paddingLeft: '16px' }}>
+                                        <ThinkingIndicator />
+                                    </div>
+                                )
+                            )}
+                        </>
+                    )}
+                </ChatContainer>
+            </div>
+        </>
     )
 }
 

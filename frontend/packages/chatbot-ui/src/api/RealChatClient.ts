@@ -1,6 +1,6 @@
 
 import { ChatClient, ChatState } from './types';
-import { MessageProps, MessageStep } from '@chatbot-ui/core';
+import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 
 const GATEWAY_URL = 'http://localhost:8000/api';
 
@@ -11,6 +11,7 @@ export class RealChatClient implements ChatClient {
     private currentProvider: string | null = null;
     private enabledTools: string[] = [];
     private currentJobId: string | null = null;
+    private pageReadingCallback: ((isReading: boolean) => void) | null = null;
 
 
 
@@ -36,6 +37,10 @@ export class RealChatClient implements ChatClient {
 
     setEnabledTools(tools: string[]) {
         this.enabledTools = tools;
+    }
+
+    setPageReadingCallback(callback: (isReading: boolean) => void) {
+        this.pageReadingCallback = callback;
     }
 
 
@@ -288,6 +293,25 @@ export class RealChatClient implements ChatClient {
                 }
             });
 
+            // Listen for 'client_tool_call' events (for CLIENT_SIDE tools)
+            eventSource.addEventListener('client_tool_call', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Client tool call received:', data);
+
+                    // Execute the tool based on tool_name
+                    this.executeClientTool(data.tool_call_id, data.tool_name, data.arguments)
+                        .then(() => {
+                            console.log('Client tool executed successfully:', data.tool_name);
+                        })
+                        .catch((error) => {
+                            console.error('Client tool execution failed:', error);
+                        });
+                } catch (e) {
+                    console.warn('Failed to parse client_tool_call event data', e);
+                }
+            });
+
             // Listen for 'suspended' events (when job waits for tool execution)
             eventSource.addEventListener('suspended', (event: MessageEvent) => {
                 try {
@@ -369,5 +393,255 @@ export class RealChatClient implements ChatClient {
         } catch (error) {
             console.error('Failed to send confirm response:', error);
         }
+    }
+
+    private async executeClientTool(
+        toolCallId: string,
+        toolName: string,
+        toolArguments: any
+    ): Promise<void> {
+        console.log('Executing client tool:', toolName, toolArguments);
+        let result: string;
+
+        try {
+            switch (toolName) {
+                case 'fetch_dom_context':
+                    // Notify that page reading has started
+                    if (this.pageReadingCallback) {
+                        this.pageReadingCallback(true);
+                    }
+                    result = await this.executeFetchDomContext(toolArguments);
+                    break;
+                default:
+                    result = JSON.stringify({
+                        error: 'unknown_tool',
+                        message: `Client-side tool '${toolName}' is not implemented`,
+                    });
+            }
+
+            await this.submitToolResult(toolCallId, toolName, result);
+        } catch (error: any) {
+            console.error('Client tool execution error:', error);
+            await this.submitToolResult(
+                toolCallId,
+                toolName,
+                JSON.stringify({
+                    error: 'execution_failed',
+                    message: error.message || 'Unknown error',
+                })
+            );
+        } finally {
+            // Notify that page reading has ended
+            if (toolName === 'fetch_dom_context' && this.pageReadingCallback) {
+                this.pageReadingCallback(false);
+            }
+        }
+    }
+
+    private async submitToolResult(
+        toolCallId: string,
+        toolName: string,
+        result: string
+    ): Promise<void> {
+        if (!this.accessToken || !this.currentJobId) {
+            console.error('No access token or job ID available');
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                `${GATEWAY_URL}/v1/tools/jobs/${this.currentJobId}/tool-results`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.accessToken}`,
+                    },
+                    body: JSON.stringify({
+                        tool_call_id: toolCallId,
+                        tool_name: toolName,
+                        result: result,
+                    }),
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Tool result submission failed: ${response.status}`);
+            }
+
+            console.log('Tool result submitted:', { toolCallId, toolName });
+        } catch (error) {
+            console.error('Failed to submit tool result:', error);
+        }
+    }
+
+    private async executeFetchDomContext(args: any): Promise<string> {
+        const {
+            selector = 'body',
+            include_metadata = true,
+            max_length = 50000,
+        } = args;
+
+        try {
+            const element = document.querySelector(selector);
+            if (!element) {
+                return JSON.stringify({
+                    error: 'element_not_found',
+                    message: `No element found for selector: ${selector}`,
+                });
+            }
+
+            let content = '';
+
+            // Add metadata
+            if (include_metadata) {
+                content += `URL: ${window.location.href}\n`;
+                content += `Title: ${document.title}\n`;
+                content += `Timestamp: ${new Date().toISOString()}\n\n`;
+                content += '--- PAGE CONTENT ---\n\n';
+            }
+
+            // Extract content with structure
+            content += this.extractElementContent(element as HTMLElement, 0);
+
+            // Truncate if needed
+            if (content.length > max_length) {
+                content = content.substring(0, max_length) + '\n\n[Content truncated]';
+            }
+
+            return JSON.stringify({
+                success: true,
+                content: content,
+                length: content.length,
+                truncated: content.length > max_length,
+            });
+        } catch (error: any) {
+            return JSON.stringify({
+                error: 'extraction_failed',
+                message: error.message || 'Unknown error during DOM extraction',
+            });
+        }
+    }
+
+    private extractElementContent(element: HTMLElement, depth: number): string {
+        const indent = '  '.repeat(depth);
+        let result = '';
+
+        // Skip invisible elements
+        const style = window.getComputedStyle(element);
+        if (
+            style.display === 'none' ||
+            style.visibility === 'hidden' ||
+            style.opacity === '0'
+        ) {
+            return '';
+        }
+
+        // Skip unwanted elements
+        const skipTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'SVG', 'IFRAME'];
+        if (skipTags.includes(element.tagName)) {
+            return '';
+        }
+
+        const tag = element.tagName;
+
+        // Headings
+        if (/^H[1-6]$/.test(tag)) {
+            const level = parseInt(tag[1]);
+            const text = element.textContent?.trim();
+            if (text) {
+                result += `${indent}${'#'.repeat(level)} ${text}\n\n`;
+            }
+            return result;
+        }
+
+        // Paragraphs
+        if (tag === 'P') {
+            const text = element.textContent?.trim();
+            if (text) {
+                result += `${indent}${text}\n\n`;
+            }
+            return result;
+        }
+
+        // Lists
+        if (tag === 'UL' || tag === 'OL') {
+            const items = element.querySelectorAll(':scope > li');
+            items.forEach((li, idx) => {
+                const marker = tag === 'OL' ? `${idx + 1}.` : '-';
+                const text = li.textContent?.trim();
+                if (text) {
+                    result += `${indent}${marker} ${text}\n`;
+                }
+            });
+            result += '\n';
+            return result;
+        }
+
+        // Tables
+        if (tag === 'TABLE') {
+            result += `${indent}[Table]\n`;
+            const rows = element.querySelectorAll('tr');
+            rows.forEach((row) => {
+                const cells = row.querySelectorAll('td, th');
+                const cellTexts = Array.from(cells)
+                    .map((cell) => cell.textContent?.trim())
+                    .filter(t => t)
+                    .join(' | ');
+                if (cellTexts) {
+                    result += `${indent}  ${cellTexts}\n`;
+                }
+            });
+            result += '\n';
+            return result;
+        }
+
+        // Landmarks
+        if (['HEADER', 'NAV', 'MAIN', 'ARTICLE', 'SECTION', 'ASIDE', 'FOOTER'].includes(tag)) {
+            result += `${indent}[${tag}]\n`;
+            Array.from(element.children).forEach((child) => {
+                result += this.extractElementContent(child as HTMLElement, depth + 1);
+            });
+            result += '\n';
+            return result;
+        }
+
+        // Links
+        if (tag === 'A') {
+            const text = element.textContent?.trim();
+            const href = element.getAttribute('href');
+            if (text && href) {
+                result += `${indent}[${text}](${href})\n`;
+            }
+            return result;
+        }
+
+        // Buttons and interactive elements
+        if (['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) {
+            const text = element.textContent?.trim() || (element as HTMLInputElement).value?.trim();
+            if (text) {
+                result += `${indent}[${tag}] ${text}\n`;
+            }
+            return result;
+        }
+
+        // Generic container - check if it has direct text content or recurse into children
+        const hasChildren = element.children.length > 0;
+        const directText = hasChildren ? '' : element.textContent?.trim();
+
+        // If it's a leaf node with text (SPAN, DIV with only text, etc.), extract it
+        if (!hasChildren && directText) {
+            result += `${indent}${directText}\n`;
+            return result;
+        }
+
+        // Otherwise, recurse into children
+        if (hasChildren) {
+            Array.from(element.children).forEach((child) => {
+                result += this.extractElementContent(child as HTMLElement, depth);
+            });
+        }
+
+        return result;
     }
 }

@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from libs.common import get_logger
+from libs.common.tool_catalog import get_tool_metadata
 from libs.messaging.kafka import get_producer
 from libs.messaging.redis import get_redis_client
 
@@ -108,13 +109,25 @@ class ConfirmHandler:
             await self._emit_confirm_response(job_id, tool_call_id, confirmed)
 
             if confirmed:
-                # User approved - dispatch to workers
-                await self._dispatch_to_workers(state, tool_call)
-                logger.info(
-                    "Tool dispatched after user confirmation",
-                    job_id=str(job_id),
-                    tool_call_id=tool_call_id,
-                )
+                # User approved - check if tool needs client-side execution
+                tool_metadata = get_tool_metadata(tool_call.name)
+
+                if tool_metadata and tool_metadata.client_side_execution:
+                    # Emit client_tool_call event for frontend execution
+                    await self._emit_client_tool_call(state, tool_call)
+                    logger.info(
+                        "Client-side tool call emitted after user confirmation",
+                        job_id=str(job_id),
+                        tool_call_id=tool_call_id,
+                    )
+                else:
+                    # Dispatch to backend workers
+                    await self._dispatch_to_workers(state, tool_call)
+                    logger.info(
+                        "Tool dispatched after user confirmation",
+                        job_id=str(job_id),
+                        tool_call_id=tool_call_id,
+                    )
             else:
                 # User rejected - inject rejection result and resume
                 await self._handle_rejection(state, tool_call_id)
@@ -177,14 +190,41 @@ class ConfirmHandler:
             "confirmed": confirmed,
         }
 
-        channel = f"events:{job_id}"
-        await redis.publish(channel, json.dumps(event_data))
+        channel = f"job:{job_id}"
+        await redis.client.publish(channel, json.dumps(event_data))
 
         logger.debug(
             "Confirm response event emitted",
             job_id=str(job_id),
             tool_call_id=tool_call_id,
             confirmed=confirmed,
+        )
+
+    async def _emit_client_tool_call(self, state, tool_call) -> None:
+        """Emit client_tool_call event for client-side execution.
+
+        Args:
+            state: Current agent state
+            tool_call: Tool call to execute on client
+        """
+        redis = await get_redis_client()
+
+        event_data = {
+            "type": "client_tool_call",
+            "tool_call_id": tool_call.id,
+            "tool_name": tool_call.name,
+            "arguments": tool_call.arguments,
+        }
+
+        # Publish to job's event channel (pub/sub uses job: prefix)
+        channel = f"job:{state.job_id}"
+        await redis.client.publish(channel, json.dumps(event_data))
+
+        logger.debug(
+            "Client tool call event emitted",
+            job_id=str(state.job_id),
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
         )
 
     async def _dispatch_to_workers(self, state, tool_call) -> None:

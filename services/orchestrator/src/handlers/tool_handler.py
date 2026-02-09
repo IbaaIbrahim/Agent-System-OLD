@@ -71,9 +71,9 @@ class ToolHandler:
             "arguments": tool_call.arguments,
         }
 
-        # Publish to job's event channel
-        channel = f"events:{state.job_id}"
-        await redis.publish(channel, json.dumps(event_data))
+        # Publish to job's event channel (pub/sub uses job: prefix)
+        channel = f"job:{state.job_id}"
+        await redis.client.publish(channel, json.dumps(event_data))
 
         logger.info(
             "Client-side tool event emitted",
@@ -128,9 +128,9 @@ class ToolHandler:
             "arguments": tool_call.arguments,
         }
 
-        # Publish to job's event channel
-        channel = f"events:{state.job_id}"
-        await redis.publish(channel, json.dumps(event_data))
+        # Publish to job's event channel (pub/sub uses job: prefix)
+        channel = f"job:{state.job_id}"
+        await redis.client.publish(channel, json.dumps(event_data))
 
         logger.info(
             "Confirm request emitted",

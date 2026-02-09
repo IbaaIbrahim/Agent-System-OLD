@@ -17,6 +17,9 @@ class APIGatewayConfig(Settings):
     # Confirm response topic
     confirm_topic: str = "agent.confirm"
 
+    # Resume topic (for client-side tool results)
+    resume_topic: str = "agent.job-resume"
+
     # Request timeout (seconds)
     request_timeout: int = 30
 
