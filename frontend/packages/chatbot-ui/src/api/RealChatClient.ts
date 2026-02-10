@@ -441,6 +441,13 @@ export class RealChatClient implements ChatClient {
                         }
                         result = await this.executeReadPageContent(toolArguments);
                         break;
+                    case 'read_page_content_advanced':
+                        // Advanced page reading with screenshots
+                        if (this.pageReadingCallback) {
+                            this.pageReadingCallback(true);
+                        }
+                        result = await this.executeReadPageContentAdvanced(toolArguments);
+                        break;
                     default:
                         result = JSON.stringify({
                             error: 'unknown_tool',
@@ -462,7 +469,7 @@ export class RealChatClient implements ChatClient {
             );
         } finally {
             // Notify that page reading has ended
-            if (toolName === 'read_page_content' && this.pageReadingCallback) {
+            if ((toolName === 'read_page_content' || toolName === 'read_page_content_advanced') && this.pageReadingCallback) {
                 this.pageReadingCallback(false);
             }
         }
@@ -673,5 +680,139 @@ export class RealChatClient implements ChatClient {
         }
 
         return result;
+    }
+
+    private async executeReadPageContentAdvanced(args: any): Promise<string> {
+        try {
+            const {
+                selector = 'body',
+                include_html = false,
+                find_element_query,
+                capture_screenshot = false,
+                screenshot_selector,
+                screenshot_query
+            } = args;
+
+            const result: any = {
+                success: true,
+                metadata: {
+                    url: window.location.href,
+                    title: document.title,
+                    timestamp: new Date().toISOString(),
+                },
+                content: '',
+                html: null,
+                found_element: null,
+                screenshot: null,
+                screenshot_analysis_pending: false,
+            };
+
+            // 1. Find target element
+            let targetElement: HTMLElement;
+            if (find_element_query) {
+                const found = this.findElementByQuery(find_element_query);
+                if (found) {
+                    targetElement = found;
+                    result.found_element = {
+                        query: find_element_query,
+                        tag: found.tagName,
+                        id: found.id || null,
+                        classes: Array.from(found.classList),
+                        text: found.textContent?.substring(0, 200),
+                    };
+                } else {
+                    targetElement = document.querySelector(selector) as HTMLElement || document.body;
+                    result.found_element = {
+                        query: find_element_query,
+                        found: false,
+                        message: 'Element not found, using default selector',
+                    };
+                }
+            } else {
+                targetElement = document.querySelector(selector) as HTMLElement || document.body;
+            }
+
+            // 2. Extract content
+            result.content = this.extractElementContent(targetElement);
+
+            // 3. Include HTML if requested
+            if (include_html) {
+                result.html = targetElement.outerHTML;
+            }
+
+            // 4. Capture screenshot if requested
+            if (capture_screenshot) {
+                try {
+                    const screenshotElement = screenshot_selector
+                        ? (document.querySelector(screenshot_selector) as HTMLElement || targetElement)
+                        : targetElement;
+
+                    const screenshot = await this.captureScreenshot(screenshotElement);
+                    result.screenshot = screenshot;
+                    result.screenshot_query = screenshot_query || 'Analyze this screenshot';
+                    result.screenshot_analysis_pending = true; // Backend will analyze
+                } catch (error: any) {
+                    result.screenshot_error = error.message;
+                }
+            }
+
+            return JSON.stringify(result);
+        } catch (error: any) {
+            return JSON.stringify({
+                success: false,
+                error: error.message || 'Unknown error during advanced page reading',
+            });
+        }
+    }
+
+    private findElementByQuery(query: string): HTMLElement | null {
+        const lowerQuery = query.toLowerCase();
+
+        // Search by text content
+        const allElements = document.querySelectorAll('*');
+        for (const el of Array.from(allElements)) {
+            const text = el.textContent?.toLowerCase() || '';
+            if (text.includes(lowerQuery) && text.length < 1000) {
+                // Prefer shorter matches
+                return el as HTMLElement;
+            }
+        }
+
+        // Search by aria-label
+        const ariaElement = document.querySelector(`[aria-label*="${query}" i]`);
+        if (ariaElement) return ariaElement as HTMLElement;
+
+        // Search by placeholder
+        const placeholderElement = document.querySelector(`[placeholder*="${query}" i]`);
+        if (placeholderElement) return placeholderElement as HTMLElement;
+
+        // Search by button/link text
+        const buttons = document.querySelectorAll('button, a');
+        for (const btn of Array.from(buttons)) {
+            if (btn.textContent?.toLowerCase().includes(lowerQuery)) {
+                return btn as HTMLElement;
+            }
+        }
+
+        return null;
+    }
+
+    private async captureScreenshot(element: HTMLElement): Promise<string> {
+        // Dynamically import html2canvas to avoid bundle bloat
+        const html2canvas = (await import('html2canvas')).default;
+
+        const canvas = await html2canvas(element, {
+            useCORS: true,
+            allowTaint: false,
+            scrollY: -window.scrollY,
+            scrollX: -window.scrollX,
+            backgroundColor: '#ffffff',
+        });
+
+        // Convert to base64 (remove data URL prefix)
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1];
+
+        return base64;
     }
 }

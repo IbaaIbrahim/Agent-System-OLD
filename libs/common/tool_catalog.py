@@ -220,6 +220,62 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         confirm_button_label="Read Page",
         confirm_description_template="Allow the assistant to read the current webpage content?",
     ),
+    "read_page_content_advanced": ToolMetadata(
+        name="read_page_content_advanced",
+        description=(
+            "Advanced page reading with HTML extraction, element finding, and screenshot analysis. "
+            "Use this when you need precise DOM structure, specific element location, or visual "
+            "analysis of the page. This tool can capture screenshots and use vision models to "
+            "analyze visual elements, layouts, and images on the page."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "selector": {
+                    "type": "string",
+                    "description": "CSS selector to target (default: body)",
+                },
+                "include_html": {
+                    "type": "boolean",
+                    "description": "Include raw HTML in addition to text",
+                    "default": False,
+                },
+                "find_element_query": {
+                    "type": "string",
+                    "description": (
+                        "Natural language query to find a specific element. "
+                        "Examples: 'submit button', 'login form', 'pricing table'"
+                    ),
+                },
+                "capture_screenshot": {
+                    "type": "boolean",
+                    "description": "Capture screenshot for vision model analysis",
+                    "default": False,
+                },
+                "screenshot_selector": {
+                    "type": "string",
+                    "description": "Element to screenshot (default: viewport). Requires capture_screenshot=true",
+                },
+                "screenshot_query": {
+                    "type": "string",
+                    "description": (
+                        "What to analyze in the screenshot. "
+                        "Examples: 'describe the layout', 'what colors are used?', 'analyze the design'"
+                    ),
+                },
+            },
+            "required": [],
+        },
+        behavior=ToolBehavior.CONFIRM_REQUIRED,
+        client_side_execution=True,
+        preferred_provider="anthropic",
+        preferred_model="claude-3-5-sonnet-20241022",  # Vision model for screenshot analysis
+        required_plan_feature=None,  # Available to all plans
+        toggle_label="Advanced Page Reading",
+        toggle_description="Allow HTML extraction, element finding, and screenshot analysis",
+        confirm_button_label="Analyze Page",
+        confirm_description_template="Analyze page with advanced features (HTML, screenshot, element finding)?",
+    ),
 }
 
 
