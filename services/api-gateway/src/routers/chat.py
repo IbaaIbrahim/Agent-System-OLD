@@ -167,12 +167,23 @@ async def create_chat_completion(
         ):
             continue
 
+        # Determine category for orchestrator filtering
+        category = "builtin"
+        if tool_metadata.behavior == ToolBehavior.USER_ENABLED:
+            category = "configurable"
+        elif tool_metadata.behavior == ToolBehavior.CLIENT_SIDE:
+            category = "client_side"
+        elif tool_metadata.behavior == ToolBehavior.CONFIRM_REQUIRED:
+            # Confirm required tools with toggles behave like configurable
+            category = "configurable" if tool_metadata.toggle_label else "builtin"
+
         # Include all other tools (AUTO_EXECUTE, CONFIRM_REQUIRED, enabled USER_ENABLED)
         final_tools.append(
             ToolDefinition(
                 name=tool_metadata.name,
                 description=tool_metadata.description,
                 parameters=tool_metadata.parameters,
+                category=category,
             )
         )
 
@@ -268,8 +279,15 @@ async def create_chat_completion(
         # Check which tools are allowed by the plan
         allowed_tools = []
         for tool in final_tools:
-            # Map tool names to feature slugs (tool name = feature slug for simplicity)
-            feature_slug = tool.name
+            tool_meta = TOOL_CATALOG.get(tool.name)
+            # If tool doesn't require a plan feature, it's allowed for everyone
+            if tool_meta and tool_meta.required_plan_feature is None:
+                allowed_tools.append(tool.name)
+                continue
+
+            # Map tool names to feature slugs (use configured feature slug from catalog)
+            feature_slug = tool_meta.required_plan_feature if tool_meta else tool.name
+
             is_allowed = await feature_service.check_feature_enabled(
                 partner_id=partner_id,
                 plan_id=plan_id,

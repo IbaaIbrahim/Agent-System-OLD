@@ -51,8 +51,8 @@ export class RealChatClient implements ChatClient {
     }
 
     enablePageContext(enabled: boolean) {
-        if (enabled) this.libraryTools.add('fetch_dom_context');
-        else this.libraryTools.delete('fetch_dom_context');
+        if (enabled) this.libraryTools.add('read_page_content');
+        else this.libraryTools.delete('read_page_content');
     }
 
     private getActiveTools(): string[] {
@@ -434,12 +434,12 @@ export class RealChatClient implements ChatClient {
             // 2. Built-in tools
             else {
                 switch (toolName) {
-                    case 'fetch_dom_context':
+                    case 'read_page_content':
                         // Notify that page reading has started
                         if (this.pageReadingCallback) {
                             this.pageReadingCallback(true);
                         }
-                        result = await this.executeFetchDomContext(toolArguments);
+                        result = await this.executeReadPageContent(toolArguments);
                         break;
                     default:
                         result = JSON.stringify({
@@ -462,7 +462,7 @@ export class RealChatClient implements ChatClient {
             );
         } finally {
             // Notify that page reading has ended
-            if (toolName === 'fetch_dom_context' && this.pageReadingCallback) {
+            if (toolName === 'read_page_content' && this.pageReadingCallback) {
                 this.pageReadingCallback(false);
             }
         }
@@ -505,7 +505,7 @@ export class RealChatClient implements ChatClient {
         }
     }
 
-    private async executeFetchDomContext(args: any): Promise<string> {
+    private async executeReadPageContent(args: any): Promise<string> {
         const {
             selector = 'body',
             include_metadata = true,

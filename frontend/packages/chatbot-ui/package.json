@@ -1,6 +1,6 @@
 {
     "name": "flowdit-chatbot-library",
-    "version": "1.3.6",
+    "version": "1.3.10",
     "main": "dist/index.js",
     "module": "dist/index.mjs",
     "types": "dist/index.d.ts",

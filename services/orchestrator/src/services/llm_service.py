@@ -183,6 +183,15 @@ class LLMService:
         )
         tools = self._build_tools(filtered_tools)
 
+        logger.info(
+            "Tool filtering details",
+            job_id=str(state.job_id),
+            all_tools=[t["name"] for t in (state.tools or [])],
+            plan_tools=plan_tools,
+            enabled_tools=enabled_tools,
+            filtered_tools=[t["name"] for t in (filtered_tools or [])],
+        )
+
         # Enhance system prompt with disabled tool info
         system_prompt = self._build_system_prompt_with_tool_info(
             state.system_prompt, state.tools, plan_tools, enabled_tools
@@ -260,6 +269,15 @@ class LLMService:
             state.tools, plan_tools, enabled_tools
         )
         tools = self._build_tools(filtered_tools)
+
+        logger.info(
+            "Tool filtering details (streaming)",
+            job_id=str(state.job_id),
+            all_tools=[t["name"] for t in (state.tools or [])],
+            plan_tools=plan_tools,
+            enabled_tools=enabled_tools,
+            filtered_tools=[t["name"] for t in (filtered_tools or [])],
+        )
 
         # Enhance system prompt with disabled tool info
         system_prompt = self._build_system_prompt_with_tool_info(
