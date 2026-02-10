@@ -82,10 +82,95 @@ async def submit_tool_result(
     )
 
     try:
+        import json
+
+        # Parse result to check for screenshot
+        result_data = json.loads(body.result)
+        enhanced_result = body.result  # Default to original result
+
+        # Check if result contains screenshot that needs vision analysis
+        if (
+            isinstance(result_data, dict)
+            and result_data.get("screenshot")
+            and result_data.get("screenshot_analysis_pending")
+        ):
+            logger.info(
+                "Screenshot detected, invoking vision model",
+                job_id=str(job_id),
+                tool_call_id=body.tool_call_id,
+            )
+
+            try:
+                # Invoke vision model for screenshot analysis
+                from libs.llm import LLMMessage, MessageRole, get_provider
+
+                provider = get_provider("anthropic")
+
+                screenshot_base64 = result_data["screenshot"]
+                screenshot_query = result_data.get(
+                    "screenshot_query", "Analyze this screenshot"
+                )
+
+                vision_message = LLMMessage(
+                    role=MessageRole.USER,
+                    content=[
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": screenshot_base64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": f"Analyze this screenshot.\n\nQuery: {screenshot_query}\n\nProvide a detailed analysis of what you see.",
+                        },
+                    ],
+                )
+
+                logger.info(
+                    "Calling vision model for screenshot analysis",
+                    tool_call_id=body.tool_call_id,
+                )
+
+                response = await provider.complete(
+                    [vision_message],
+                    model="claude-3-5-sonnet-20241022",  # Vision model
+                    max_tokens=4096,
+                )
+
+                # Add vision analysis to result
+                result_data["screenshot_analysis"] = (
+                    response.content or "No analysis generated"
+                )
+                result_data["screenshot_analysis_pending"] = False
+
+                # Remove base64 screenshot to reduce payload size (keep only analysis)
+                del result_data["screenshot"]
+
+                enhanced_result = json.dumps(result_data)
+
+                logger.info(
+                    "Vision analysis completed",
+                    tool_call_id=body.tool_call_id,
+                    output_tokens=response.output_tokens,
+                )
+
+            except Exception as vision_error:
+                logger.error(
+                    "Vision analysis failed",
+                    tool_call_id=body.tool_call_id,
+                    error=str(vision_error),
+                )
+                result_data["screenshot_analysis"] = f"Error analyzing screenshot: {str(vision_error)}"
+                result_data["screenshot_analysis_pending"] = False
+                enhanced_result = json.dumps(result_data)
+
         # Store result in Redis
         redis = await get_redis_client()
         result_key = f"tool_result:{body.tool_call_id}"
-        await redis.set(result_key, body.result, ex=300)  # 5 minute expiry
+        await redis.set(result_key, enhanced_result, ex=300)  # 5 minute expiry
 
         # Publish resume signal to Kafka
         producer = await get_producer()
