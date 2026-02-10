@@ -50,6 +50,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({
 }) => {
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
     const [isReadingPage, setIsReadingPage] = React.useState(false);
+    const clientRef = React.useRef(client);
+    clientRef.current = client;
 
     // Internal state for toggles if not controlled
     const [internalWebSearch, setInternalWebSearch] = React.useState(false);
@@ -113,6 +115,24 @@ export const Chatbot: React.FC<ChatbotProps> = ({
         setIsDrawerOpen(false);
     };
 
+    // Verify client prop on every render
+    console.log('[Chatbot] Render, client:', !!client, clientRef.current ? 'Ref has value' : 'Ref is null');
+
+    const handleFileUpload = React.useCallback(async (file: File) => {
+        const c = clientRef.current;
+        console.log('[Chatbot] handleFileUpload called, clientRef:', !!c);
+
+        if (!c) {
+            throw new Error('Chat client not initialized');
+        }
+        // Call uploadFile - it exists on RealChatClient
+        const uploadFn = (c as any).uploadFile;
+        if (typeof uploadFn !== 'function') {
+            throw new Error('File upload not supported by this client');
+        }
+        return uploadFn.call(c, file);
+    }, []);
+
     const navContent = (
         <NavigationSidebar
             onNewChat={startNewChat}
@@ -148,6 +168,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                             onWebSearchChange={setWebSearch}
                             pageContextEnabled={pageContextEnabled}
                             onPageContextChange={setPageContext}
+                            onFileUpload={handleFileUpload}
                         />
                     </div>
                 }

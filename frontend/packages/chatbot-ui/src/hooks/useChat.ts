@@ -6,9 +6,14 @@ export interface UseChatOptions {
     onToolCall?: Record<string, (args: any) => Promise<any>>;
 }
 
+interface QueuedMessage {
+    text: string;
+    fileIds?: string[];
+}
+
 export const useChat = ({ client, onToolCall }: UseChatOptions) => {
     const [chatState, setChatState] = React.useState<ChatState>({ messages: [], isThinking: false });
-    const [messageQueue, setMessageQueue] = React.useState<string[]>([]);
+    const [messageQueue, setMessageQueue] = React.useState<QueuedMessage[]>([]);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [isTyping, setIsTyping] = React.useState(false);
 
@@ -40,12 +45,12 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
                 }
             }
 
-            const nextMessage = messageQueue[0];
+            const nextItem = messageQueue[0];
             setIsProcessing(true);
             setMessageQueue(prev => prev.slice(1));
 
             try {
-                await client.sendMessage(nextMessage, setChatState);
+                await client.sendMessage(nextItem.text, setChatState, nextItem.fileIds);
             } finally {
                 setIsProcessing(false);
             }
@@ -64,8 +69,8 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         prevMsgCountRef.current = chatState.messages.length;
     }, [chatState.messages]);
 
-    const handleSend = (text: string) => {
-        setMessageQueue(prev => [...prev, text]);
+    const handleSend = (text: string, fileIds?: string[]) => {
+        setMessageQueue(prev => [...prev, { text, fileIds }]);
     };
 
     const handleRemoveQueueItem = (index: number) => {
@@ -94,7 +99,7 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         messages: chatState.messages,
         isThinking: chatState.isThinking || isProcessing,
         isTyping,
-        messageQueue,
+        messageQueue: messageQueue.map(m => m.text),
         sendMessage: handleSend,
         removeQueueItem: handleRemoveQueueItem,
         handleAnimationComplete,

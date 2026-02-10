@@ -169,18 +169,18 @@ openapi:
 # ===================
 
 migrate:
-	PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+	python -m alembic -c migrations/alembic.ini upgrade head
 
 migrate-new:
 	@read -p "Migration name: " name; \
-	PYTHONPATH=. alembic -c migrations/alembic.ini revision --autogenerate -m "$$name"
+	python -m alembic -c migrations/alembic.ini revision --autogenerate -m "$$name"
 
 migrate-down:
-	PYTHONPATH=. alembic -c migrations/alembic.ini downgrade -1
+	python -m alembic -c migrations/alembic.ini downgrade -1
 
 migrate-reset:
-	PYTHONPATH=. alembic -c migrations/alembic.ini downgrade base
-	PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+	python -m alembic -c migrations/alembic.ini downgrade base
+	python -m alembic -c migrations/alembic.ini upgrade head
 
 # ===================
 # TESTING

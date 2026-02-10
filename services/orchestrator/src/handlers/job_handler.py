@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from libs.common import get_logger
+from libs.common.tool_catalog import get_tool_metadata
 from libs.messaging.redis import RedisPubSub
 
 from ..config import get_config
@@ -26,6 +27,19 @@ class JobHandler:
         self.tool_handler = ToolHandler()
         self.snapshot_service = SnapshotService()
         self.event_publisher = EventPublisher()
+        
+        # Load tool definition from catalog
+        # We convert to dict effectively by reconstructing relevant parts or using model_dump
+        meta = get_tool_metadata("analyze_file")
+        if meta:
+            self.analyze_file_tool = {
+                "name": meta.name,
+                "description": meta.description,
+                "parameters": meta.parameters,
+            }
+        else:
+            logger.error("analyze_file tool definition not found in catalog")
+            self.analyze_file_tool = None
 
     async def handle_job(
         self,
@@ -48,6 +62,34 @@ class JobHandler:
         )
 
         try:
+            tools = message.get("tools") or []
+            
+            # Auto-enable file analysis tool if files are present in metadata
+            file_ids = message.get("metadata", {}).get("file_ids")
+            if file_ids:
+                # Check if already present to avoid duplicates
+                if not any(t.get("name") == "analyze_file" for t in tools):
+                    if self.analyze_file_tool:
+                        logger.info("Injecting analyze_file tool", job_id=str(job_id))
+                        tools.append(self.analyze_file_tool)
+                    else:
+                        logger.warning("analyze_file tool definition missing, cannot inject", job_id=str(job_id))
+                
+                # Inject file info into the last user message so LLM knows IDs
+                if message["messages"] and message["messages"][-1]["role"] == "user":
+                    files_list = ", ".join(file_ids)
+                    note = f"\n\n[System Note: The user has attached files with IDs: {files_list}. You MUST use the 'analyze_file' tool to read or analyze them.]"
+                    # Ensure content is string before appending
+                    content = message["messages"][-1].get("content", "")
+                    if isinstance(content, str):
+                        message["messages"][-1]["content"] = content + note
+                    elif isinstance(content, list):
+                        # Start with text block
+                        message["messages"][-1]["content"].append({
+                            "type": "text", 
+                            "text": note
+                        })
+            
             # Create agent state
             state = self.state_manager.create_state(
                 job_id=job_id,
@@ -57,7 +99,7 @@ class JobHandler:
                 model=message["model"],
                 messages=message["messages"],
                 system_prompt=message.get("system"),
-                tools=message.get("tools"),
+                tools=tools,
                 temperature=message.get("temperature", 0.7),
                 max_tokens=message.get("max_tokens", 4096),
                 metadata=message.get("metadata", {}),

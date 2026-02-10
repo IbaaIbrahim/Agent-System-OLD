@@ -17,3 +17,6 @@ types-redis>=4.6.0
 # Testing utilities
 faker>=22.0.0
 factory-boy>=3.3.0
+
+# Form Data
+python-multipart>=0.0.22

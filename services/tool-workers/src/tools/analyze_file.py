@@ -7,7 +7,7 @@ from typing import Any
 sys.path.insert(0, "services/tool-workers")
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior
+from libs.common.tool_catalog import ToolBehavior, get_tool_metadata, get_tool_model_preference
 from libs.llm import LLMMessage, MessageRole, get_provider
 from libs.messaging.redis import get_redis_client
 
@@ -25,32 +25,17 @@ class AnalyzeFileTool(BaseTool):
     - Text files: Direct content analysis
     """
 
-    name = "analyze_file"
-    description = (
-        "Analyze uploaded files (images, PDFs, documents) using vision models. "
-        "Use this to extract information, generate checklists, summarize content, "
-        "or answer questions about uploaded files."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "file_id": {
-                "type": "string",
-                "description": "ID of the uploaded file to analyze",
-            },
-            "query": {
-                "type": "string",
-                "description": (
-                    "What to analyze or extract from the file. "
-                    "Examples: 'extract checklist items', 'summarize this document', "
-                    "'what does this diagram show?', 'generate a todo list from this image'"
-                ),
-            },
-        },
-        "required": ["file_id", "query"],
-    }
-    behavior = ToolBehavior.CONFIRM_REQUIRED
-    required_plan_feature = "tools.file_analysis"
+    # Load configuration from Tool Catalog to avoid duplication
+    _meta = get_tool_metadata("analyze_file")
+    if not _meta:
+        # Fallback if catalog not loaded (should not happen in app)
+        raise ValueError("Tool definition for 'analyze_file' not found in catalog")
+
+    name = _meta.name
+    description = _meta.description
+    parameters = _meta.parameters
+    behavior = _meta.behavior
+    required_plan_feature = _meta.required_plan_feature
 
     async def execute(self, arguments: dict[str, Any], context: dict[str, Any]) -> str:
         """Execute file analysis using vision models.
@@ -155,8 +140,9 @@ class AnalyzeFileTool(BaseTool):
         # Re-encode to base64 for LLM
         encoded_data = base64.b64encode(file_data).decode("utf-8")
 
-        # Use Anthropic Claude with vision
-        provider = get_provider("anthropic")
+        # Use preferred provider/model from catalog
+        provider_name, model_name = get_tool_model_preference("analyze_file")
+        provider = get_provider(provider_name)
 
         # Build vision message
         message = LLMMessage(
@@ -184,10 +170,9 @@ class AnalyzeFileTool(BaseTool):
             query_length=len(query),
         )
 
-        # Call vision model
         response = await provider.complete(
             [message],
-            model="claude-3-5-sonnet-20241022",  # Vision-capable model
+            model=model_name,
             max_tokens=4096,
         )
 
@@ -202,8 +187,6 @@ class AnalyzeFileTool(BaseTool):
     async def _analyze_pdf(self, file_data: bytes, query: str, filename: str) -> str:
         """Analyze PDF file.
 
-        Future enhancement: Add OCR for scanned PDFs.
-
         Args:
             file_data: Raw PDF bytes
             query: Analysis query
@@ -212,13 +195,60 @@ class AnalyzeFileTool(BaseTool):
         Returns:
             Analysis result
         """
-        # Placeholder for PDF analysis
-        # In production, you'd use libraries like PyPDF2, pdfplumber, or Tesseract OCR
-        return (
-            f"PDF analysis is not yet fully implemented for '{filename}'. "
-            "Future versions will support text extraction and OCR for scanned documents. "
-            "For now, please convert PDFs to images for analysis."
-        )
+        try:
+            import io
+            from pypdf import PdfReader
+            
+            reader = PdfReader(io.BytesIO(file_data))
+            text_content = ""
+            page_count = len(reader.pages)
+            
+            logger.info("Extracting text from PDF", filename=filename, pages=page_count)
+            
+            for i, page in enumerate(reader.pages):
+                page_text = page.extract_text()
+                if page_text:
+                    text_content += f"\n--- Page {i+1} ---\n{page_text}"
+            
+            if not text_content.strip():
+                return (
+                    f"Analysis Warning: No text could be extracted from '{filename}'. "
+                    "The PDF might be a scanned image without OCR text layer. "
+                    "Please convert it to an image format (PNG/JPEG) for visual analysis."
+                )
+
+            provider_name, model = get_tool_model_preference("analyze_file")
+            provider = get_provider(provider_name)
+
+            message = LLMMessage(
+                role=MessageRole.USER,
+                content=(
+                    f"Analyze this PDF document (filename: {filename}).\n\n"
+                    f"Task: {query}\n\n"
+                    f"Document Content ({page_count} pages):\n{text_content}"
+                ),
+            )
+            
+            logger.info(
+                "Calling LLM for PDF analysis",
+                filename=filename,
+                content_length=len(text_content),
+                model=model,
+            )
+
+            response = await provider.complete(
+                [message],
+                model=model,
+                max_tokens=4096,
+            )
+
+            return response.content or "No analysis generated."
+
+        except ImportError:
+            return "Error: PDF analysis dependency (pypdf) is missing."
+        except Exception as e:
+            logger.error("PDF analysis failed", error=str(e))
+            return f"Error analyzing PDF: {str(e)}"
 
     async def _analyze_text(self, file_data: bytes, query: str, filename: str) -> str:
         """Analyze text file.
@@ -241,23 +271,29 @@ class AnalyzeFileTool(BaseTool):
             except UnicodeDecodeError:
                 return f"Error: Unable to decode text file '{filename}'. File may be corrupted or in an unsupported encoding."
 
-        # Use standard LLM for text analysis
-        provider = get_provider("anthropic")
+        # Use proper provider/model from catalog
+        provider_name, model = get_tool_model_preference("analyze_file")
+        provider = get_provider(provider_name)
 
         message = LLMMessage(
             role=MessageRole.USER,
-            content=f"Analyze this text file (filename: {filename}).\n\nFile content:\n{text_content}\n\nTask: {query}\n\nProvide a detailed, structured response.",
+            content=(
+                f"Analyze this text file (filename: {filename}).\n\n"
+                f"Task: {query}\n\n"
+                f"File Content:\n{text_content}"
+            ),
         )
 
         logger.info(
             "Calling LLM for text file analysis",
             filename=filename,
             content_length=len(text_content),
+            model=model,
         )
 
         response = await provider.complete(
             [message],
-            model="claude-sonnet-4-20250514",  # Standard text model
+            model=model,
             max_tokens=4096,
         )
 
