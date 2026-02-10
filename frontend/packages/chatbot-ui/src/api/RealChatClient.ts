@@ -2,21 +2,23 @@
 import { ChatClient, ChatState } from './types';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 
-const GATEWAY_URL = 'http://localhost:8000/api';
-
 export class RealChatClient implements ChatClient {
     private accessToken: string | null = null;
+    private apiBaseUrl: string = 'http://localhost:8000/api';
     private messages: MessageProps[] = [];
     private currentModel: string | null = null;
     private currentProvider: string | null = null;
     private enabledTools: string[] = [];
     private currentJobId: string | null = null;
     private pageReadingCallback: ((isReading: boolean) => void) | null = null;
+    private customHandlers: Map<string, (args: any) => Promise<string | any>> = new Map();
+    private libraryTools: Set<string> = new Set();
 
-
-
-    constructor(token: string) {
+    constructor(token: string, apiBaseUrl?: string) {
         this.accessToken = token;
+        if (apiBaseUrl) {
+            this.apiBaseUrl = apiBaseUrl;
+        }
     }
 
     setToken(token: string) {
@@ -37,6 +39,25 @@ export class RealChatClient implements ChatClient {
 
     setEnabledTools(tools: string[]) {
         this.enabledTools = tools;
+    }
+
+    setToolHandler(name: string, handler: (args: any) => Promise<string | any>) {
+        this.customHandlers.set(name, handler);
+    }
+
+    enableWebSearch(enabled: boolean) {
+        if (enabled) this.libraryTools.add('web_search');
+        else this.libraryTools.delete('web_search');
+    }
+
+    enablePageContext(enabled: boolean) {
+        if (enabled) this.libraryTools.add('fetch_dom_context');
+        else this.libraryTools.delete('fetch_dom_context');
+    }
+
+    private getActiveTools(): string[] {
+        const all = new Set([...this.enabledTools, ...Array.from(this.libraryTools)]);
+        return Array.from(all);
     }
 
     setPageReadingCallback(callback: (isReading: boolean) => void) {
@@ -68,7 +89,7 @@ export class RealChatClient implements ChatClient {
             }));
 
             // 3. Make the API Call
-            const response = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+            const response = await fetch(`${this.apiBaseUrl}/v1/chat/completions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -80,7 +101,7 @@ export class RealChatClient implements ChatClient {
                     provider: this.currentProvider,
                     stream: true,
                     metadata: {
-                        enabled_tools: this.enabledTools
+                        enabled_tools: this.getActiveTools()
                     }
                 })
             });
@@ -372,7 +393,7 @@ export class RealChatClient implements ChatClient {
         }
 
         try {
-            const response = await fetch(`${GATEWAY_URL}/v1/confirm-response`, {
+            const response = await fetch(`${this.apiBaseUrl}/v1/confirm-response`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -404,19 +425,28 @@ export class RealChatClient implements ChatClient {
         let result: string;
 
         try {
-            switch (toolName) {
-                case 'fetch_dom_context':
-                    // Notify that page reading has started
-                    if (this.pageReadingCallback) {
-                        this.pageReadingCallback(true);
-                    }
-                    result = await this.executeFetchDomContext(toolArguments);
-                    break;
-                default:
-                    result = JSON.stringify({
-                        error: 'unknown_tool',
-                        message: `Client-side tool '${toolName}' is not implemented`,
-                    });
+            // 1. Check custom handlers first
+            if (this.customHandlers.has(toolName)) {
+                const handler = this.customHandlers.get(toolName)!;
+                const output = await handler(toolArguments);
+                result = typeof output === 'string' ? output : JSON.stringify(output);
+            }
+            // 2. Built-in tools
+            else {
+                switch (toolName) {
+                    case 'fetch_dom_context':
+                        // Notify that page reading has started
+                        if (this.pageReadingCallback) {
+                            this.pageReadingCallback(true);
+                        }
+                        result = await this.executeFetchDomContext(toolArguments);
+                        break;
+                    default:
+                        result = JSON.stringify({
+                            error: 'unknown_tool',
+                            message: `Client-side tool '${toolName}' is not implemented`,
+                        });
+                }
             }
 
             await this.submitToolResult(toolCallId, toolName, result);
@@ -450,7 +480,7 @@ export class RealChatClient implements ChatClient {
 
         try {
             const response = await fetch(
-                `${GATEWAY_URL}/v1/tools/jobs/${this.currentJobId}/tool-results`,
+                `${this.apiBaseUrl}/v1/tools/jobs/${this.currentJobId}/tool-results`,
                 {
                     method: 'POST',
                     headers: {

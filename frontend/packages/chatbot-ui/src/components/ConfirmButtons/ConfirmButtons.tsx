@@ -15,7 +15,6 @@ export interface ConfirmButtonsProps {
 
 export const ConfirmButtons: React.FC<ConfirmButtonsProps> = ({
     toolCallId,
-    toolName,
     label,
     description,
     status,

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+const { useState } = React;
 import './ToolInvocation.css';
 
 export type ToolStatus = 'running' | 'completed' | 'failed';
@@ -76,6 +77,4 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
     );
 };
 
-const Polyline = (props: any) => (
-    <polyline points={props.points} />
-);
+

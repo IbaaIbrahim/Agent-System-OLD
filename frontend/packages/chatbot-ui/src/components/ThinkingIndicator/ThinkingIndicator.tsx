@@ -1,7 +1,7 @@
 import React from 'react';
 import './ThinkingIndicator.css';
 
-export const ThinkingIndicator = () => {
+export const ThinkingIndicator: React.FC = () => {
     return (
         <div className="cb-thinking-container">
             <div className="cb-thinking-dots">

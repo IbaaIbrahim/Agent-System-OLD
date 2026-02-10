@@ -18,3 +18,7 @@ export { AuthClient } from './api/AuthClient';
 export type { TokenResponse } from './api/AuthClient';
 export type { ChatState, ChatClient } from './api/types';
 
+// High-level Abstractions
+export * from './components/Chatbot/Chatbot';
+export * from './hooks/useChat';
+
