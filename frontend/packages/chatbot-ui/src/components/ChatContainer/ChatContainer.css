@@ -274,3 +274,94 @@
     background-color: var(--cb-bg-tertiary);
     color: var(--cb-text-primary);
 }
+
+/* ============================================================
+   Embedded Mode — flex-child positioning, width-based transitions
+   ============================================================ */
+
+.cb-embedded {
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    z-index: auto;
+    box-shadow: none;
+    flex-shrink: 0;
+    height: 100%;
+    overflow: hidden;
+    transform: none !important;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sidebar — embedded */
+.cb-embedded.cb-mode-sidebar {
+    width: 450px;
+    border-left: 1px solid var(--cb-border-subtle);
+    border-radius: 0;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.cb-embedded.cb-mode-sidebar.cb-closed {
+    width: 0;
+    opacity: 0;
+    pointer-events: none;
+    border-left: none;
+}
+
+/* Floating — embedded (inline card) */
+.cb-embedded.cb-mode-floating {
+    width: 400px;
+    max-height: 100%;
+    border-radius: var(--cb-radius-lg);
+    border: 1px solid var(--cb-border-subtle);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.cb-embedded.cb-mode-floating.cb-closed {
+    width: 0;
+    opacity: 0;
+    pointer-events: none;
+    border: none;
+}
+
+/* Fullscreen — embedded (fills parent) */
+.cb-embedded.cb-mode-fullscreen {
+    width: 100%;
+    border-radius: 0;
+    border: none;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.cb-embedded.cb-mode-fullscreen.cb-closed {
+    width: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Mobile: embedded sidebar falls back to fixed overlay */
+@media (max-width: 768px) {
+    .cb-embedded.cb-mode-sidebar {
+        position: fixed !important;
+        top: 0 !important;
+        right: 0 !important;
+        width: 100%;
+        height: 100vh;
+        z-index: 9998;
+    }
+
+    .cb-embedded.cb-mode-sidebar.cb-closed {
+        width: 100%;
+        transform: translateX(100%) !important;
+        opacity: 1;
+        border-left: none;
+    }
+
+    .cb-embedded.cb-mode-sidebar.cb-open {
+        transform: translateX(0) !important;
+    }
+}

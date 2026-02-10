@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React from 'react';
+const { useState, useEffect, useRef, useLayoutEffect } = React;
 import './ChatContainer.css';
 import { ChatLauncher } from '../ChatLauncher/ChatLauncher';
 
@@ -7,6 +8,7 @@ export type ChatMode = 'floating' | 'sidebar' | 'fullscreen';
 export interface ChatContainerProps {
     mode?: ChatMode;
     isOpen?: boolean;
+    embedded?: boolean;
     onClose?: () => void;
     onOpen?: () => void;
     children?: React.ReactNode;
@@ -14,18 +16,21 @@ export interface ChatContainerProps {
     footer?: React.ReactNode;
     isDrawerOpen?: boolean;
     onDrawerOpenChange?: (isOpen: boolean) => void;
+    headerActions?: React.ReactNode;
 }
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({
     mode = 'floating',
     isOpen = true,
+    embedded = false,
     onClose,
     onOpen,
     children,
     drawerContent,
     footer,
     isDrawerOpen: controlledIsDrawerOpen,
-    onDrawerOpenChange
+    onDrawerOpenChange,
+    headerActions
 }) => {
     const [mounted, setMounted] = useState(false);
     const [internalIsDrawerOpen, setInternalIsDrawerOpen] = useState(false);
@@ -91,14 +96,15 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     if (!mounted) return null;
 
 
-    if (!isOpen && mode === 'floating') {
+    if (!isOpen && mode === 'floating' && !embedded) {
         return <ChatLauncher onClick={() => onOpen?.()} />;
     }
 
     const containerClasses = [
         'cb-chat-container',
         `cb-mode-${mode}`,
-        isOpen ? 'cb-open' : 'cb-closed'
+        isOpen ? 'cb-open' : 'cb-closed',
+        embedded ? 'cb-embedded' : null
     ].filter(Boolean).join(' ');
 
     return (
@@ -115,6 +121,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                     <span className="cb-brand">AI Assistant</span>
                 </div>
                 <div className="cb-actions">
+                    {headerActions}
                     <button className="cb-minimize-btn" onClick={onClose}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M18 6L6 18M6 6l12 12" />

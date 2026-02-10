@@ -9,7 +9,7 @@
         "preview": "vite preview"
     },
     "dependencies": {
-        "@chatbot-ui/core": "*",
+        "flowdit-chatbot-library": "*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1"
     },

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
+const { useState, useEffect, useRef } = React;
 import './MessageBubble.css';
 import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
@@ -50,12 +51,8 @@ export interface MessageProps {
 
 export const MessageBubble: React.FC<MessageProps> = (props) => {
     const {
-        id,
         role,
-        content,
         steps,
-        attachments,
-        toolInvocation,
         shouldAnimate = true
     } = props;
 
@@ -109,8 +106,8 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                             label={step.confirmLabel || step.toolName || 'Confirm Action'}
                                             description={step.confirmDescription}
                                             status={step.confirmStatus || 'pending'}
-                                            onConfirm={props.onConfirm || (() => {})}
-                                            onReject={props.onReject || (() => {})}
+                                            onConfirm={props.onConfirm || (() => { })}
+                                            onReject={props.onReject || (() => { })}
                                         />
                                     </div>
                                 );
@@ -215,7 +212,7 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
         }
 
         let animationFrameId: number;
-        let timeoutId: NodeJS.Timeout;
+        let timeoutId: any;
         const startTime = Date.now();
         const speed = 15; // ms per char
         const duration = content.length * speed;
@@ -291,7 +288,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
         }
 
         let animationFrameId: number;
-        let timeoutId: NodeJS.Timeout;
+        let timeoutId: any;
         const startTime = Date.now();
         const speed = 15;
         const duration = content.length * speed;

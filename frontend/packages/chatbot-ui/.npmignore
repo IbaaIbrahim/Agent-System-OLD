@@ -1,0 +1,45 @@
+# Source files
+*.ts
+!*.d.ts
+*.tsx
+*.scss
+*.js
+!dist/**/*.js
+
+# Development files
+node_modules/
+.vscode/
+.idea/
+*.log
+.DS_Store
+
+# Build artifacts (keep dist/)
+*.map
+!dist/**/*.map
+
+# Test files
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+__tests__/
+coverage/
+
+# Config files
+.eslintrc*
+.prettierrc*
+tsconfig*.json
+.gitignore
+.git/
+
+# Documentation (keep README)
+CHANGELOG.md
+CONTRIBUTING.md
+
+# Misc
+.env
+.env.local
+*.swp
+*.swo
+*~
+
