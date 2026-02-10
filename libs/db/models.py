@@ -967,3 +967,60 @@ class ChatMessage(Base, TimestampMixin):
 
     # Relationships
     job: Mapped["Job"] = relationship(back_populates="messages")
+
+
+class FileUpload(Base):
+    """File upload model for storing uploaded file metadata.
+
+    Files are temporarily stored in Redis (hot storage) with 15-minute TTL.
+    This model provides audit trail and conversation context persistence.
+    """
+
+    __tablename__ = "file_uploads"
+    __table_args__ = (
+        Index("ix_file_uploads_tenant_id", "tenant_id"),
+        Index("ix_file_uploads_job_id", "job_id"),
+        Index("ix_file_uploads_created_at", "created_at"),
+        Index("ix_file_uploads_storage_key", "storage_key", unique=True),
+        {"schema": "jobs"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.jobs.id", ondelete="CASCADE"),
+        nullable=True,  # Can be null if file uploaded before job created
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_key: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Redis key or future S3 path",
+    )
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        default=dict,
+        comment="Additional metadata like original path, upload source",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
