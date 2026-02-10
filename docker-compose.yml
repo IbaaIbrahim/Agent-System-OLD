@@ -223,6 +223,10 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - BRAVE_API_KEY=${BRAVE_API_KEY:?BRAVE_API_KEY is not configured}
+      - WEB_SEARCH_PROVIDER=${WEB_SEARCH_PROVIDER:-brave}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
     depends_on:
       kafka:
         condition: service_healthy

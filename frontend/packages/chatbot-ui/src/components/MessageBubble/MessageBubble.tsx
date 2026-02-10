@@ -3,6 +3,8 @@ const { useState, useEffect, useRef } = React;
 import './MessageBubble.css';
 import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export interface Attachment {
     id: string;
@@ -254,7 +256,9 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
 
     return (
         <div className="cb-markdown-content">
-            {displayContent}
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {displayContent}
+            </ReactMarkdown>
             {shouldAnimate && content && displayContent.length < content.length && (
                 <span className="cb-cursor">|</span>
             )}
@@ -360,7 +364,9 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                 {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
                 <div className={`cb-message-bubble ${role}`}>
                     <div className="cb-markdown-content">
-                        {displayContent}
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {displayContent}
+                        </ReactMarkdown>
                         {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
                             <span className="cb-cursor">|</span>
                         )}
