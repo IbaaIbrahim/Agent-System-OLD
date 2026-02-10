@@ -49,6 +49,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     onPageContextChange: controlledOnPageContext,
 }) => {
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+    const [isReadingPage, setIsReadingPage] = React.useState(false);
 
     // Internal state for toggles if not controlled
     const [internalWebSearch, setInternalWebSearch] = React.useState(false);
@@ -56,6 +57,19 @@ export const Chatbot: React.FC<ChatbotProps> = ({
 
     const webSearchEnabled = controlledWebSearch !== undefined ? controlledWebSearch : internalWebSearch;
     const pageContextEnabled = controlledPageContext !== undefined ? controlledPageContext : internalPageContext;
+
+    // Sync initial and subsequent toggle state to client
+    React.useEffect(() => {
+        if (client) {
+            client.enableWebSearch(webSearchEnabled);
+            client.enablePageContext(pageContextEnabled);
+
+            // Register page reading callback
+            client.setPageReadingCallback?.((isReading: boolean) => {
+                setIsReadingPage(isReading);
+            });
+        }
+    }, [client, webSearchEnabled, pageContextEnabled]);
 
     const setWebSearch = (enabled: boolean) => {
         if (controlledOnWebSearch) {
@@ -108,56 +122,59 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     );
 
     return (
-        <ChatContainer
-            mode={mode}
-            isOpen={isOpen}
-            embedded={embedded}
-            onClose={onClose}
-            onOpen={onOpen}
-            isDrawerOpen={isDrawerOpen}
-            onDrawerOpenChange={setIsDrawerOpen}
-            drawerContent={navContent}
-            headerActions={headerActions}
-            footer={
-                <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                    <PendingMessageList
-                        queue={messageQueue}
-                        onDelete={removeQueueItem}
-                    />
-                    <Composer
-                        onSend={sendMessage}
-                        disabled={false}
-                        placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}
-                        webSearchEnabled={webSearchEnabled}
-                        onWebSearchChange={setWebSearch}
-                        pageContextEnabled={pageContextEnabled}
-                        onPageContextChange={setPageContext}
-                    />
-                </div>
-            }
-        >
-            {messages.length === 0 ? (
-                <WelcomeScreen userName={userName} actions={quickActions} />
-            ) : (
-                <>
-                    {messages.map((msg) => (
-                        <MessageBubble
-                            key={msg.id}
-                            {...msg}
-                            shouldAnimate={!finishedMessageIds.has(msg.id)}
-                            onAnimationComplete={() => handleAnimationComplete(msg.id)}
-                            onConfirm={handleConfirm}
-                            onReject={handleReject}
+        <>
+            {isReadingPage && <div className="cb-page-reading-indicator" />}
+            <ChatContainer
+                mode={mode}
+                isOpen={isOpen}
+                embedded={embedded}
+                onClose={onClose}
+                onOpen={onOpen}
+                isDrawerOpen={isDrawerOpen}
+                onDrawerOpenChange={setIsDrawerOpen}
+                drawerContent={navContent}
+                headerActions={headerActions}
+                footer={
+                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                        <PendingMessageList
+                            queue={messageQueue}
+                            onDelete={removeQueueItem}
                         />
-                    ))}
+                        <Composer
+                            onSend={sendMessage}
+                            disabled={false}
+                            placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}
+                            webSearchEnabled={webSearchEnabled}
+                            onWebSearchChange={setWebSearch}
+                            pageContextEnabled={pageContextEnabled}
+                            onPageContextChange={setPageContext}
+                        />
+                    </div>
+                }
+            >
+                {messages.length === 0 ? (
+                    <WelcomeScreen userName={userName} actions={quickActions} />
+                ) : (
+                    <>
+                        {messages.map((msg) => (
+                            <MessageBubble
+                                key={msg.id}
+                                {...msg}
+                                shouldAnimate={!finishedMessageIds.has(msg.id)}
+                                onAnimationComplete={() => handleAnimationComplete(msg.id)}
+                                onConfirm={handleConfirm}
+                                onReject={handleReject}
+                            />
+                        ))}
 
-                    {isThinking && (!messages.length || messages[messages.length - 1].role !== 'assistant') && (
-                        <div style={{ paddingLeft: '16px' }}>
-                            <ThinkingIndicator />
-                        </div>
-                    )}
-                </>
-            )}
-        </ChatContainer>
+                        {isThinking && (!messages.length || messages[messages.length - 1].role !== 'assistant') && (
+                            <div style={{ paddingLeft: '16px' }}>
+                                <ThinkingIndicator />
+                            </div>
+                        )}
+                    </>
+                )}
+            </ChatContainer>
+        </>
     );
 };

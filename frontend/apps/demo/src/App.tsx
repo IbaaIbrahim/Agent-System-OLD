@@ -9,7 +9,6 @@ import {
 function App() {
     const [mode, setMode] = useState<ChatMode>('sidebar');
     const [isOpen, setIsOpen] = useState(true);
-    const [isReadingPage, setIsReadingPage] = useState(false);
     const [isEmbedded, setIsEmbedded] = useState(false);
     const [client, setClient] = useState<any>(null);
 
@@ -26,14 +25,6 @@ function App() {
         initAuth();
     }, []);
 
-    // Page reading indicator
-    useEffect(() => {
-        if (client) {
-            client.setPageReadingCallback?.((isReading: boolean) => {
-                setIsReadingPage(isReading);
-            });
-        }
-    }, [client]);
 
     const quickActions = [
         { id: 'q1', label: 'What should I work on next?', icon: '💬', onClick: () => { } },
@@ -53,57 +44,42 @@ function App() {
     );
 
     return (
-        <>
-            <style>{`
-                @keyframes page-reading-pulse {
-                    0%, 100% { box-shadow: inset 0 0 0 3px rgba(0, 120, 212, 0.4); }
-                    50% { box-shadow: inset 0 0 0 3px rgba(0, 120, 212, 0.8); }
-                }
-                .page-reading-active::before {
-                    content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    border: 3px solid rgba(0, 120, 212, 0.6); animation: page-reading-pulse 1.5s ease-in-out infinite;
-                    pointer-events: none; z-index: 999999; border-radius: 8px;
-                }
-            `}</style>
-
-            <div
-                className={isReadingPage ? 'page-reading-active' : ''}
-                style={{ display: 'flex', height: '100vh', width: '100vw', fontFamily: 'sans-serif' }}
-            >
-                {isEmbedded ? (
-                    <>
-                        <main style={{ flex: 1, overflow: 'auto', background: '#333', padding: 20 }}>
-                            {demoControls}
-                            <div style={{ color: '#ccc', marginTop: 20 }}>
-                                <h2 style={{ color: '#fff' }}>Main Content Area</h2>
-                                <p>This content shrinks when the chat panel opens.</p>
-                            </div>
-                        </main>
-                        <Chatbot
-                            client={client}
-                            mode={mode}
-                            isOpen={isOpen}
-                            embedded={true}
-                            onClose={() => setIsOpen(false)}
-                            userName="Ibaa"
-                            quickActions={quickActions}
-                        />
-                    </>
-                ) : (
-                    <div style={{ flex: 1, background: '#333', position: 'relative' }}>
+        <div
+            style={{ display: 'flex', height: '100vh', width: '100vw', fontFamily: 'sans-serif' }}
+        >
+            {isEmbedded ? (
+                <>
+                    <main style={{ flex: 1, overflow: 'auto', background: '#333', padding: 20 }}>
                         {demoControls}
-                        <Chatbot
-                            client={client}
-                            mode={mode}
-                            isOpen={isOpen}
-                            onClose={() => setIsOpen(false)}
-                            userName="Ibaa"
-                            quickActions={quickActions}
-                        />
-                    </div>
-                )}
-            </div>
-        </>
+                        <div style={{ color: '#ccc', marginTop: 20 }}>
+                            <h2 style={{ color: '#fff' }}>Main Content Area</h2>
+                            <p>This content shrinks when the chat panel opens.</p>
+                        </div>
+                    </main>
+                    <Chatbot
+                        client={client}
+                        mode={mode}
+                        isOpen={isOpen}
+                        embedded={true}
+                        onClose={() => setIsOpen(false)}
+                        userName="Ibaa"
+                        quickActions={quickActions}
+                    />
+                </>
+            ) : (
+                <div style={{ flex: 1, background: '#333', position: 'relative' }}>
+                    {demoControls}
+                    <Chatbot
+                        client={client}
+                        mode={mode}
+                        isOpen={isOpen}
+                        onClose={() => setIsOpen(false)}
+                        userName="Ibaa"
+                        quickActions={quickActions}
+                    />
+                </div>
+            )}
+        </div>
     )
 }
 

@@ -148,12 +148,14 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         confirm_button_label="Generate Checklist",
         confirm_description_template="Create '{title}' checklist with {context}",
     ),
-    "fetch_dom_context": ToolMetadata(
-        name="fetch_dom_context",
+    "read_page_content": ToolMetadata(
+        name="read_page_content",
         description=(
-            "Extract visible content and semantic structure from the current webpage. "
-            "Returns clean text content with preserved hierarchy (headings, lists, tables). "
-            "Use this to understand page context, find information, or guide user actions."
+            "Read and analyze the current webpage content. Use this tool whenever "
+            "the user asks about the page they are on, what they are looking at, "
+            "or requires information from the current screen. It extracts the visible "
+            "text, semantic structure (headings, lists, tables), and links to provide "
+            "full context of the user's current environment."
         ),
         parameters={
             "type": "object",
@@ -184,7 +186,7 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         toggle_label="Page Context",
         toggle_description="Allow agent to read webpage content and structure",
         confirm_button_label="Read Page",
-        confirm_description_template="Allow the agent to read the current webpage content?",
+        confirm_description_template="Allow the assistant to read the current webpage content?",
     ),
 }
 
