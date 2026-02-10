@@ -11,6 +11,7 @@ export * from './components/NavigationSidebar/NavigationSidebar';
 export * from './components/ChatLauncher/ChatLauncher';
 export * from './components/PendingMessageList/PendingMessageList';
 export * from './components/ConfirmButtons/ConfirmButtons';
+export * from './components/FileUpload/FileUpload';
 
 // API Client & Types
 export { RealChatClient } from './api/RealChatClient';
