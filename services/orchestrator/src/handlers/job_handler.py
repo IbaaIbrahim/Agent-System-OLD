@@ -65,30 +65,47 @@ class JobHandler:
             tools = message.get("tools") or []
             
             # Auto-enable file analysis tool if files are present in metadata
-            file_ids = message.get("metadata", {}).get("file_ids")
+            file_ids = message.get("metadata", {}).get("file_ids", [])
             if file_ids:
+                logger.info("Injecting file context for job", job_id=str(job_id), count=len(file_ids))
+                
                 # Check if already present to avoid duplicates
                 if not any(t.get("name") == "analyze_file" for t in tools):
                     if self.analyze_file_tool:
-                        logger.info("Injecting analyze_file tool", job_id=str(job_id))
+                        logger.info("Injecting analyze_file tool definition", job_id=str(job_id))
                         tools.append(self.analyze_file_tool)
-                    else:
-                        logger.warning("analyze_file tool definition missing, cannot inject", job_id=str(job_id))
                 
-                # Inject file info into the last user message so LLM knows IDs
-                if message["messages"] and message["messages"][-1]["role"] == "user":
+                # Content injection: Fetch blocks for files
+                from ..services.file_service import FileService
+                all_blocks = []
+                for fid in file_ids:
+                    blocks = await FileService.get_content_blocks(fid)
+                    all_blocks.extend(blocks)
+                
+                # Inject blocks into the last user message
+                if all_blocks and message["messages"] and message["messages"][-1]["role"] == "user":
+                    last_msg = message["messages"][-1]
+                    original_content = last_msg.get("content", "")
+                    
+                    # Convert to list of blocks if it's currently a string
+                    if isinstance(original_content, str):
+                        last_msg["content"] = [{"type": "text", "text": original_content}]
+                    elif original_content is None:
+                        last_msg["content"] = []
+                    
+                    # Append content
+                    last_msg["content"].append({
+                        "type": "text", 
+                        "text": "\n\n[Attached Files Content]\n"
+                    })
+                    last_msg["content"].extend(all_blocks)
+                    
+                    # Also append the system note for tool usage
                     files_list = ", ".join(file_ids)
-                    note = f"\n\n[System Note: The user has attached files with IDs: {files_list}. You MUST use the 'analyze_file' tool to read or analyze them.]"
-                    # Ensure content is string before appending
-                    content = message["messages"][-1].get("content", "")
-                    if isinstance(content, str):
-                        message["messages"][-1]["content"] = content + note
-                    elif isinstance(content, list):
-                        # Start with text block
-                        message["messages"][-1]["content"].append({
-                            "type": "text", 
-                            "text": note
-                        })
+                    last_msg["content"].append({
+                        "type": "text",
+                        "text": f"\n\n[System Note: Use the 'analyze_file' tool for detailed analysis of these files if needed. Files IDs: {files_list}]"
+                    })
             
             # Create agent state
             state = self.state_manager.create_state(
