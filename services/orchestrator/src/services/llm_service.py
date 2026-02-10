@@ -87,56 +87,66 @@ class LLMService:
     ) -> str | None:
         """Build system prompt with information about disabled tools.
 
+        Three-layer system prompt:
+        1. Default layer: Agent scope and tool orchestration instructions
+        2. User layer: Optional user-provided system prompt
+        3. Tool context layer: Auto-injected disabled tool info
+
         Args:
-            base_prompt: Original system prompt
+            base_prompt: User-provided system prompt (optional)
             tools: All available tool definitions
             plan_tools: Tools allowed by plan
             enabled_tools: Tools enabled by user
 
         Returns:
-            Enhanced system prompt or original prompt
+            Enhanced system prompt with all layers
         """
-        if not tools:
-            return base_prompt
+        from ..prompts.default_system_prompt import DEFAULT_SYSTEM_PROMPT
 
-        plan_locked = []
-        user_disabled = []
+        # Layer 1: Default orchestration prompt (always present)
+        final_prompt = DEFAULT_SYSTEM_PROMPT
 
-        for tool in tools:
-            category = tool.get("category", "builtin")
-            name = tool["name"]
-
-            if category in ("configurable", "client_side"):
-                # Check plan access
-                if plan_tools is not None and name not in plan_tools:
-                    plan_locked.append(name)
-                # Check user enablement (only if plan allows)
-                elif enabled_tools is not None and name not in enabled_tools:
-                    user_disabled.append(name)
-
-        if not plan_locked and not user_disabled:
-            return base_prompt
-
-        # Build additional context for the agent
-        disabled_info_parts = []
-        if plan_locked:
-            disabled_info_parts.append(
-                f"The following tools require a plan upgrade: {', '.join(plan_locked)}. "
-                "If the user's request would benefit from one of these tools, politely inform "
-                "them that they can upgrade their plan to access this feature."
-            )
-        if user_disabled:
-            disabled_info_parts.append(
-                f"The following tools are available but currently disabled by the user: "
-                f"{', '.join(user_disabled)}. If the user's request would benefit from one "
-                "of these tools, politely inform them that they can enable it in the chat settings."
-            )
-
-        disabled_info = "\n\n".join(disabled_info_parts)
-
+        # Layer 2: User-provided system prompt (optional override/extension)
         if base_prompt:
-            return f"{base_prompt}\n\n{disabled_info}"
-        return disabled_info
+            final_prompt += f"\n\n## Additional Instructions\n\n{base_prompt}"
+
+        # Layer 3: Tool availability context (auto-injected)
+        if tools:
+            plan_locked = []
+            user_disabled = []
+
+            for tool in tools:
+                category = tool.get("category", "builtin")
+                name = tool["name"]
+
+                if category in ("configurable", "client_side"):
+                    # Check plan access
+                    if plan_tools is not None and name not in plan_tools:
+                        plan_locked.append(name)
+                    # Check user enablement (only if plan allows)
+                    elif enabled_tools is not None and name not in enabled_tools:
+                        user_disabled.append(name)
+
+            if plan_locked or user_disabled:
+                # Build tool availability context
+                disabled_info_parts = []
+                if plan_locked:
+                    disabled_info_parts.append(
+                        f"The following tools require a plan upgrade: {', '.join(plan_locked)}. "
+                        "If the user's request would benefit from one of these tools, politely inform "
+                        "them that they can upgrade their plan to access this feature."
+                    )
+                if user_disabled:
+                    disabled_info_parts.append(
+                        f"The following tools are available but currently disabled by the user: "
+                        f"{', '.join(user_disabled)}. If the user's request would benefit from one "
+                        "of these tools, politely inform them that they can enable it in the chat settings."
+                    )
+
+                disabled_info = "\n\n".join(disabled_info_parts)
+                final_prompt += f"\n\n## Tool Availability\n\n{disabled_info}"
+
+        return final_prompt
 
     def _build_tools(
         self,

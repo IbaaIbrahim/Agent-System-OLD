@@ -148,6 +148,38 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         confirm_button_label="Generate Checklist",
         confirm_description_template="Create '{title}' checklist with {context}",
     ),
+    "analyze_file": ToolMetadata(
+        name="analyze_file",
+        description=(
+            "Analyze uploaded files (images, PDFs, documents) using vision models. "
+            "Use this to extract information, generate checklists, summarize content, "
+            "or answer questions about uploaded files."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "file_id": {
+                    "type": "string",
+                    "description": "ID of the uploaded file to analyze",
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "What to analyze or extract from the file. "
+                        "Examples: 'extract checklist items', 'summarize this document', "
+                        "'what does this diagram show?', 'generate a todo list from this image'"
+                    ),
+                },
+            },
+            "required": ["file_id", "query"],
+        },
+        behavior=ToolBehavior.CONFIRM_REQUIRED,
+        preferred_provider="anthropic",
+        preferred_model="claude-3-5-sonnet-20241022",  # Vision model for image analysis
+        required_plan_feature="tools.file_analysis",
+        confirm_button_label="Analyze File",
+        confirm_description_template="Analyze file with query: {query}",
+    ),
     "read_page_content": ToolMetadata(
         name="read_page_content",
         description=(
