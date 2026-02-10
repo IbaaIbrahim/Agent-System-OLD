@@ -250,25 +250,24 @@ services:
         condition: service_healthy
     networks:
       - agent-network
-
   # ===================
   # FRONTEND
   # ===================
 
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    container_name: agent-frontend
-    ports:
-      - "3000:80"
-    depends_on:
-      api-gateway:
-        condition: service_healthy
-      stream-edge:
-        condition: service_healthy
-    networks:
-      - agent-network
+  # frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: frontend/Dockerfile
+  #   container_name: agent-frontend
+  #   ports:
+  #     - "3000:80"
+  #   depends_on:
+  #     api-gateway:
+  #       condition: service_healthy
+  #     stream-edge:
+  #       condition: service_healthy
+  #   networks:
+  #     - agent-network
 
 volumes:
   postgres_data:
