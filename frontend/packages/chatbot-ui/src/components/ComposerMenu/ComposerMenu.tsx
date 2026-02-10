@@ -121,12 +121,16 @@ export const ReasoningMenu: React.FC<ReasoningMenuProps> = ({
    );
 };
 
-export const PlusMenu: React.FC<MenuProps> = ({ onClose }) => {
+export interface PlusMenuProps extends MenuProps {
+   onUploadFile?: () => void;
+}
+
+export const PlusMenu: React.FC<PlusMenuProps> = ({ onClose, onUploadFile }) => {
    return (
       <div className="cb-menu-overlay" onClick={onClose}>
          <div className="cb-menu-content plus-menu" onClick={e => e.stopPropagation()}>
             <div className="cb-menu-section compact">
-               <div className="cb-menu-item">
+               <div className="cb-menu-item" onClick={() => { onUploadFile?.(); onClose(); }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
                   <span className="cb-menu-title">Upload file</span>
                </div>

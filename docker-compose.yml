@@ -227,6 +227,8 @@ services:
       - WEB_SEARCH_PROVIDER=${WEB_SEARCH_PROVIDER:-brave}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     depends_on:
       kafka:
         condition: service_healthy

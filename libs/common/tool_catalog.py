@@ -173,10 +173,11 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
             },
             "required": ["file_id", "query"],
         },
-        behavior=ToolBehavior.CONFIRM_REQUIRED,
+        behavior=ToolBehavior.AUTO_EXECUTE,
         preferred_provider="anthropic",
-        preferred_model="claude-3-5-sonnet-20241022",  # Vision model for image analysis
-        required_plan_feature="tools.file_analysis",
+        preferred_model="claude-sonnet-4-5",  # Vision model for image analysis
+        # required_plan_feature="tools.file_analysis",
+        required_plan_feature=None,
         confirm_button_label="Analyze File",
         confirm_description_template="Analyze file with query: {query}",
     ),

@@ -46,6 +46,8 @@ class AgentExecutor:
             model=state.model,
         )
 
+
+
         state.mark_running()
         await self._emit_event(state, "start", {"status": "running"})
 
@@ -222,6 +224,8 @@ class AgentExecutor:
             "Starting streaming agent execution",
             job_id=str(state.job_id),
         )
+
+
 
         state.mark_running()
         await self._emit_event(state, "start", {"status": "running"})

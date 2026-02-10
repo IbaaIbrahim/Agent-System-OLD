@@ -38,3 +38,9 @@ apscheduler>=3.10.0
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
 pytest-sugar>=1.1.1
+
+# Form Data
+python-multipart>=0.0.22
+
+# File Processing
+pypdf>=5.0.0

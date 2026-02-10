@@ -1,5 +1,5 @@
 
-import { ChatClient, ChatState } from './types';
+import { AttachedFile, ChatClient, ChatState } from './types';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 
 export class RealChatClient implements ChatClient {
@@ -65,7 +65,7 @@ export class RealChatClient implements ChatClient {
     }
 
 
-    async sendMessage(content: string, onUpdate: (state: ChatState) => void): Promise<void> {
+    async sendMessage(content: string, onUpdate: (state: ChatState) => void, fileIds?: string[]): Promise<void> {
         if (!this.accessToken) {
             console.error('No access token available');
             return;
@@ -88,6 +88,14 @@ export class RealChatClient implements ChatClient {
                 content: m.content
             }));
 
+            // Build metadata with file_ids if present
+            const metadata: Record<string, any> = {
+                enabled_tools: this.getActiveTools()
+            };
+            if (fileIds && fileIds.length > 0) {
+                metadata.file_ids = fileIds;
+            }
+
             // 3. Make the API Call
             const response = await fetch(`${this.apiBaseUrl}/v1/chat/completions`, {
                 method: 'POST',
@@ -100,9 +108,7 @@ export class RealChatClient implements ChatClient {
                     model: this.currentModel,
                     provider: this.currentProvider,
                     stream: true,
-                    metadata: {
-                        enabled_tools: this.getActiveTools()
-                    }
+                    metadata
                 })
             });
 
@@ -733,7 +739,7 @@ export class RealChatClient implements ChatClient {
             }
 
             // 2. Extract content
-            result.content = this.extractElementContent(targetElement);
+            result.content = this.extractElementContent(targetElement, 0);
 
             // 3. Include HTML if requested
             if (include_html) {
@@ -814,5 +820,39 @@ export class RealChatClient implements ChatClient {
         const base64 = dataUrl.split(',')[1];
 
         return base64;
+    }
+
+    async uploadFile(file: File): Promise<AttachedFile> {
+        if (!this.accessToken) {
+            throw new Error('No access token available');
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${this.apiBaseUrl}/v1/files/upload`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+            },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            let errorDetails = response.statusText;
+            try {
+                const errorJson = await response.json();
+                errorDetails = errorJson.detail || JSON.stringify(errorJson);
+            } catch (e) { /* ignore */ }
+            throw new Error(`File upload failed: ${errorDetails}`);
+        }
+
+        const result = await response.json();
+        return {
+            file_id: result.file_id,
+            filename: result.filename,
+            content_type: result.content_type,
+            size_bytes: result.size_bytes,
+        };
     }
 }
