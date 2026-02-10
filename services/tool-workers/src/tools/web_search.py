@@ -39,7 +39,8 @@ class WebSearchTool(BaseTool):
         "required": ["query"],
     }
     behavior = ToolBehavior.USER_ENABLED
-    required_plan_feature = "tools.web_search"
+    # required_plan_feature = "tools.web_search"
+    required_plan_feature = None  # Always available, no plan restriction
 
     def __init__(
         self,

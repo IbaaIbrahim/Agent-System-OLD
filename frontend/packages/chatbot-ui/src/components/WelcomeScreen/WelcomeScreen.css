@@ -16,13 +16,13 @@
 }
 
 .cb-welcome-title {
-    font-size: 2rem;
-    font-weight: 600;
+    font-size: 2rem !important;
+    font-weight: 600 !important;
     margin-bottom: var(--cb-space-8);
-    background: linear-gradient(to right, #fff, #9ca3af);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    background-image: linear-gradient(to right, #fff, #9ca3af) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
 }
 
 .cb-quick-actions-grid {

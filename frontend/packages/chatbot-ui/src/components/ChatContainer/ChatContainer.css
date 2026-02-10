@@ -2,10 +2,15 @@
     display: flex;
     flex-direction: column;
     background-color: var(--cb-bg-primary);
-    border: 1px solid var(--cb-border-subtle);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-top: none;
+    /* Often helps with 'leaks' at the top when fixed */
+    border-radius: 0;
+    /* Sidebar/Fullscreen should be sharp */
     overflow: hidden;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 9999;
+    /* High z-index to stay above host app elements like fixed headers/footers */
+    z-index: 2000 !important;
     font-family: var(--cb-font-family);
     color: var(--cb-text-primary);
     opacity: 0;
@@ -95,11 +100,18 @@
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--cb-border-subtle);
-    background-color: var(--cb-glass-bg);
-    backdrop-filter: blur(var(--cb-backdrop-blur));
-    -webkit-backdrop-filter: blur(var(--cb-backdrop-blur));
-    z-index: 20;
+    /* Use fully solid background to eliminate 'white transparency' leaks */
+    background-color: #1a1c23 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 30;
+    /* Above messages and drawer */
     position: relative;
+}
+
+.cb-actions {
+    display: flex;
+    flex-direction: row;
 }
 
 .cb-header-left {
@@ -218,11 +230,20 @@
 }
 
 .cb-messages-area {
-    flex: 1;
+    flex: 1 1 0% !important;
+    /* Force take space but allow shrinking to 0 */
     position: relative;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    min-height: 0;
+}
+
+.cb-chat-footer {
+    flex-shrink: 0 !important;
+    background-color: var(--cb-bg-primary);
+    position: relative;
+    z-index: 10;
 }
 
 .cb-scroll-view {
@@ -292,7 +313,7 @@
     overflow: hidden;
     transform: none !important;
     transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Sidebar — embedded */

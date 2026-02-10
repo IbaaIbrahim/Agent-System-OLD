@@ -242,8 +242,8 @@ class ToolHandler:
                         "tool_name": tc.name,
                         "arguments": tc.arguments,
                         "snapshot_sequence": state.iteration,
-                        "plan_features": getattr(state, "plan_features", []),
-                        "enabled_tools": getattr(state, "enabled_tools", []),
+                        "plan_features": state.metadata.get("plan_features", []),
+                        "enabled_tools": state.metadata.get("enabled_tools", []),
                     }
 
                     await producer.send(
@@ -313,6 +313,8 @@ class ToolHandler:
             "tool_name": tool_call.name,
             "arguments": tool_call.arguments,
             "snapshot_sequence": state.iteration,  # For resume handler
+            "plan_features": state.metadata.get("plan_features", []),
+            "enabled_tools": state.metadata.get("enabled_tools", []),
         }
 
         # Send to tools topic

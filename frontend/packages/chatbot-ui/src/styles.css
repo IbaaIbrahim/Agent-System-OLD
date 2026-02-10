@@ -1,55 +1,83 @@
-:root {
+/* Base variables scoped to prevent global leakage, but including the launcher */
+.cb-chat-container,
+.cb-chat-launcher {
   /* Colors - Premium Dark Theme Base */
-  --cb-bg-primary: #121212;
-  --cb-bg-secondary: #1E1E1E;
-  --cb-bg-tertiary: #2C2C2C;
+  --cb-bg-primary: #121212 !important;
+  --cb-bg-secondary: #1E1E1E !important;
+  --cb-bg-tertiary: #2C2C2C !important;
 
   /* Text */
-  --cb-text-primary: #FFFFFF;
-  --cb-text-secondary: #A0A0A0;
-  --cb-text-tertiary: #666666;
+  --cb-text-primary: #FFFFFF !important;
+  --cb-text-secondary: #A0A0A0 !important;
+  --cb-text-tertiary: #666666 !important;
 
   /* Accents */
-  --cb-accent-primary: #6366F1;
-  /* Indigo 500 */
-  --cb-accent-hover: #4F46E5;
-  --cb-accent-gradient: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  --cb-accent-primary: #6366F1 !important;
+  --cb-accent-hover: #4F46E5 !important;
+  --cb-accent-gradient: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%) !important;
 
   /* Glassmorphism */
-  --cb-glass-bg: rgba(30, 30, 30, 0.7);
-  --cb-glass-border: rgba(255, 255, 255, 0.1);
-  --cb-backdrop-blur: 12px;
+  --cb-glass-bg: rgba(30, 30, 30, 0.7) !important;
+  --cb-glass-border: rgba(255, 255, 255, 0.1) !important;
+  --cb-backdrop-blur: 12px !important;
 
   /* Spacing */
-  --cb-space-1: 4px;
-  --cb-space-2: 8px;
-  --cb-space-3: 12px;
-  --cb-space-4: 16px;
-  --cb-space-6: 24px;
-  --cb-space-8: 32px;
+  --cb-space-1: 4px !important;
+  --cb-space-2: 8px !important;
+  --cb-space-3: 12px !important;
+  --cb-space-4: 16px !important;
+  --cb-space-6: 24px !important;
+  --cb-space-8: 32px !important;
 
   /* Borders */
-  --cb-radius-sm: 6px;
-  --cb-radius-md: 8px;
-  --cb-radius-lg: 16px;
-  --cb-radius-full: 9999px;
-  --cb-border-subtle: rgba(255, 255, 255, 0.1);
-  --cb-border-focus: rgba(99, 102, 241, 0.5);
+  --cb-radius-sm: 6px !important;
+  --cb-radius-md: 8px !important;
+  --cb-radius-lg: 16px !important;
+  --cb-radius-full: 9999px !important;
+  --cb-border-subtle: rgba(255, 255, 255, 0.1) !important;
+  --cb-border-focus: rgba(99, 102, 241, 0.5) !important;
 
   /* Shadows */
-  --cb-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --cb-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --cb-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
+  --cb-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+  --cb-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  --cb-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15) !important;
 
   /* Transitions */
-  --cb-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --cb-transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --cb-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  --cb-transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
 
   /* Typography */
-  --cb-font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  --cb-text-xs: 0.75rem;
-  --cb-text-sm: 0.875rem;
-  --cb-text-base: 1rem;
+  --cb-font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+  --cb-text-xs: 0.75rem !important;
+  --cb-text-sm: 0.875rem !important;
+  --cb-text-base: 1rem !important;
+
+  /* Reset some common leaked styles */
+  text-align: left !important;
+  line-height: 1.5 !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Light Theme Overrides */
+.cb-chat-container[data-theme='light'],
+.cb-chat-launcher[data-theme='light'] {
+  --cb-bg-primary: #ffffff !important;
+  --cb-bg-secondary: #f9fafb !important;
+  --cb-bg-tertiary: #f3f4f6 !important;
+
+  --cb-text-primary: #111827 !important;
+  --cb-text-secondary: #4b5563 !important;
+  --cb-text-tertiary: #9ca3af !important;
+
+  --cb-border-subtle: #e5e7eb !important;
+  --cb-glass-bg: rgba(255, 255, 255, 0.8) !important;
+  --cb-glass-border: rgba(0, 0, 0, 0.05) !important;
+}
+
+.cb-chat-container *,
+.cb-chat-launcher * {
+  box-sizing: border-box !important;
 }
 
 /* Page Reading Indicator */

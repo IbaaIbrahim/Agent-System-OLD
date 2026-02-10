@@ -1,9 +1,10 @@
-:root {
+/* Base variables scoped to the container */
+.cb-chat-container {
   /* Colors */
   --cb-bg-primary: #0f1117;
   --cb-bg-secondary: #1e212b;
   --cb-bg-tertiary: #2a2e3b;
-  
+
   --cb-text-primary: #ffffff;
   --cb-text-secondary: #9ca3af;
   --cb-text-tertiary: #6b7280;
@@ -48,24 +49,19 @@
   --cb-transition-normal: 250ms ease;
 }
 
-[data-theme='light'] {
+.cb-chat-container[data-theme='light'] {
   --cb-bg-primary: #ffffff;
   --cb-bg-secondary: #f9fafb;
   --cb-bg-tertiary: #f3f4f6;
-  
+
   --cb-text-primary: #111827;
   --cb-text-secondary: #4b5563;
   --cb-text-tertiary: #9ca3af;
-  
+
   --cb-border-subtle: #e5e7eb;
 }
 
-* {
+/* Base resets within the container only */
+.cb-chat-container * {
   box-sizing: border-box;
-}
-
-body {
-  font-family: var(--cb-font-family);
-  background-color: var(--cb-bg-primary);
-  color: var(--cb-text-primary);
 }
