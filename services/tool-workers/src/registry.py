@@ -5,6 +5,7 @@ from typing import Any
 from libs.common import get_logger
 
 from .config import get_config
+from .tools.analyze_file import AnalyzeFileTool
 from .tools.base import BaseTool
 from .tools.checklist_generator import ChecklistGeneratorTool
 from .tools.code_executor import CodeExecutorTool
@@ -93,6 +94,9 @@ class ToolRegistry:
 
         # Checklist generator tool (configurable - user can toggle)
         self.register(ChecklistGeneratorTool())
+
+        # File analysis tool (vision model for images)
+        self.register(AnalyzeFileTool())
 
         logger.info(f"Registered {len(self.tools)} tools")
 
