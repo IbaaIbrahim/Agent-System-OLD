@@ -1067,11 +1067,27 @@ export class RealChatClient implements ChatClient {
         // Map conversation messages to MessageProps
         const msgs: MessageProps[] = detail.messages
             .filter(m => m.role === 'user' || m.role === 'assistant')
-            .map(m => ({
-                id: m.id,
-                role: m.role as 'user' | 'assistant',
-                content: m.content || '',
-            }));
+            .map(m => {
+                const msg: MessageProps = {
+                    id: m.id,
+                    role: m.role as 'user' | 'assistant',
+                    content: m.content || '',
+                };
+
+                // Map attachments if present (for user messages)
+                if (m.attachments && m.attachments.length > 0) {
+                    msg.attachments = m.attachments.map(att => ({
+                        id: att.id,
+                        type: att.type as 'image' | 'file',
+                        url: `${this.apiBaseUrl}${att.url}`,
+                        name: att.name,
+                        size: att.size,
+                        contentType: att.content_type,
+                    }));
+                }
+
+                return msg;
+            });
 
         this.messages = msgs;
         this.conversationId = id;

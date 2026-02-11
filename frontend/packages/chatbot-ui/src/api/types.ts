@@ -19,12 +19,22 @@ export interface ConversationSummary {
     updated_at: string;
 }
 
+export interface ConversationAttachment {
+    id: string;
+    type: 'image' | 'file';
+    url: string;
+    name: string;
+    size: number;
+    content_type: string;
+}
+
 export interface ConversationMessage {
     id: string;
     role: string;
     content: string | null;
     job_id: string;
     created_at: string | null;
+    attachments?: ConversationAttachment[];
 }
 
 export interface ConversationDetail {
