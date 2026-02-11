@@ -122,7 +122,8 @@ class PostgresWriter:
                     data = event["data"]
 
                     # CONVERSATIONAL EVENTS → ChatMessage table
-                    if event_type in ("message", "delta"):
+                    # Note: "delta" events are for real-time streaming only, not persisted
+                    if event_type == "message":
                         max_seq += 1
                         message = ChatMessage(
                             job_id=job_id,

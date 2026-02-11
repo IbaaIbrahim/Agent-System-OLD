@@ -1064,19 +1064,35 @@ export class RealChatClient implements ChatClient {
         if (!response.ok) throw new Error(`Failed to load conversation: ${response.status}`);
         const detail: import('./types').ConversationDetail = await response.json();
 
-        // Map conversation messages to MessageProps
-        const msgs: MessageProps[] = detail.messages
-            .filter(m => m.role === 'user' || m.role === 'assistant')
-            .map(m => {
-                const msg: MessageProps = {
+        // Map conversation messages to MessageProps, merging consecutive assistant messages from same job
+        const msgs: MessageProps[] = [];
+        let currentAssistantMsg: MessageProps | null = null;
+        let currentJobId: string | null = null;
+
+        for (const m of detail.messages) {
+            // Skip tool messages
+            if (m.role !== 'user' && m.role !== 'assistant') {
+                continue;
+            }
+
+            if (m.role === 'user') {
+                // Flush any pending assistant message
+                if (currentAssistantMsg) {
+                    msgs.push(currentAssistantMsg);
+                    currentAssistantMsg = null;
+                    currentJobId = null;
+                }
+
+                const userMsg: MessageProps = {
                     id: m.id,
-                    role: m.role as 'user' | 'assistant',
+                    role: 'user',
                     content: m.content || '',
+                    shouldAnimate: false,
                 };
 
-                // Map attachments if present (for user messages)
+                // Map attachments if present
                 if (m.attachments && m.attachments.length > 0) {
-                    msg.attachments = m.attachments.map(att => ({
+                    userMsg.attachments = m.attachments.map(att => ({
                         id: att.id,
                         type: att.type as 'image' | 'file',
                         url: `${this.apiBaseUrl}${att.url}`,
@@ -1086,8 +1102,33 @@ export class RealChatClient implements ChatClient {
                     }));
                 }
 
-                return msg;
-            });
+                msgs.push(userMsg);
+            } else if (m.role === 'assistant') {
+                // Merge consecutive assistant messages from same job
+                if (currentAssistantMsg && currentJobId === m.job_id) {
+                    // Append content to existing message
+                    currentAssistantMsg.content = (currentAssistantMsg.content || '') + (m.content || '');
+                } else {
+                    // Flush previous assistant message
+                    if (currentAssistantMsg) {
+                        msgs.push(currentAssistantMsg);
+                    }
+                    // Start new assistant message
+                    currentAssistantMsg = {
+                        id: m.id,
+                        role: 'assistant',
+                        content: m.content || '',
+                        shouldAnimate: false,
+                    };
+                    currentJobId = m.job_id;
+                }
+            }
+        }
+
+        // Flush any remaining assistant message
+        if (currentAssistantMsg) {
+            msgs.push(currentAssistantMsg);
+        }
 
         this.messages = msgs;
         this.conversationId = id;

@@ -369,15 +369,14 @@ class AgentExecutor:
                             elif content_buffer or reasoning_buffer:
                                 if reasoning_buffer:
                                     state.reasoning_content = (state.reasoning_content or "") + reasoning_buffer
-                                
+
                                 state.add_assistant_message(content=content_buffer if content_buffer else None)
-                                
-                                if not content_buffer and reasoning_buffer:
-                                    # If only reasoning, emit one final message event with it
-                                    await self._emit_event(state, "message", {
-                                        "content": None,
-                                        "reasoning_content": reasoning_buffer,
-                                    })
+
+                                # Emit final message event with full content for archival
+                                await self._emit_event(state, "message", {
+                                    "content": content_buffer if content_buffer else None,
+                                    "reasoning_content": reasoning_buffer if reasoning_buffer else None,
+                                })
 
                             # If no tools were found in the stream, this turn is done regardless of finish_reason
                             if not tool_calls:
