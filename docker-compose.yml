@@ -168,6 +168,7 @@ services:
   milvus:
     image: milvusdb/milvus:v2.3.3
     container_name: agent-milvus
+    command: ["milvus", "run", "standalone"]
     depends_on:
       milvus-etcd:
         condition: service_healthy
