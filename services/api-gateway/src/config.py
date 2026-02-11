@@ -23,6 +23,10 @@ class APIGatewayConfig(Settings):
     # Request timeout (seconds)
     request_timeout: int = 30
 
+    # File storage persistence
+    file_storage_persist: bool = False  # Write uploaded files to disk
+    file_storage_path: str = "./file_uploads"  # Directory for persistent files
+
     # Billing feature flag (disabled by default)
     enable_billing_checks: bool = False
     default_credit_balance_micros: int = 100_000_000  # $100.00 in microdollars

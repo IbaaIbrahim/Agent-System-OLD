@@ -10,6 +10,10 @@ from .tools.base import BaseTool
 from .tools.checklist_generator import ChecklistGeneratorTool
 from .tools.code_executor import CodeExecutorTool
 from .tools.datetime_tool import DateTimeTool
+from .tools.delete_from_knowledge_base import DeleteFromKnowledgeBaseTool
+from .tools.get_file_description import GetFileDescriptionTool
+from .tools.save_to_knowledge_base import SaveToKnowledgeBaseTool
+from .tools.search_knowledge_base import SearchKnowledgeBaseTool
 from .tools.web_search import WebSearchTool
 
 logger = get_logger(__name__)
@@ -97,6 +101,14 @@ class ToolRegistry:
 
         # File analysis tool (vision model for images)
         self.register(AnalyzeFileTool())
+
+        # File description retrieval tool (fetch cached analysis from DB)
+        self.register(GetFileDescriptionTool())
+
+        # Knowledge base tools
+        self.register(SearchKnowledgeBaseTool())
+        self.register(SaveToKnowledgeBaseTool())
+        self.register(DeleteFromKnowledgeBaseTool())
 
         logger.info(f"Registered {len(self.tools)} tools")
 

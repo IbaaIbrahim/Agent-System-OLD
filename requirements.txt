@@ -42,5 +42,8 @@ pytest-sugar>=1.1.1
 # Form Data
 python-multipart>=0.0.22
 
+# Vector Database
+pymilvus>=2.3.3
+
 # File Processing
 pypdf>=5.0.0

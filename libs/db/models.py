@@ -832,6 +832,43 @@ class CreditUsageRecord(Base, TimestampMixin):
     user: Mapped["User | None"] = relationship()
 
 
+class Conversation(Base, TimestampMixin):
+    """Conversation model for grouping related jobs into a chat session."""
+
+    __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_tenant_id", "tenant_id"),
+        Index("ix_conversations_user_id", "user_id"),
+        Index("ix_conversations_tenant_user", "tenant_id", "user_id"),
+        Index("ix_conversations_updated_at", "updated_at"),
+        {"schema": "jobs"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, default=dict
+    )
+
+    # Relationships
+    jobs: Mapped[list["Job"]] = relationship(back_populates="conversation")
+
+
 class JobStatus(str, Enum):
     """Job status enumeration."""
 
@@ -850,6 +887,7 @@ class Job(Base, TimestampMixin):
         Index("ix_jobs_tenant_id", "tenant_id"),
         Index("ix_jobs_status", "status"),
         Index("ix_jobs_tenant_status", "tenant_id", "status"),
+        Index("ix_jobs_conversation_id", "conversation_id"),
         {"schema": "jobs"},
     )
 
@@ -866,6 +904,11 @@ class Job(Base, TimestampMixin):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.conversations.id", ondelete="SET NULL"),
         nullable=True,
     )
     status: Mapped[JobStatus] = mapped_column(
@@ -893,6 +936,7 @@ class Job(Base, TimestampMixin):
 
     # Relationships
     tenant: Mapped["Tenant"] = relationship(back_populates="jobs")
+    conversation: Mapped["Conversation | None"] = relationship(back_populates="jobs")
     snapshots: Mapped[list["JobSnapshot"]] = relationship(back_populates="job")
     messages: Mapped[list["ChatMessage"]] = relationship(back_populates="job")
 
@@ -973,6 +1017,7 @@ class FileUpload(Base):
     """File upload model for storing uploaded file metadata.
 
     Files are temporarily stored in Redis (hot storage) with 15-minute TTL.
+    When FILE_STORAGE_PERSIST is enabled, files are also written to disk.
     This model provides audit trail and conversation context persistence.
     """
 
@@ -1011,7 +1056,7 @@ class FileUpload(Base):
     storage_key: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
-        comment="Redis key or future S3 path",
+        comment="Redis key (file:uuid) or disk path (disk:path/to/file)",
     )
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
@@ -1019,8 +1064,98 @@ class FileUpload(Base):
         default=dict,
         comment="Additional metadata like original path, upload source",
     )
+    analysis_description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Cached vision model analysis of the file content",
+    )
+    analyzed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp when the file was analyzed by vision model",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+    )
+
+
+class KnowledgeBaseEntry(Base, TimestampMixin):
+    """Knowledge base entry model for storing searchable content.
+
+    Supports semantic search via Milvus vector embeddings.
+    Multi-tenant isolation via tenant_id scoping.
+    """
+
+    __tablename__ = "knowledge_base_entries"
+    __table_args__ = (
+        Index("ix_kb_entries_tenant_id", "tenant_id"),
+        Index("ix_kb_entries_category", "category"),
+        Index("ix_kb_entries_tenant_category", "tenant_id", "category"),
+        Index("ix_kb_entries_tags", "tags", postgresql_using="gin"),
+        {"schema": "jobs"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="User who created this entry",
+    )
+
+    # Core content
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Organization
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tags: Mapped[list[Any]] = mapped_column(
+        JSONB,
+        default=list,
+        nullable=False,
+        comment="List of tag strings",
+    )
+
+    # Metadata
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        default=dict,
+        comment="Additional metadata (source, author, etc.)",
+    )
+
+    # File references (screenshots, attachments)
+    file_ids: Mapped[list[Any]] = mapped_column(
+        JSONB,
+        default=list,
+        nullable=False,
+        comment="List of FileUpload UUIDs referenced by this entry",
+    )
+
+    # Vector embedding tracking
+    has_embedding: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Whether embedding has been generated and stored in Milvus",
+    )
+    embedding_model: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Model used for embedding generation",
+    )
+    embedding_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )

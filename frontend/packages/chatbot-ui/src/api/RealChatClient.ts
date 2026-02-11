@@ -13,6 +13,7 @@ export class RealChatClient implements ChatClient {
     private pageReadingCallback: ((isReading: boolean) => void) | null = null;
     private customHandlers: Map<string, (args: any) => Promise<string | any>> = new Map();
     private libraryTools: Set<string> = new Set();
+    private conversationId: string | null = null;
 
     constructor(token: string, apiBaseUrl?: string) {
         this.accessToken = token;
@@ -51,8 +52,27 @@ export class RealChatClient implements ChatClient {
     }
 
     enablePageContext(enabled: boolean) {
-        if (enabled) this.libraryTools.add('read_page_content');
-        else this.libraryTools.delete('read_page_content');
+        if (enabled) {
+            this.libraryTools.add('read_page_content');
+            this.libraryTools.add('read_page_content_advanced');
+            this.libraryTools.add('take_screenshot');
+            this.libraryTools.add('inspect_dom_element');
+        } else {
+            this.libraryTools.delete('read_page_content');
+            this.libraryTools.delete('read_page_content_advanced');
+            this.libraryTools.delete('take_screenshot');
+            this.libraryTools.delete('inspect_dom_element');
+        }
+    }
+
+    enableTakeScreenshot(enabled: boolean) {
+        if (enabled) this.libraryTools.add('take_screenshot');
+        else this.libraryTools.delete('take_screenshot');
+    }
+
+    enableDomInspector(enabled: boolean) {
+        if (enabled) this.libraryTools.add('inspect_dom_element');
+        else this.libraryTools.delete('inspect_dom_element');
     }
 
     private getActiveTools(): string[] {
@@ -65,7 +85,7 @@ export class RealChatClient implements ChatClient {
     }
 
 
-    async sendMessage(content: string, onUpdate: (state: ChatState) => void, fileIds?: string[]): Promise<void> {
+    async sendMessage(content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: import('./types').AttachedFile[]): Promise<void> {
         if (!this.accessToken) {
             console.error('No access token available');
             return;
@@ -75,7 +95,15 @@ export class RealChatClient implements ChatClient {
         const userMsg: MessageProps = {
             id: Date.now().toString(),
             role: 'user',
-            content
+            content,
+            attachments: attachedFiles?.map(f => ({
+                id: f.file_id,
+                type: (f.content_type.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
+                url: `${this.apiBaseUrl}/v1/files/${f.file_id}/download`,
+                name: f.filename,
+                size: f.size_bytes,
+                contentType: f.content_type,
+            }))
         };
         this.messages = [...this.messages, userMsg];
         onUpdate({ messages: this.messages, isThinking: true });
@@ -108,7 +136,8 @@ export class RealChatClient implements ChatClient {
                     model: this.currentModel,
                     provider: this.currentProvider,
                     stream: true,
-                    metadata
+                    metadata,
+                    conversation_id: this.conversationId || undefined,
                 })
             });
 
@@ -124,8 +153,11 @@ export class RealChatClient implements ChatClient {
             }
 
             // 4. Handle Streaming Response
-            const { stream_url, job_id } = await response.json();
+            const { stream_url, job_id, conversation_id } = await response.json();
             this.currentJobId = job_id;
+            if (conversation_id) {
+                this.conversationId = conversation_id;
+            }
 
             if (!stream_url) {
                 throw new Error('No stream URL received from gateway');
@@ -389,7 +421,16 @@ export class RealChatClient implements ChatClient {
     reset(onUpdate: (state: ChatState) => void): void {
         this.messages = [];
         this.currentJobId = null;
+        this.conversationId = null;
         onUpdate({ messages: [], isThinking: false });
+    }
+
+    setConversationId(id: string | null): void {
+        this.conversationId = id;
+    }
+
+    getConversationId(): string | null {
+        return this.conversationId;
     }
 
     async sendConfirmResponse(toolCallId: string, confirmed: boolean): Promise<void> {
@@ -454,6 +495,15 @@ export class RealChatClient implements ChatClient {
                         }
                         result = await this.executeReadPageContentAdvanced(toolArguments);
                         break;
+                    case 'take_screenshot':
+                        if (this.pageReadingCallback) {
+                            this.pageReadingCallback(true);
+                        }
+                        result = await this.executeTakeScreenshot(toolArguments);
+                        break;
+                    case 'inspect_dom_element':
+                        result = await this.executeInspectDomElement(toolArguments);
+                        break;
                     default:
                         result = JSON.stringify({
                             error: 'unknown_tool',
@@ -475,7 +525,10 @@ export class RealChatClient implements ChatClient {
             );
         } finally {
             // Notify that page reading has ended
-            if ((toolName === 'read_page_content' || toolName === 'read_page_content_advanced') && this.pageReadingCallback) {
+            if (
+                ['read_page_content', 'read_page_content_advanced', 'take_screenshot'].includes(toolName) &&
+                this.pageReadingCallback
+            ) {
                 this.pageReadingCallback(false);
             }
         }
@@ -753,7 +806,7 @@ export class RealChatClient implements ChatClient {
                         ? (document.querySelector(screenshot_selector) as HTMLElement || targetElement)
                         : targetElement;
 
-                    const screenshot = await this.captureScreenshot(screenshotElement);
+                    const screenshot = await this.captureScreenshot(screenshotElement, false);
                     result.screenshot = screenshot;
                     result.screenshot_query = screenshot_query || 'Analyze this screenshot';
                     result.screenshot_analysis_pending = true; // Backend will analyze
@@ -803,16 +856,16 @@ export class RealChatClient implements ChatClient {
         return null;
     }
 
-    private async captureScreenshot(element: HTMLElement): Promise<string> {
+    private async captureScreenshot(element: HTMLElement, fullPage = false): Promise<string> {
         // Dynamically import html2canvas to avoid bundle bloat
         const html2canvas = (await import('html2canvas')).default;
 
         const canvas = await html2canvas(element, {
             useCORS: true,
             allowTaint: false,
-            scrollY: -window.scrollY,
-            scrollX: -window.scrollX,
             backgroundColor: '#ffffff',
+            height: fullPage ? document.body.scrollHeight : undefined,
+            windowHeight: fullPage ? document.body.scrollHeight : undefined,
         });
 
         // Convert to base64 (remove data URL prefix)
@@ -820,6 +873,229 @@ export class RealChatClient implements ChatClient {
         const base64 = dataUrl.split(',')[1];
 
         return base64;
+    }
+
+    private async executeTakeScreenshot(args: any): Promise<string> {
+        try {
+            const {
+                selector,
+                element_query,
+                screenshot_query = 'Describe what is visible in this screenshot.',
+                full_page = false,
+            } = args;
+
+            // Resolve target element
+            let targetElement: HTMLElement = document.body;
+            if (element_query) {
+                const found = this.findElementByQuery(element_query);
+                if (found) targetElement = found;
+            } else if (selector) {
+                const found = document.querySelector(selector) as HTMLElement;
+                if (found) targetElement = found;
+            }
+
+            const screenshot = await this.captureScreenshot(targetElement, full_page);
+
+            return JSON.stringify({
+                success: true,
+                screenshot,
+                screenshot_query,
+                screenshot_analysis_pending: true,
+                metadata: {
+                    url: window.location.href,
+                    title: document.title,
+                    timestamp: new Date().toISOString(),
+                    element: targetElement === document.body ? 'viewport' : {
+                        tag: targetElement.tagName,
+                        id: targetElement.id || null,
+                        classes: Array.from(targetElement.classList),
+                    },
+                },
+            });
+        } catch (error: any) {
+            return JSON.stringify({
+                success: false,
+                error: error.message || 'Screenshot capture failed',
+            });
+        }
+    }
+
+    private async executeInspectDomElement(args: any): Promise<string> {
+        try {
+            const {
+                selector,
+                element_query,
+                include_computed_styles = true,
+                include_attributes = true,
+                include_hierarchy = true,
+                inspect_depth = 2,
+            } = args;
+
+            // Resolve target element
+            let targetElement: HTMLElement | null = null;
+            if (element_query) {
+                targetElement = this.findElementByQuery(element_query);
+            }
+            if (!targetElement && selector) {
+                targetElement = document.querySelector(selector) as HTMLElement;
+            }
+            if (!targetElement) {
+                return JSON.stringify({
+                    success: false,
+                    error: 'Element not found',
+                    query: element_query,
+                    selector,
+                });
+            }
+
+            const rect = targetElement.getBoundingClientRect();
+            const result: any = {
+                success: true,
+                element: {
+                    tag: targetElement.tagName,
+                    id: targetElement.id || null,
+                    classes: Array.from(targetElement.classList),
+                    text_content: targetElement.textContent?.trim().substring(0, 500),
+                },
+                bounding_rect: {
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height,
+                },
+            };
+
+            if (include_attributes) {
+                const attrs: Record<string, string> = {};
+                for (const attr of Array.from(targetElement.attributes)) {
+                    attrs[attr.name] = attr.value;
+                }
+                result.attributes = attrs;
+                result.accessibility = {
+                    role: targetElement.getAttribute('role'),
+                    aria_label: targetElement.getAttribute('aria-label'),
+                    aria_labelledby: targetElement.getAttribute('aria-labelledby'),
+                    aria_describedby: targetElement.getAttribute('aria-describedby'),
+                    tabindex: targetElement.getAttribute('tabindex'),
+                };
+            }
+
+            if (include_computed_styles) {
+                const cs = window.getComputedStyle(targetElement);
+                result.computed_styles = {
+                    display: cs.display,
+                    position: cs.position,
+                    visibility: cs.visibility,
+                    opacity: cs.opacity,
+                    width: cs.width,
+                    height: cs.height,
+                    margin: cs.margin,
+                    padding: cs.padding,
+                    background_color: cs.backgroundColor,
+                    color: cs.color,
+                    font_size: cs.fontSize,
+                    font_weight: cs.fontWeight,
+                    border: cs.border,
+                    z_index: cs.zIndex,
+                    overflow: cs.overflow,
+                    flex_direction: cs.flexDirection,
+                    grid_template_columns: cs.gridTemplateColumns,
+                };
+            }
+
+            if (include_hierarchy) {
+                const ancestors: any[] = [];
+                let current = targetElement.parentElement;
+                while (current && current !== document.body) {
+                    ancestors.push({
+                        tag: current.tagName,
+                        id: current.id || null,
+                        classes: Array.from(current.classList).slice(0, 5),
+                    });
+                    current = current.parentElement;
+                }
+                result.hierarchy = ancestors;
+            }
+
+            result.children = this.inspectChildren(targetElement, inspect_depth);
+
+            return JSON.stringify(result);
+        } catch (error: any) {
+            return JSON.stringify({
+                success: false,
+                error: error.message || 'DOM inspection failed',
+            });
+        }
+    }
+
+    private inspectChildren(element: HTMLElement, depth: number): any[] {
+        if (depth <= 0) return [];
+        return Array.from(element.children).slice(0, 20).map((child) => {
+            const el = child as HTMLElement;
+            const entry: any = {
+                tag: el.tagName,
+                id: el.id || null,
+                classes: Array.from(el.classList).slice(0, 5),
+                text: el.textContent?.trim().substring(0, 100),
+            };
+            if (depth > 1 && el.children.length > 0) {
+                entry.children = this.inspectChildren(el, depth - 1);
+            }
+            return entry;
+        });
+    }
+
+    async getConversations(offset = 0, limit = 50): Promise<import('./types').ConversationListResponse> {
+        if (!this.accessToken) throw new Error('No access token available');
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations?offset=${offset}&limit=${limit}`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`Failed to fetch conversations: ${response.status}`);
+        return response.json();
+    }
+
+    async loadConversation(id: string, onUpdate: (state: ChatState) => void): Promise<void> {
+        if (!this.accessToken) throw new Error('No access token available');
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations/${id}`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`Failed to load conversation: ${response.status}`);
+        const detail: import('./types').ConversationDetail = await response.json();
+
+        // Map conversation messages to MessageProps
+        const msgs: MessageProps[] = detail.messages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .map(m => ({
+                id: m.id,
+                role: m.role as 'user' | 'assistant',
+                content: m.content || '',
+            }));
+
+        this.messages = msgs;
+        this.conversationId = id;
+        this.currentJobId = null;
+        onUpdate({ messages: this.messages, isThinking: false });
+    }
+
+    async deleteConversation(id: string): Promise<void> {
+        if (!this.accessToken) throw new Error('No access token available');
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations/${id}`,
+            { method: 'DELETE', headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`Failed to delete conversation: ${response.status}`);
+    }
+
+    async searchConversations(query: string, offset = 0, limit = 20): Promise<import('./types').ConversationListResponse> {
+        if (!this.accessToken) throw new Error('No access token available');
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`Failed to search conversations: ${response.status}`);
+        return response.json();
     }
 
     async uploadFile(file: File): Promise<AttachedFile> {

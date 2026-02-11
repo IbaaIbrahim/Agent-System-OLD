@@ -21,10 +21,12 @@ from .routers import (
     admin,
     auth,
     chat,
+    conversations,
     features,
     files,
     health,
     jobs,
+    knowledge_base,
     partners,
     plans,
     subscriptions,
@@ -196,11 +198,15 @@ def create_app() -> FastAPI:
 
     # Chat and job endpoints
     app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
+    app.include_router(conversations.router, prefix="/api/v1", tags=["Conversations"])
     app.include_router(jobs.router, prefix="/api/v1", tags=["Jobs"])
     app.include_router(tools.router, prefix="/api/v1", tags=["Tools"])
 
     # File upload endpoints
     app.include_router(files.router, prefix="/api/v1/files", tags=["Files"])
+
+    # Knowledge base endpoints
+    app.include_router(knowledge_base.router, prefix="/api/v1", tags=["Knowledge Base"])
 
     # Billing and subscription endpoints
     app.include_router(wallet.router, prefix="/api", tags=["Wallet"])

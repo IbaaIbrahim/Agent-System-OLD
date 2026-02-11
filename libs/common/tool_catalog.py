@@ -31,6 +31,8 @@ class ToolMetadata(BaseModel):
     # For USER_ENABLED tools - UI display
     toggle_label: str | None = None  # e.g., "Web Search"
     toggle_description: str | None = None  # e.g., "Allow agent to search the web"
+    # Event emission control
+    emit_events: bool = True  # If False, tool_call/tool_result SSE events are suppressed
     # For CONFIRM_REQUIRED tools
     confirm_button_label: str | None = None
     confirm_description_template: str | None = None
@@ -70,7 +72,7 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         },
         behavior=ToolBehavior.AUTO_EXECUTE,
         preferred_provider="anthropic",
-        preferred_model="claude-3-5-haiku-20241022",  # Simple tool, use fast model
+        preferred_model="claude-sonnet-4-5",  # Simple tool, use fast model
         required_plan_feature=None,  # Always available
     ),
     "web_search": ToolMetadata(
@@ -152,8 +154,10 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         name="analyze_file",
         description=(
             "Analyze uploaded files (images, PDFs, documents) using vision models. "
-            "Use this to extract information, generate checklists, summarize content, "
-            "or answer questions about uploaded files."
+            "Provides an exhaustive, highly detailed description of the file content — "
+            "every visible element, text, color, layout, structure, icon, and label is "
+            "described in full detail without summarization. The analysis result is cached "
+            "in the database for later retrieval via get_file_description."
         ),
         parameters={
             "type": "object",
@@ -166,8 +170,8 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
                     "type": "string",
                     "description": (
                         "What to analyze or extract from the file. "
-                        "Examples: 'extract checklist items', 'summarize this document', "
-                        "'what does this diagram show?', 'generate a todo list from this image'"
+                        "Examples: 'describe everything in this image in full detail', "
+                        "'what does this diagram show?', 'transcribe all text in this image'"
                     ),
                 },
             },
@@ -176,10 +180,33 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         behavior=ToolBehavior.AUTO_EXECUTE,
         preferred_provider="anthropic",
         preferred_model="claude-sonnet-4-5",  # Vision model for image analysis
-        # required_plan_feature="tools.file_analysis",
         required_plan_feature=None,
         confirm_button_label="Analyze File",
         confirm_description_template="Analyze file with query: {query}",
+    ),
+    "get_file_description": ToolMetadata(
+        name="get_file_description",
+        description=(
+            "Retrieve a previously generated analysis description for a file from the "
+            "database. Use this FIRST when you have a file_id and want to check if the "
+            "file has already been analyzed. If no analysis exists, fall back to using "
+            "the 'analyze_file' tool. This avoids redundant vision model calls."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "file_id": {
+                    "type": "string",
+                    "description": "ID of the file to fetch the cached description for",
+                },
+            },
+            "required": ["file_id"],
+        },
+        behavior=ToolBehavior.AUTO_EXECUTE,
+        preferred_provider="anthropic",
+        preferred_model="claude-sonnet-4-5",
+        required_plan_feature=None,
+        emit_events=False,  # Silent cache lookup, no need to show in UI
     ),
     "read_page_content": ToolMetadata(
         name="read_page_content",
@@ -270,12 +297,219 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         behavior=ToolBehavior.CONFIRM_REQUIRED,
         client_side_execution=True,
         preferred_provider="anthropic",
-        preferred_model="claude-3-5-sonnet-20241022",  # Vision model for screenshot analysis
+        preferred_model="claude-sonnet-4-5",  # Vision model for screenshot analysis
         required_plan_feature=None,  # Available to all plans
         toggle_label="Advanced Page Reading",
         toggle_description="Allow HTML extraction, element finding, and screenshot analysis",
         confirm_button_label="Analyze Page",
         confirm_description_template="Analyze page with advanced features (HTML, screenshot, element finding)?",
+    ),
+    "take_screenshot": ToolMetadata(
+        name="take_screenshot",
+        description=(
+            "Capture a screenshot of the current page or a specific element. "
+            "The screenshot is saved as an image file and its file_id is returned. "
+            "After taking the screenshot, you MUST use the 'analyze_file' tool with "
+            "the returned file_id and the screenshot_query to get a detailed visual "
+            "description. Use this when the user asks you to look at something visually, "
+            "mentions a specific UI element, refers to 'this', 'here', or 'the screen', "
+            "or when DOM text alone is insufficient to understand the visual context."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "selector": {
+                    "type": "string",
+                    "description": (
+                        "CSS selector to screenshot. If omitted, captures the visible viewport."
+                    ),
+                },
+                "element_query": {
+                    "type": "string",
+                    "description": (
+                        "Natural language query to locate an element. "
+                        "Examples: 'submit button', 'error message', 'navigation menu'. "
+                        "Used when you don't have an exact CSS selector."
+                    ),
+                },
+                "screenshot_query": {
+                    "type": "string",
+                    "description": (
+                        "What to analyze in the screenshot. "
+                        "Examples: 'describe the layout', 'what is shown in this section?', "
+                        "'identify any issues or errors visible'"
+                    ),
+                    "default": "Describe everything visible in this screenshot in full detail.",
+                },
+                "full_page": {
+                    "type": "boolean",
+                    "description": "Capture full scrollable page height instead of only the visible viewport.",
+                    "default": False,
+                },
+            },
+            "required": [],
+        },
+        behavior=ToolBehavior.CONFIRM_REQUIRED,
+        client_side_execution=True,
+        preferred_provider="anthropic",
+        preferred_model="claude-sonnet-4-5",
+        required_plan_feature=None,
+        toggle_label="Screenshot",
+        toggle_description="Allow agent to capture and analyze screenshots of the current page",
+        confirm_button_label="Take Screenshot",
+        confirm_description_template="Capture a screenshot for visual analysis?",
+    ),
+    "inspect_dom_element": ToolMetadata(
+        name="inspect_dom_element",
+        description=(
+            "Deeply inspect a specific DOM element — extracting its attributes, computed CSS styles, "
+            "DOM hierarchy, bounding box, and accessibility info. Use this when the user asks about "
+            "a specific UI element, component, or section and needs structural or styling details "
+            "beyond plain text content."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "selector": {
+                    "type": "string",
+                    "description": "CSS selector for the element to inspect.",
+                },
+                "element_query": {
+                    "type": "string",
+                    "description": (
+                        "Natural language query to find the element. "
+                        "Examples: 'the login button', 'the pricing table', 'the error banner'"
+                    ),
+                },
+                "include_computed_styles": {
+                    "type": "boolean",
+                    "description": "Include key computed CSS styles (color, font, layout, spacing).",
+                    "default": True,
+                },
+                "include_attributes": {
+                    "type": "boolean",
+                    "description": "Include all HTML attributes of the element.",
+                    "default": True,
+                },
+                "include_hierarchy": {
+                    "type": "boolean",
+                    "description": "Include the ancestor chain up to <body>.",
+                    "default": True,
+                },
+                "inspect_depth": {
+                    "type": "integer",
+                    "description": "How many levels of child elements to include (default: 2).",
+                    "default": 2,
+                },
+            },
+            "required": [],
+        },
+        behavior=ToolBehavior.CONFIRM_REQUIRED,
+        client_side_execution=True,
+        required_plan_feature=None,
+        toggle_label="DOM Inspector",
+        toggle_description="Allow agent to inspect element structure, styles and attributes",
+        confirm_button_label="Inspect Element",
+        confirm_description_template="Inspect the DOM element for detailed structure and styling?",
+    ),
+    "search_knowledge_base": ToolMetadata(
+        name="search_knowledge_base",
+        description=(
+            "Search the knowledge base using semantic similarity. Use this when the user "
+            "asks about previously saved information, documented procedures, or references "
+            "specific topics that may have been stored."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language search query",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Optional category filter to narrow results",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional tags to filter results",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of results to return (default: 5, max: 20)",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
+        behavior=ToolBehavior.AUTO_EXECUTE,
+        preferred_provider="anthropic",
+        preferred_model="claude-sonnet-4-5",
+        required_plan_feature=None,
+    ),
+    "save_to_knowledge_base": ToolMetadata(
+        name="save_to_knowledge_base",
+        description=(
+            "Save information to the knowledge base for future retrieval. Use this when "
+            "the user explicitly asks to remember something, document a procedure, or save context."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Short descriptive title for the entry",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Full content to save (max 50,000 characters)",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Optional category (e.g., 'procedures', 'reference', 'notes')",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional tags for organization",
+                },
+                "file_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional file IDs to attach",
+                },
+            },
+            "required": ["title", "content"],
+        },
+        behavior=ToolBehavior.CONFIRM_REQUIRED,
+        preferred_provider="anthropic",
+        preferred_model="claude-sonnet-4-5",
+        required_plan_feature=None,
+        confirm_button_label="Save to Knowledge Base",
+        confirm_description_template="Save '{title}' to knowledge base?",
+    ),
+    "delete_from_knowledge_base": ToolMetadata(
+        name="delete_from_knowledge_base",
+        description=(
+            "Delete an entry from the knowledge base. Requires the entry ID."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "entry_id": {
+                    "type": "string",
+                    "description": "UUID of the knowledge base entry to delete",
+                },
+            },
+            "required": ["entry_id"],
+        },
+        behavior=ToolBehavior.CONFIRM_REQUIRED,
+        preferred_provider="anthropic",
+        preferred_model="claude-sonnet-4-5",
+        required_plan_feature=None,
+        confirm_button_label="Delete Entry",
+        confirm_description_template="Delete knowledge base entry {entry_id}?",
     ),
 }
 
@@ -338,7 +572,7 @@ def get_confirm_required_tools() -> list[ToolMetadata]:
 def get_tool_model_preference(
     tool_name: str,
     default_provider: str = "anthropic",
-    default_model: str = "claude-3-5-sonnet-20241022",
+    default_model: str = "claude-sonnet-4-5",
 ) -> tuple[str, str]:
     """Get the preferred provider and model for a tool.
 
