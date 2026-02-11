@@ -1243,6 +1243,8 @@ flatted@^3.2.9:
 flowdit-chatbot-library@*, "flowdit-chatbot-library@file:D:\\Personal-Projects\\Iotivata\\Agent-System\\frontend\\packages\\chatbot-ui":
   version "1.3.10"
   resolved "file:packages/chatbot-ui"
+  dependencies:
+    html2canvas "^1.4.1"
 
 fraction.js@^5.3.4:
   version "5.3.4"

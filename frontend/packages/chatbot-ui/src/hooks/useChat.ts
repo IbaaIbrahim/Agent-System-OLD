@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChatClient, ChatState } from '../api/types';
+import { AttachedFile, ChatClient, ChatState } from '../api/types';
 
 export interface UseChatOptions {
     client: ChatClient | null;
@@ -9,6 +9,7 @@ export interface UseChatOptions {
 interface QueuedMessage {
     text: string;
     fileIds?: string[];
+    attachedFiles?: AttachedFile[];
 }
 
 export const useChat = ({ client, onToolCall }: UseChatOptions) => {
@@ -50,7 +51,7 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
             setMessageQueue(prev => prev.slice(1));
 
             try {
-                await client.sendMessage(nextItem.text, setChatState, nextItem.fileIds);
+                await client.sendMessage(nextItem.text, setChatState, nextItem.fileIds, nextItem.attachedFiles);
             } finally {
                 setIsProcessing(false);
             }
@@ -69,8 +70,8 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         prevMsgCountRef.current = chatState.messages.length;
     }, [chatState.messages]);
 
-    const handleSend = (text: string, fileIds?: string[]) => {
-        setMessageQueue(prev => [...prev, { text, fileIds }]);
+    const handleSend = (text: string, fileIds?: string[], attachedFiles?: AttachedFile[]) => {
+        setMessageQueue(prev => [...prev, { text, fileIds, attachedFiles }]);
     };
 
     const handleRemoveQueueItem = (index: number) => {
@@ -84,6 +85,20 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
     const handleAnimationComplete = (id: string) => {
         finishedMessageIdsRef.current.add(id);
         setIsTyping(false);
+    };
+
+    const loadConversation = async (conversationId: string) => {
+        if (!client?.loadConversation) return;
+        // Clear animation tracking for fresh conversation
+        finishedMessageIdsRef.current.clear();
+        prevMsgCountRef.current = 0;
+        setMessageQueue([]);
+        setIsProcessing(false);
+        setIsTyping(false);
+        // Load from API — sets messages and conversationId on client
+        await client.loadConversation(conversationId, setChatState);
+        // Mark all loaded messages as already finished (no animation)
+        chatState.messages.forEach(m => finishedMessageIdsRef.current.add(m.id));
     };
 
     const reset = () => {
@@ -104,6 +119,8 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         removeQueueItem: handleRemoveQueueItem,
         handleAnimationComplete,
         finishedMessageIds: finishedMessageIdsRef.current,
+        loadConversation,
+        conversationId: client?.getConversationId?.() ?? null,
         reset
     };
 };

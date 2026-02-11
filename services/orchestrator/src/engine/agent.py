@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 from libs.common import get_logger
+from libs.common.tool_catalog import get_tool_metadata
 
 from ..config import get_config
 from ..handlers.tool_handler import ToolHandler
@@ -103,12 +104,16 @@ class AgentExecutor:
                         tool_calls=response.tool_calls,
                     )
 
-                    await self._emit_event(state, "tool_call", {
-                        "tool_calls": [
-                            {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
-                            for tc in response.tool_calls
-                        ],
-                    })
+                    # Only emit tool_call events for tools with emit_events=True
+                    visible_tool_calls = [
+                        {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                        for tc in response.tool_calls
+                        if self._should_emit_tool_event(tc.name)
+                    ]
+                    if visible_tool_calls:
+                        await self._emit_event(state, "tool_call", {
+                            "tool_calls": visible_tool_calls,
+                        })
 
                     # Check feature flag for suspend/resume
                     if self.config.enable_suspend_resume:
@@ -150,11 +155,12 @@ class AgentExecutor:
                         # Add tool results to messages
                         for tc, result in zip(response.tool_calls, tool_results, strict=True):
                             state.add_tool_result(tc.id, result)
-                            await self._emit_event(state, "tool_result", {
-                                "tool_call_id": tc.id,
-                                "tool_name": tc.name,
-                                "result": result[:500],  # Truncate for event
-                            })
+                            if self._should_emit_tool_event(tc.name):
+                                await self._emit_event(state, "tool_result", {
+                                    "tool_call_id": tc.id,
+                                    "tool_name": tc.name,
+                                    "result": result[:500],  # Truncate for event
+                                })
 
                 else:
                     # LLM response without tools - we're done
@@ -168,14 +174,14 @@ class AgentExecutor:
                             "reasoning_content": response.reasoning_content if response.reasoning_content else None,
                         })
 
-                    # Check if complete
-                    if response.finish_reason in ("end_turn", "stop"):
-                        state.mark_completed()
-                        await self._emit_event(state, "complete", {
-                            "total_input_tokens": state.total_input_tokens,
-                            "total_output_tokens": state.total_output_tokens,
-                        })
-                        break
+                    # If no tools, this turn is done regardless of finish_reason
+                    state.mark_completed()
+                    await self._emit_event(state, "complete", {
+                        "total_input_tokens": state.total_input_tokens,
+                        "total_output_tokens": state.total_output_tokens,
+                        "finish_reason": response.finish_reason,
+                    })
+                    break
 
             else:
                 # Max iterations reached
@@ -307,11 +313,12 @@ class AgentExecutor:
                                 )
 
                                 for tc in tool_calls:
-                                    await self._emit_event(state, "tool_call", {
-                                        "id": tc.id,
-                                        "name": tc.name,
-                                        "arguments": tc.arguments,
-                                    })
+                                    if self._should_emit_tool_event(tc.name):
+                                        await self._emit_event(state, "tool_call", {
+                                            "id": tc.id,
+                                            "name": tc.name,
+                                            "arguments": tc.arguments,
+                                        })
 
                                 # Check feature flag for suspend/resume
                                 if self.config.enable_suspend_resume:
@@ -352,10 +359,12 @@ class AgentExecutor:
 
                                     for tc, result in zip(tool_calls, results, strict=True):
                                         state.add_tool_result(tc.id, result)
-                                        await self._emit_event(state, "tool_result", {
-                                            "tool_call_id": tc.id,
-                                            "result": result[:500],
-                                        })
+                                        if self._should_emit_tool_event(tc.name):
+                                            await self._emit_event(state, "tool_result", {
+                                                "tool_call_id": tc.id,
+                                                "tool_name": tc.name,
+                                                "result": result[:500],
+                                            })
 
                             elif content_buffer or reasoning_buffer:
                                 if reasoning_buffer:
@@ -370,12 +379,14 @@ class AgentExecutor:
                                         "reasoning_content": reasoning_buffer,
                                     })
 
-                            if chunk.finish_reason in ("end_turn", "stop") and not tool_calls:
+                            # If no tools were found in the stream, this turn is done regardless of finish_reason
+                            if not tool_calls:
                                 state.mark_completed()
                                 await self._emit_event(state, "complete", {
                                     "total_input_tokens": state.total_input_tokens,
                                     "total_output_tokens": state.total_output_tokens,
                                     "reasoning_content": state.reasoning_content,
+                                    "finish_reason": chunk.finish_reason,
                                 })
                                 return state
 
@@ -436,12 +447,13 @@ class AgentExecutor:
             # Add to message history
             state.add_tool_result(tc.id, result)
 
-            # Emit event for client
-            await self._emit_event(state, "tool_result", {
-                "tool_call_id": tc.id,
-                "tool_name": tc.name,
-                "result": result[:500],  # Truncate for event
-            })
+            # Emit event for client (unless tool has emit_events=False)
+            if self._should_emit_tool_event(tc.name):
+                await self._emit_event(state, "tool_result", {
+                    "tool_call_id": tc.id,
+                    "tool_name": tc.name,
+                    "result": result[:500],  # Truncate for event
+                })
 
         # Clear pending tools and mark as running
         state.pending_tool_calls = []
@@ -453,6 +465,17 @@ class AgentExecutor:
             return await self.execute_streaming(state)
         else:
             return await self.execute(state)
+
+    def _should_emit_tool_event(self, tool_name: str) -> bool:
+        """Check if a tool's events should be emitted to the client.
+
+        Tools with emit_events=False in the catalog will have their
+        tool_call and tool_result SSE events suppressed.
+        """
+        metadata = get_tool_metadata(tool_name)
+        if metadata is None:
+            return True
+        return metadata.emit_events
 
     async def _emit_event(
         self,

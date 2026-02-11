@@ -13,13 +13,29 @@ export interface NavigationSidebarProps {
     onNewChat: () => void;
     agents: SidebarItem[];
     chatHistory: SidebarItem[];
+    onSearch?: (query: string) => void;
+    searchResults?: SidebarItem[];
+    isSearching?: boolean;
 }
 
 export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
     onNewChat,
     agents,
-    chatHistory
+    chatHistory,
+    onSearch,
+    searchResults,
+    isSearching = false,
 }) => {
+    const [searchQuery, setSearchQuery] = React.useState('');
+
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setSearchQuery(value);
+        onSearch?.(value);
+    };
+
+    const displayItems = searchQuery.trim() ? (searchResults || []) : chatHistory;
+
     return (
         <div className="cb-nav-sidebar">
             <div className="cb-nav-header">
@@ -29,32 +45,52 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
                 </button>
             </div>
 
-            <div className="cb-nav-section">
-                <h3 className="cb-nav-title">Agents</h3>
-                {agents.map(agent => (
-                    <div key={agent.id} className={`cb-nav-item ${agent.active ? 'active' : ''}`} onClick={agent.onClick}>
-                        <span className="cb-item-icon">{agent.icon}</span>
-                        <span className="cb-item-label">{agent.label}</span>
-                    </div>
-                ))}
-                <div className="cb-nav-item action">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
-                    <span className="cb-item-label">View all agents</span>
+            {agents.length > 0 && (
+                <div className="cb-nav-section">
+                    <h3 className="cb-nav-title">Agents</h3>
+                    {agents.map(agent => (
+                        <div key={agent.id} className={`cb-nav-item ${agent.active ? 'active' : ''}`} onClick={agent.onClick}>
+                            <span className="cb-item-icon">{agent.icon}</span>
+                            <span className="cb-item-label">{agent.label}</span>
+                        </div>
+                    ))}
                 </div>
-            </div>
+            )}
 
-            <div className="cb-nav-section">
+            <div className="cb-nav-section cb-nav-chats-section">
                 <h3 className="cb-nav-title">Chats</h3>
-                {chatHistory.map(chat => (
+
+                {onSearch && (
+                    <div className="cb-sidebar-search">
+                        <svg className="cb-sidebar-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        <input
+                            type="text"
+                            placeholder="Search conversations..."
+                            value={searchQuery}
+                            onChange={handleSearchChange}
+                            className="cb-sidebar-search-input"
+                        />
+                    </div>
+                )}
+
+                {isSearching && (
+                    <div className="cb-nav-item cb-nav-searching">Searching...</div>
+                )}
+
+                {displayItems.map(chat => (
                     <div key={chat.id} className={`cb-nav-item ${chat.active ? 'active' : ''}`} onClick={chat.onClick}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="cb-item-icon"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                         <span className="cb-item-label">{chat.label}</span>
                     </div>
                 ))}
-                <div className="cb-nav-item action">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
-                    <span className="cb-item-label">View all conversations</span>
-                </div>
+
+                {!isSearching && displayItems.length === 0 && (
+                    <div className="cb-nav-item cb-nav-empty">
+                        {searchQuery.trim() ? 'No results found' : 'No conversations yet'}
+                    </div>
+                )}
             </div>
         </div>
     );

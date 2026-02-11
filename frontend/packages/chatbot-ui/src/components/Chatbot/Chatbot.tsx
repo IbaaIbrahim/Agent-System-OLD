@@ -7,7 +7,7 @@ import { WelcomeScreen } from '../WelcomeScreen/WelcomeScreen';
 import { PendingMessageList } from '../PendingMessageList/PendingMessageList';
 import { ThinkingIndicator } from '../ThinkingIndicator/ThinkingIndicator';
 import { useChat } from '../../hooks/useChat';
-import { ChatClient } from '../../api/types';
+import { ChatClient, ConversationSummary } from '../../api/types';
 
 export interface ChatbotProps {
     client: ChatClient | null;
@@ -40,7 +40,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     userName = 'User',
     quickActions = [],
     agents = [],
-    chatHistory = [],
+    chatHistory: externalChatHistory,
     onToolCall,
     headerActions,
     webSearchEnabled: controlledWebSearch,
@@ -52,6 +52,12 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     const [isReadingPage, setIsReadingPage] = React.useState(false);
     const clientRef = React.useRef(client);
     clientRef.current = client;
+
+    // Conversation state
+    const [conversations, setConversations] = React.useState<ConversationSummary[]>([]);
+    const [searchResults, setSearchResults] = React.useState<SidebarItem[]>([]);
+    const [isSearching, setIsSearching] = React.useState(false);
+    const searchTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Internal state for toggles if not controlled
     const [internalWebSearch, setInternalWebSearch] = React.useState(false);
@@ -99,6 +105,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({
         removeQueueItem,
         handleAnimationComplete,
         finishedMessageIds,
+        loadConversation,
+        conversationId,
         reset
     } = useChat({ client, onToolCall });
 
@@ -110,22 +118,84 @@ export const Chatbot: React.FC<ChatbotProps> = ({
         client?.sendConfirmResponse?.(toolCallId, false);
     };
 
+    // Fetch conversations when drawer opens
+    const fetchConversations = React.useCallback(async () => {
+        const c = clientRef.current;
+        if (!c?.getConversations) return;
+        try {
+            const result = await c.getConversations();
+            setConversations(result.conversations);
+        } catch (err) {
+            console.error('Failed to fetch conversations:', err);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        if (isDrawerOpen) {
+            fetchConversations();
+        }
+    }, [isDrawerOpen, fetchConversations]);
+
+    // Also refresh conversations after a message completes
+    React.useEffect(() => {
+        if (!isThinking && messages.length > 0 && isDrawerOpen) {
+            fetchConversations();
+        }
+    }, [isThinking, messages.length, isDrawerOpen, fetchConversations]);
+
+    const handleLoadConversation = React.useCallback(async (convId: string) => {
+        await loadConversation(convId);
+        setIsDrawerOpen(false);
+    }, [loadConversation]);
+
     const startNewChat = () => {
         reset();
         setIsDrawerOpen(false);
     };
 
-    // Verify client prop on every render
-    console.log('[Chatbot] Render, client:', !!client, clientRef.current ? 'Ref has value' : 'Ref is null');
+    // Debounced search
+    const handleSearch = React.useCallback((query: string) => {
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+
+        if (!query.trim()) {
+            setSearchResults([]);
+            setIsSearching(false);
+            return;
+        }
+
+        setIsSearching(true);
+        searchTimeoutRef.current = setTimeout(async () => {
+            const c = clientRef.current;
+            if (!c?.searchConversations) {
+                setIsSearching(false);
+                return;
+            }
+            try {
+                const result = await c.searchConversations(query);
+                setSearchResults(
+                    result.conversations.map(conv => ({
+                        id: conv.id,
+                        label: conv.title,
+                        active: conv.id === conversationId,
+                        onClick: () => handleLoadConversation(conv.id),
+                    }))
+                );
+            } catch (err) {
+                console.error('Search failed:', err);
+                setSearchResults([]);
+            } finally {
+                setIsSearching(false);
+            }
+        }, 300);
+    }, [conversationId, handleLoadConversation]);
 
     const handleFileUpload = React.useCallback(async (file: File) => {
         const c = clientRef.current;
-        console.log('[Chatbot] handleFileUpload called, clientRef:', !!c);
-
         if (!c) {
             throw new Error('Chat client not initialized');
         }
-        // Call uploadFile - it exists on RealChatClient
         const uploadFn = (c as any).uploadFile;
         if (typeof uploadFn !== 'function') {
             throw new Error('File upload not supported by this client');
@@ -133,11 +203,27 @@ export const Chatbot: React.FC<ChatbotProps> = ({
         return uploadFn.call(c, file);
     }, []);
 
+    // Build chat history items from fetched conversations (or fallback to external prop)
+    const chatHistoryItems: SidebarItem[] = React.useMemo(() => {
+        if (conversations.length > 0) {
+            return conversations.map(conv => ({
+                id: conv.id,
+                label: conv.title,
+                active: conv.id === conversationId,
+                onClick: () => handleLoadConversation(conv.id),
+            }));
+        }
+        return externalChatHistory || [];
+    }, [conversations, conversationId, handleLoadConversation, externalChatHistory]);
+
     const navContent = (
         <NavigationSidebar
             onNewChat={startNewChat}
             agents={agents}
-            chatHistory={chatHistory}
+            chatHistory={chatHistoryItems}
+            onSearch={client?.searchConversations ? handleSearch : undefined}
+            searchResults={searchResults}
+            isSearching={isSearching}
         />
     );
 

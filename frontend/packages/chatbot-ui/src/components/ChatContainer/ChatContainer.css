@@ -251,16 +251,65 @@
     overflow-y: auto;
     padding: 20px;
     scroll-behavior: smooth;
-    /* Hide Scrollbar */
-    scrollbar-width: none;
-    /* Firefox */
-    -ms-overflow-style: none;
-    /* IE/Edge */
 }
 
 .cb-scroll-view::-webkit-scrollbar {
-    display: none;
-    /* Chrome/Safari */
+    width: 5px;
+    background: transparent;
+}
+
+.cb-scroll-view::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    transition: background 0.2s;
+}
+
+.cb-scroll-view::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.cb-scroll-progress-container {
+    height: 2px;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.03);
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 100;
+}
+
+.cb-scroll-progress-bar {
+    height: 100%;
+    background: var(--cb-accent-gradient);
+    box-shadow: 0 0 12px var(--cb-accent-primary);
+    transition: width 0.1s linear;
+}
+
+.cb-scroll-shadow-top,
+.cb-scroll-shadow-bottom {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 40px;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.cb-scroll-shadow-top {
+    top: 0;
+    background: linear-gradient(to bottom, var(--cb-bg-primary), transparent);
+}
+
+.cb-scroll-shadow-bottom {
+    bottom: 0;
+    background: linear-gradient(to top, var(--cb-bg-primary), transparent);
+}
+
+.cb-scroll-shadow-top.visible,
+.cb-scroll-shadow-bottom.visible {
+    opacity: 1;
 }
 
 .cb-scroll-bottom-btn {
@@ -280,15 +329,20 @@
     box-shadow: var(--cb-shadow-md);
     color: var(--cb-text-secondary);
     z-index: 50;
-    transition: all 0.2s;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     opacity: 0;
+    transform: translateX(-50%) translateY(20px);
     pointer-events: none;
 }
 
 .cb-scroll-bottom-btn.visible {
     opacity: 1;
     pointer-events: auto;
-    bottom: 20px;
+    transform: translateX(-50%) translateY(0);
+}
+
+.cb-scroll-bottom-btn svg {
+    filter: drop-shadow(0 0 4px var(--cb-accent-primary));
 }
 
 .cb-scroll-bottom-btn:hover {

@@ -44,6 +44,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [scrollProgress, setScrollProgress] = useState(0);
     const [isAtBottom, setIsAtBottom] = useState(true);
 
     useEffect(() => {
@@ -51,16 +52,20 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     }, []);
 
     // Auto-scroll logic: Check if we should stick to bottom on content change
+    // Auto-scroll logic: Check if we should stick to bottom on content change
     const scrollToBottom = () => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
+        scrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
     const handleScroll = () => {
         if (!scrollRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
         const distFromBottom = scrollHeight - scrollTop - clientHeight;
+
+        // Progress Calculation
+        const totalScrollable = scrollHeight - clientHeight;
+        const progress = totalScrollable > 0 ? (scrollTop / totalScrollable) * 100 : 0;
+        setScrollProgress(progress);
 
         // Show button if we are more than 100px from bottom
         setShowScrollBtn(distFromBottom > 100);
@@ -70,6 +75,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     };
 
     const contentRef = useRef<HTMLDivElement>(null);
+    const scrollEndRef = useRef<HTMLDivElement>(null);
 
     // Whenever children change (new messages), if we were at bottom, scroll to bottom
     useLayoutEffect(() => {
@@ -141,6 +147,14 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                 <div className="cb-chat-content">
                     {/* Messages Area (Flex 1, contains scroll view + button) */}
                     <div className="cb-messages-area">
+                        {/* Scroll Progress Indicator */}
+                        <div className="cb-scroll-progress-container">
+                            <div
+                                className="cb-scroll-progress-bar"
+                                style={{ width: `${scrollProgress}%` }}
+                            />
+                        </div>
+                        <div className={`cb-scroll-shadow-top ${scrollProgress > 5 ? 'visible' : ''}`} />
                         {/* Wrapped Scroll View */}
                         <div
                             className="cb-scroll-view"
@@ -149,8 +163,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                         >
                             <div ref={contentRef}>
                                 {children}
+                                <div ref={scrollEndRef} />
                             </div>
                         </div>
+                        <div className={`cb-scroll-shadow-bottom ${!isAtBottom ? 'visible' : ''}`} />
 
                         {/* Scroll To Bottom Button */}
                         <button

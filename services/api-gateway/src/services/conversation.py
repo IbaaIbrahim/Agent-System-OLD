@@ -1,0 +1,251 @@
+"""Conversation service for managing chat sessions."""
+
+import uuid
+
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.orm import selectinload
+
+from libs.common import get_logger
+from libs.db.models import ChatMessage, Conversation, Job
+from libs.db.session import get_session_context
+
+logger = get_logger(__name__)
+
+
+def _generate_title(content: str | None) -> str:
+    """Generate a conversation title from the first user message."""
+    if not content:
+        return "New chat"
+    # Truncate at word boundary around 80 chars
+    if len(content) <= 80:
+        return content.strip()
+    truncated = content[:80].rsplit(" ", 1)[0]
+    return f"{truncated.strip()}..."
+
+
+class ConversationService:
+    """Service for conversation CRUD operations."""
+
+    async def create_conversation(
+        self,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID | None,
+        title: str,
+    ) -> Conversation:
+        """Create a new conversation."""
+        async with get_session_context() as session:
+            conv = Conversation(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                title=title,
+            )
+            session.add(conv)
+            await session.flush()
+            await session.refresh(conv)
+            logger.info(
+                "Conversation created",
+                conversation_id=str(conv.id),
+                tenant_id=str(tenant_id),
+            )
+            return conv
+
+    async def get_conversation(
+        self,
+        conversation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> Conversation | None:
+        """Get a single conversation by ID, scoped to tenant."""
+        async with get_session_context() as session:
+            stmt = select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.tenant_id == tenant_id,
+            )
+            result = await session.execute(stmt)
+            return result.scalar_one_or_none()
+
+    async def list_conversations(
+        self,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[Conversation], int]:
+        """List conversations with pagination, ordered by updated_at DESC."""
+        async with get_session_context() as session:
+            # Base filter
+            filters = [
+                Conversation.tenant_id == tenant_id,
+                Conversation.is_archived == False,  # noqa: E712
+            ]
+            if user_id:
+                filters.append(Conversation.user_id == user_id)
+
+            # Count
+            count_stmt = select(func.count(Conversation.id)).where(*filters)
+            total = (await session.execute(count_stmt)).scalar() or 0
+
+            # Fetch
+            stmt = (
+                select(Conversation)
+                .where(*filters)
+                .order_by(Conversation.updated_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            conversations = list(result.scalars().all())
+
+            return conversations, total
+
+    async def update_conversation(
+        self,
+        conversation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        title: str,
+    ) -> Conversation | None:
+        """Update conversation title."""
+        async with get_session_context() as session:
+            stmt = (
+                update(Conversation)
+                .where(
+                    Conversation.id == conversation_id,
+                    Conversation.tenant_id == tenant_id,
+                )
+                .values(title=title)
+                .returning(Conversation)
+            )
+            result = await session.execute(stmt)
+            return result.scalar_one_or_none()
+
+    async def delete_conversation(
+        self,
+        conversation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> bool:
+        """Delete a conversation and its associated jobs (cascade)."""
+        async with get_session_context() as session:
+            stmt = delete(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.tenant_id == tenant_id,
+            )
+            result = await session.execute(stmt)
+            deleted = result.rowcount > 0
+            if deleted:
+                logger.info(
+                    "Conversation deleted",
+                    conversation_id=str(conversation_id),
+                    tenant_id=str(tenant_id),
+                )
+            return deleted
+
+    async def get_conversation_messages(
+        self,
+        conversation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> list[dict]:
+        """Get all messages across jobs in a conversation, ordered chronologically."""
+        async with get_session_context() as session:
+            # Verify conversation belongs to tenant
+            conv = await self.get_conversation(conversation_id, tenant_id)
+            if not conv:
+                return []
+
+            stmt = (
+                select(ChatMessage, Job.created_at.label("job_created_at"))
+                .join(Job, ChatMessage.job_id == Job.id)
+                .where(Job.conversation_id == conversation_id)
+                .order_by(Job.created_at.asc(), ChatMessage.sequence_num.asc())
+            )
+            result = await session.execute(stmt)
+            rows = result.all()
+
+            messages = []
+            for row in rows:
+                msg = row[0]  # ChatMessage
+                messages.append({
+                    "id": str(msg.id),
+                    "role": msg.role.value if hasattr(msg.role, "value") else msg.role,
+                    "content": msg.content,
+                    "job_id": str(msg.job_id),
+                    "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                })
+
+            return messages
+
+    async def search_conversations(
+        self,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID | None,
+        query: str,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[Conversation], int]:
+        """Full-text search across conversation messages."""
+        async with get_session_context() as session:
+            # Search in chat_messages content, join through Job to Conversation
+            search_filter = func.to_tsvector(
+                "english", func.coalesce(ChatMessage.content, "")
+            ).match(query)
+
+            base_filters = [
+                Conversation.tenant_id == tenant_id,
+                Conversation.is_archived == False,  # noqa: E712
+            ]
+            if user_id:
+                base_filters.append(Conversation.user_id == user_id)
+
+            # Get distinct conversation IDs matching the search
+            subq = (
+                select(Job.conversation_id)
+                .join(ChatMessage, ChatMessage.job_id == Job.id)
+                .where(
+                    Job.conversation_id.isnot(None),
+                    search_filter,
+                )
+                .distinct()
+                .subquery()
+            )
+
+            # Count
+            count_stmt = (
+                select(func.count(Conversation.id))
+                .where(
+                    *base_filters,
+                    Conversation.id.in_(select(subq.c.conversation_id)),
+                )
+            )
+            total = (await session.execute(count_stmt)).scalar() or 0
+
+            # Fetch conversations
+            stmt = (
+                select(Conversation)
+                .where(
+                    *base_filters,
+                    Conversation.id.in_(select(subq.c.conversation_id)),
+                )
+                .order_by(Conversation.updated_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            conversations = list(result.scalars().all())
+
+            return conversations, total
+
+    async def touch_conversation(
+        self,
+        conversation_id: uuid.UUID,
+    ) -> None:
+        """Update the updated_at timestamp of a conversation."""
+        async with get_session_context() as session:
+            stmt = (
+                update(Conversation)
+                .where(Conversation.id == conversation_id)
+                .values(updated_at=func.now())
+            )
+            await session.execute(stmt)
+
+
+def get_conversation_service() -> ConversationService:
+    """Factory for ConversationService."""
+    return ConversationService()

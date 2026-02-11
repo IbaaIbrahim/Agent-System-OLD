@@ -2,9 +2,11 @@
 import base64
 import io
 import json
+from pathlib import Path
 from typing import Any
 
 from libs.common import get_logger
+from libs.common.config import get_settings
 from libs.messaging.redis import get_redis_client
 
 try:
@@ -15,12 +17,17 @@ except ImportError:
 logger = get_logger(__name__)
 
 
+def _get_disk_path(base_path: str, file_id: str) -> Path:
+    """Get the disk path for a file using 2-char prefix subdirectory."""
+    return Path(base_path) / file_id[:2] / file_id
+
+
 class FileService:
     """Service for retrieving and processing files."""
 
     @staticmethod
     async def retrieve_file(file_id: str) -> tuple[bytes, dict[str, Any]]:
-        """Retrieve file from Redis.
+        """Retrieve file from Redis, falling back to disk if configured.
         
         Args:
             file_id: Unique file identifier
@@ -29,7 +36,7 @@ class FileService:
             Tuple of (file_data, metadata)
             
         Raises:
-            FileNotFoundError: If file not found in Redis
+            FileNotFoundError: If file not found in Redis (and disk if enabled)
         """
         try:
             redis = await get_redis_client()
@@ -38,24 +45,39 @@ class FileService:
             # Retrieve from cache
             cached_data = await redis.client.get(cache_key)
 
-            if not cached_data:
-                logger.warning(
-                    "File not found in Redis (may have expired)",
-                    file_id=file_id,
+            if cached_data:
+                # Parse JSON payload
+                storage_payload = json.loads(cached_data)
+
+                # Decode base64 data
+                encoded_data = storage_payload["data"]
+                file_data = base64.b64decode(encoded_data)
+                
+                metadata = storage_payload.get("metadata", {})
+
+                return file_data, metadata
+
+            # Redis miss — try disk fallback
+            settings = get_settings()
+            if settings.file_storage_persist:
+                disk_result = await FileService._read_from_disk(
+                    file_id, settings.file_storage_path,
                 )
-                raise FileNotFoundError(f"File {file_id} not found or expired")
+                if disk_result:
+                    logger.info(
+                        "File retrieved from disk (Redis expired)",
+                        file_id=file_id,
+                    )
+                    return disk_result
 
-            # Parse JSON payload
-            storage_payload = json.loads(cached_data)
+            logger.warning(
+                "File not found in Redis (may have expired)",
+                file_id=file_id,
+            )
+            raise FileNotFoundError(f"File {file_id} not found or expired")
 
-            # Decode base64 data
-            encoded_data = storage_payload["data"]
-            file_data = base64.b64decode(encoded_data)
-            
-            metadata = storage_payload.get("metadata", {})
-
-            return file_data, metadata
-
+        except FileNotFoundError:
+            raise
         except Exception as e:
             logger.error(
                 "File retrieval failed",
@@ -181,3 +203,45 @@ class FileService:
             })
             
         return blocks
+
+    # ------------------------------------------------------------------ #
+    #  Disk persistence helper                                            #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    async def _read_from_disk(
+        file_id: str,
+        base_path: str,
+    ) -> tuple[bytes, dict[str, Any]] | None:
+        """Read file bytes and metadata from disk. Returns None if not found."""
+        try:
+            disk_path = _get_disk_path(base_path, file_id)
+            meta_path = disk_path.with_suffix(".meta.json")
+
+            if not disk_path.exists():
+                return None
+
+            file_data = disk_path.read_bytes()
+
+            # Read sidecar metadata if available
+            if meta_path.exists():
+                metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+            else:
+                metadata = {"file_id": file_id}
+
+            logger.debug(
+                "File read from disk",
+                file_id=file_id,
+                path=str(disk_path),
+                size_bytes=len(file_data),
+            )
+
+            return file_data, metadata
+
+        except Exception as e:
+            logger.error(
+                "Disk read failed",
+                file_id=file_id,
+                error=str(e),
+            )
+            return None

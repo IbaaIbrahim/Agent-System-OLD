@@ -108,8 +108,17 @@ async def upload_file(
     }
 
     try:
-        # Store in Redis
+        # Store in Redis (and disk if configured)
         file_id = await FileStorageService.store_file(file_data, metadata)
+
+        # Determine storage_key based on persistence config
+        from ..config import get_config
+        config = get_config()
+
+        if config.file_storage_persist:
+            storage_key = f"disk:{config.file_storage_path}/{file_id[:2]}/{file_id}"
+        else:
+            storage_key = f"file:{file_id}"
 
         # Persist metadata to PostgreSQL
         async with get_session_context() as session:
@@ -120,7 +129,7 @@ async def upload_file(
                 filename=file.filename or "unknown",
                 content_type=file.content_type or "application/octet-stream",
                 size_bytes=len(file_data),
-                storage_key=f"file:{file_id}",
+                storage_key=storage_key,
                 metadata_=metadata,
             )
             session.add(file_upload)

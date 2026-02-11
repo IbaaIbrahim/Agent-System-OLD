@@ -5,7 +5,7 @@ import { ReasoningMenu, PlusMenu } from '../ComposerMenu/ComposerMenu';
 import { AttachedFile } from '../../api/types';
 
 export interface ComposerProps {
-    onSend?: (text: string, fileIds?: string[]) => void;
+    onSend?: (text: string, fileIds?: string[], attachedFiles?: AttachedFile[]) => void;
     disabled?: boolean;
     placeholder?: string;
     webSearchEnabled?: boolean;
@@ -74,7 +74,7 @@ export const Composer: React.FC<ComposerProps> = ({
     const handleSendMessage = useCallback(() => {
         if ((input.trim() || attachedFiles.length > 0) && !disabled) {
             const fileIds = attachedFiles.length > 0 ? attachedFiles.map(f => f.file_id) : undefined;
-            onSend?.(input, fileIds);
+            onSend?.(input, fileIds, attachedFiles.length > 0 ? [...attachedFiles] : undefined);
             setInput('');
             setAttachedFiles([]);
             setUploadError(null);

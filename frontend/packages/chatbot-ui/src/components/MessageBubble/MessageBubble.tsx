@@ -11,6 +11,8 @@ export interface Attachment {
     type: 'image' | 'file';
     url: string;
     name?: string;
+    size?: number;
+    contentType?: string;
 }
 
 export type MessageStepType = 'text' | 'thinking' | 'tool-call' | 'confirm-request';
@@ -51,6 +53,39 @@ export interface MessageProps {
     onReject?: (toolCallId: string) => void;
 }
 
+const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getFileIcon = (contentType?: string): string => {
+    if (!contentType) return '\u{1F4CE}';
+    if (contentType.startsWith('image/')) return '\u{1F5BC}\u{FE0F}';
+    if (contentType === 'application/pdf') return '\u{1F4C4}';
+    if (contentType.startsWith('text/')) return '\u{1F4DD}';
+    return '\u{1F4CE}';
+};
+
+const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }) => (
+    <div className="cb-msg-attachments">
+        {attachments.map(att => (
+            att.type === 'image' ? (
+                <div key={att.id} className="cb-msg-attachment-image">
+                    <img src={att.url} alt={att.name || 'Attached image'} />
+                    {att.name && <span className="cb-msg-att-name">{att.name}</span>}
+                </div>
+            ) : (
+                <div key={att.id} className="cb-msg-attachment-file">
+                    <span className="cb-msg-att-icon">{getFileIcon(att.contentType)}</span>
+                    <span className="cb-msg-att-name">{att.name}</span>
+                    {att.size != null && <span className="cb-msg-att-size">{formatFileSize(att.size)}</span>}
+                </div>
+            )
+        ))}
+    </div>
+);
+
 export const MessageBubble: React.FC<MessageProps> = (props) => {
     const {
         role,
@@ -72,6 +107,10 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
 
                 <div className="cb-message-content-wrapper" style={{ width: '100%' }}>
                     {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
+
+                    {role === 'user' && props.attachments && props.attachments.length > 0 && (
+                        <AttachmentList attachments={props.attachments} />
+                    )}
 
                     <div className="cb-steps-container">
                         {steps.map((step, index) => {
@@ -372,9 +411,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                         )}
                     </div>
                     {attachments && attachments.length > 0 && (
-                        <div className="cb-attachments-grid">
-                            {/* Attachment rendering logic here */}
-                        </div>
+                        <AttachmentList attachments={attachments} />
                     )}
                 </div>
             </div>
