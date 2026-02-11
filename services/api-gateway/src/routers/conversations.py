@@ -37,6 +37,17 @@ class ConversationListResponse(BaseModel):
     limit: int
 
 
+class AttachmentInfo(BaseModel):
+    """Attachment file information."""
+
+    id: str
+    type: str  # 'image' or 'file'
+    url: str
+    name: str
+    size: int
+    content_type: str
+
+
 class ConversationMessage(BaseModel):
     """A message within a conversation."""
 
@@ -45,6 +56,7 @@ class ConversationMessage(BaseModel):
     content: str | None
     job_id: str
     created_at: str | None
+    attachments: list[AttachmentInfo] | None = None
 
 
 class ConversationDetailResponse(BaseModel):

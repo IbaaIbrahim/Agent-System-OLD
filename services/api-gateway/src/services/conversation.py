@@ -6,7 +6,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import selectinload
 
 from libs.common import get_logger
-from libs.db.models import ChatMessage, Conversation, Job
+from libs.db.models import ChatMessage, Conversation, FileUpload, Job
 from libs.db.session import get_session_context
 
 logger = get_logger(__name__)
@@ -151,7 +151,7 @@ class ConversationService:
                 return []
 
             stmt = (
-                select(ChatMessage, Job.created_at.label("job_created_at"))
+                select(ChatMessage, Job.created_at.label("job_created_at"), Job.metadata_)
                 .join(Job, ChatMessage.job_id == Job.id)
                 .where(Job.conversation_id == conversation_id)
                 .order_by(Job.created_at.asc(), ChatMessage.sequence_num.asc())
@@ -159,16 +159,59 @@ class ConversationService:
             result = await session.execute(stmt)
             rows = result.all()
 
+            # Collect all file_ids to fetch in a single query
+            all_file_ids: set[str] = set()
+            job_file_ids: dict[str, list[str]] = {}  # job_id -> file_ids
+
+            for row in rows:
+                msg = row[0]  # ChatMessage
+                job_metadata = row[2]  # Job.metadata_
+                role_value = msg.role.value if hasattr(msg.role, "value") else msg.role
+                if role_value == "user" and job_metadata:
+                    file_ids = job_metadata.get("file_ids", [])
+                    if file_ids:
+                        job_file_ids[str(msg.job_id)] = file_ids
+                        all_file_ids.update(file_ids)
+
+            # Fetch all file metadata in one query
+            file_map: dict[str, dict] = {}
+            if all_file_ids:
+                file_uuids = [uuid.UUID(fid) for fid in all_file_ids]
+                file_stmt = select(FileUpload).where(FileUpload.id.in_(file_uuids))
+                file_result = await session.execute(file_stmt)
+                for file_upload in file_result.scalars():
+                    file_map[str(file_upload.id)] = {
+                        "id": str(file_upload.id),
+                        "type": "image" if file_upload.content_type.startswith("image/") else "file",
+                        "url": f"/api/v1/files/{file_upload.id}/download",
+                        "name": file_upload.filename,
+                        "size": file_upload.size_bytes,
+                        "content_type": file_upload.content_type,
+                    }
+
             messages = []
             for row in rows:
                 msg = row[0]  # ChatMessage
-                messages.append({
+                role = msg.role.value if hasattr(msg.role, "value") else msg.role
+
+                message_dict = {
                     "id": str(msg.id),
-                    "role": msg.role.value if hasattr(msg.role, "value") else msg.role,
+                    "role": role,
                     "content": msg.content,
                     "job_id": str(msg.job_id),
                     "created_at": msg.created_at.isoformat() if msg.created_at else None,
-                })
+                }
+
+                # Add attachments for user messages
+                if role == "user" and str(msg.job_id) in job_file_ids:
+                    attachments = []
+                    for fid in job_file_ids[str(msg.job_id)]:
+                        if fid in file_map:
+                            attachments.append(file_map[fid])
+                    if attachments:
+                        message_dict["attachments"] = attachments
+
+                messages.append(message_dict)
 
             return messages
 

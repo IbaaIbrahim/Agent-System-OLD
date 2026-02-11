@@ -268,6 +268,144 @@
     flex-shrink: 0;
 }
 
+/* === Show More Button for Attachments === */
+.cb-msg-attachment-more {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--cb-text-secondary);
+    cursor: pointer;
+    transition: all var(--cb-transition-fast);
+}
+
+.cb-msg-attachment-more:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--cb-text-primary);
+}
+
+.cb-msg-attachment-more-count {
+    font-weight: 600;
+    color: var(--cb-accent-primary);
+}
+
+.cb-msg-attachment-more-text {
+    opacity: 0.8;
+}
+
+/* === Broken Image Placeholder === */
+.cb-msg-attachment-broken {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.cb-msg-attachment-broken::before {
+    content: 'Image unavailable';
+    font-size: 11px;
+    color: var(--cb-text-tertiary);
+}
+
+/* === Attachment Modal === */
+.cb-attachment-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: cb-fade-in 0.15s ease-out;
+}
+
+.cb-attachment-modal {
+    background: var(--cb-bg-secondary);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: 12px;
+    max-width: 500px;
+    max-height: 70vh;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    animation: cb-modal-slide-in 0.2s ease-out;
+}
+
+@keyframes cb-modal-slide-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.cb-attachment-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--cb-border-subtle);
+}
+
+.cb-attachment-modal-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--cb-text-primary);
+}
+
+.cb-attachment-modal-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    color: var(--cb-text-secondary);
+    cursor: pointer;
+    transition: all var(--cb-transition-fast);
+}
+
+.cb-attachment-modal-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--cb-text-primary);
+}
+
+.cb-attachment-modal-content {
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.cb-attachment-modal-item {
+    flex: 0 0 auto;
+}
+
+.cb-attachment-modal-item .cb-msg-attachment-image {
+    max-width: 180px;
+}
+
+.cb-attachment-modal-item .cb-msg-attachment-image img {
+    max-height: 120px;
+}
+
 @keyframes cb-fade-in {
     from {
         opacity: 0;

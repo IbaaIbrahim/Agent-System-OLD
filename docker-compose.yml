@@ -283,6 +283,7 @@ services:
       # Authentication
       - JWT_SECRET=${JWT_SECRET:-change_in_production}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
       - OTT_TTL_SECONDS=${OTT_TTL_SECONDS:-60}
       # Service Configuration
       - STREAM_EDGE_PORT=${STREAM_EDGE_PORT:-8001}

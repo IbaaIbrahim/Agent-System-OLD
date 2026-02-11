@@ -67,24 +67,89 @@ const getFileIcon = (contentType?: string): string => {
     return '\u{1F4CE}';
 };
 
-const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }) => (
-    <div className="cb-msg-attachments">
-        {attachments.map(att => (
-            att.type === 'image' ? (
-                <div key={att.id} className="cb-msg-attachment-image">
-                    <img src={att.url} alt={att.name || 'Attached image'} />
-                    {att.name && <span className="cb-msg-att-name">{att.name}</span>}
-                </div>
-            ) : (
-                <div key={att.id} className="cb-msg-attachment-file">
-                    <span className="cb-msg-att-icon">{getFileIcon(att.contentType)}</span>
-                    <span className="cb-msg-att-name">{att.name}</span>
-                    {att.size != null && <span className="cb-msg-att-size">{formatFileSize(att.size)}</span>}
-                </div>
-            )
-        ))}
-    </div>
+const MAX_VISIBLE_ATTACHMENTS = 2;
+
+const AttachmentItem: React.FC<{ att: Attachment; onClick?: () => void }> = ({ att, onClick }) => (
+    att.type === 'image' ? (
+        <div className="cb-msg-attachment-image" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
+            <img src={att.url} alt={att.name || 'Attached image'} onError={(e) => {
+                // Handle broken image - show placeholder
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                target.parentElement?.classList.add('cb-msg-attachment-broken');
+            }} />
+            {att.name && <span className="cb-msg-att-name">{att.name}</span>}
+        </div>
+    ) : (
+        <div className="cb-msg-attachment-file" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
+            <span className="cb-msg-att-icon">{getFileIcon(att.contentType)}</span>
+            <span className="cb-msg-att-name">{att.name}</span>
+            {att.size != null && <span className="cb-msg-att-size">{formatFileSize(att.size)}</span>}
+        </div>
+    )
 );
+
+const AttachmentModal: React.FC<{
+    attachments: Attachment[];
+    isOpen: boolean;
+    onClose: () => void;
+}> = ({ attachments, isOpen, onClose }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="cb-attachment-modal-overlay" onClick={onClose}>
+            <div className="cb-attachment-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="cb-attachment-modal-header">
+                    <span className="cb-attachment-modal-title">All Attachments ({attachments.length})</span>
+                    <button className="cb-attachment-modal-close" onClick={onClose}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div className="cb-attachment-modal-content">
+                    {attachments.map(att => (
+                        <div key={att.id} className="cb-attachment-modal-item">
+                            <AttachmentItem att={att} />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const visibleAttachments = attachments.slice(0, MAX_VISIBLE_ATTACHMENTS);
+    const hiddenCount = attachments.length - MAX_VISIBLE_ATTACHMENTS;
+
+    return (
+        <>
+            <div className="cb-msg-attachments">
+                {visibleAttachments.map(att => (
+                    <AttachmentItem key={att.id} att={att} />
+                ))}
+                {hiddenCount > 0 && (
+                    <button
+                        className="cb-msg-attachment-more"
+                        onClick={() => setIsModalOpen(true)}
+                        title={`View all ${attachments.length} attachments`}
+                    >
+                        <span className="cb-msg-attachment-more-count">+{hiddenCount}</span>
+                        <span className="cb-msg-attachment-more-text">more</span>
+                    </button>
+                )}
+            </div>
+            <AttachmentModal
+                attachments={attachments}
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+            />
+        </>
+    );
+};
 
 export const MessageBubble: React.FC<MessageProps> = (props) => {
     const {
