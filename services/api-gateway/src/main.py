@@ -27,6 +27,7 @@ from .routers import (
     health,
     jobs,
     knowledge_base,
+    live,
     partners,
     plans,
     subscriptions,
@@ -198,6 +199,7 @@ def create_app() -> FastAPI:
 
     # Chat and job endpoints
     app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
+    app.include_router(live.router, prefix="/api/v1", tags=["Live Assistant"])
     app.include_router(conversations.router, prefix="/api/v1", tags=["Conversations"])
     app.include_router(jobs.router, prefix="/api/v1", tags=["Jobs"])
     app.include_router(tools.router, prefix="/api/v1", tags=["Tools"])

@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     # Service Ports
     api_gateway_port: int = Field(default=8000, ge=1, le=65535)
     stream_edge_port: int = Field(default=8001, ge=1, le=65535)
+    websocket_gateway_port: int = Field(default=8002, ge=1, le=65535)
 
     # File storage persistence
     file_storage_persist: bool = False  # Write uploaded files to disk

@@ -9,7 +9,7 @@ else
 	SLEEP = sleep
 endif
 
-.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend postman openapi
+.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend postman openapi ws live-session
 
 # Default target
 help:
@@ -57,6 +57,8 @@ help:
 	@echo "  make auth-broker - Run Auth Broker locally"
 	@echo "  make workers     - Run Tool Workers locally"
 	@echo "  make archiver    - Run Archiver locally"
+	@echo "  make ws          - Run WebSocket Gateway locally"
+	@echo "  make live-session - Run Live Session Manager locally"
 	@echo "  make frontend    - Run Frontend locally"
 	@echo "  make postman      - Generate Postman Collection"
 	@echo "  make openapi      - Generate OpenAPI Schema"
@@ -119,6 +121,8 @@ dev: infra
 	@echo "Run each service in separate terminals:"
 	@echo "  make api"
 	@echo "  make stream"
+	@echo "  make ws"
+	@echo "  make live-session"
 	@echo "  make orchestrator"
 	@echo "  make auth-broker"
 	@echo "  make workers"
@@ -152,8 +156,18 @@ archiver:
 		PYTHONPATH=$(PWD) python -m services.archiver.src.main; \
 	fi
 
+ws:
+	PYTHONPATH=$(PWD) uvicorn services.websocket-gateway.src.main:app --reload --port 8002 --host $(or $(API_HOST),localhost)
+
+live-session:
+	@if command -v watchfiles > /dev/null; then \
+		PYTHONPATH=$(PWD) watchfiles "python -m services.live-session-manager.src.main"; \
+	else \
+		PYTHONPATH=$(PWD) python -m services.live-session-manager.src.main; \
+	fi
+
 auth-broker:
-	cd services/auth-broker && ../../.venv/bin/python main.py
+	cd services/auth-broker && python main.py
 
 frontend:
 	cd frontend/apps/demo && npm run dev

@@ -6,6 +6,7 @@ import { NavigationSidebar, SidebarItem } from '../NavigationSidebar/NavigationS
 import { WelcomeScreen } from '../WelcomeScreen/WelcomeScreen';
 import { PendingMessageList } from '../PendingMessageList/PendingMessageList';
 import { ThinkingIndicator } from '../ThinkingIndicator/ThinkingIndicator';
+import { LiveAssistant, LiveModeToggle } from '../LiveAssistant/LiveAssistant';
 import { useChat } from '../../hooks/useChat';
 import { ChatClient, ConversationSummary } from '../../api/types';
 
@@ -28,6 +29,11 @@ export interface ChatbotProps {
     onWebSearchChange?: (enabled: boolean) => void;
     pageContextEnabled?: boolean;
     onPageContextChange?: (enabled: boolean) => void;
+
+    // Live assistant mode
+    liveAssistantEnabled?: boolean;
+    wsUrl?: string;   // WebSocket gateway URL (e.g., ws://localhost:8002/ws)
+    wsToken?: string;  // Auth token for WS connection
 }
 
 export const Chatbot: React.FC<ChatbotProps> = ({
@@ -47,9 +53,13 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     onWebSearchChange: controlledOnWebSearch,
     pageContextEnabled: controlledPageContext,
     onPageContextChange: controlledOnPageContext,
+    liveAssistantEnabled = false,
+    wsUrl,
+    wsToken,
 }) => {
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
     const [isReadingPage, setIsReadingPage] = React.useState(false);
+    const [isLiveMode, setIsLiveMode] = React.useState(false);
     const clientRef = React.useRef(client);
     clientRef.current = client;
 
@@ -239,24 +249,43 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                 isDrawerOpen={isDrawerOpen}
                 onDrawerOpenChange={setIsDrawerOpen}
                 drawerContent={navContent}
-                headerActions={headerActions}
+                headerActions={
+                    <>
+                        {liveAssistantEnabled && wsUrl && wsToken && (
+                            <LiveModeToggle
+                                isLive={isLiveMode}
+                                onToggle={() => setIsLiveMode(!isLiveMode)}
+                            />
+                        )}
+                        {headerActions}
+                    </>
+                }
                 footer={
-                    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                        <PendingMessageList
-                            queue={messageQueue}
-                            onDelete={removeQueueItem}
+                    isLiveMode && wsUrl && wsToken ? (
+                        <LiveAssistant
+                            wsUrl={wsUrl}
+                            token={wsToken}
+                            conversationId={conversationId || undefined}
+                            onEnd={() => setIsLiveMode(false)}
                         />
-                        <Composer
-                            onSend={sendMessage}
-                            disabled={false}
-                            placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}
-                            webSearchEnabled={webSearchEnabled}
-                            onWebSearchChange={setWebSearch}
-                            pageContextEnabled={pageContextEnabled}
-                            onPageContextChange={setPageContext}
-                            onFileUpload={handleFileUpload}
-                        />
-                    </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                            <PendingMessageList
+                                queue={messageQueue}
+                                onDelete={removeQueueItem}
+                            />
+                            <Composer
+                                onSend={sendMessage}
+                                disabled={false}
+                                placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}
+                                webSearchEnabled={webSearchEnabled}
+                                onWebSearchChange={setWebSearch}
+                                pageContextEnabled={pageContextEnabled}
+                                onPageContextChange={setPageContext}
+                                onFileUpload={handleFileUpload}
+                            />
+                        </div>
+                    )
                 }
             >
                 {messages.length === 0 ? (

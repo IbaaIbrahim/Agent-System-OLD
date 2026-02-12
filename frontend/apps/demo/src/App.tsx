@@ -11,12 +11,14 @@ function App() {
     const [isOpen, setIsOpen] = useState(true);
     const [isEmbedded, setIsEmbedded] = useState(false);
     const [client, setClient] = useState<any>(null);
+    const [authToken, setAuthToken] = useState<string | null>(null);
 
     // Initialize Auth & Client
     useEffect(() => {
         const initAuth = async () => {
             try {
                 const token = await AuthClient.getInitialToken();
+                setAuthToken(token);
                 setClient(new RealChatClient(token));
             } catch (error) {
                 console.error('Failed to initialize auth:', error);
@@ -64,6 +66,9 @@ function App() {
                         onClose={() => setIsOpen(false)}
                         userName="Ibaa"
                         quickActions={quickActions}
+                        liveAssistantEnabled={!!authToken}
+                        wsUrl="ws://localhost:8002/ws"
+                        wsToken={authToken ?? undefined}
                     />
                 </>
             ) : (
@@ -76,6 +81,9 @@ function App() {
                         onClose={() => setIsOpen(false)}
                         userName="Ibaa"
                         quickActions={quickActions}
+                        liveAssistantEnabled={!!authToken}
+                        wsUrl="ws://localhost:8002/ws"
+                        wsToken={authToken ?? undefined}
                     />
                 </div>
             )}
