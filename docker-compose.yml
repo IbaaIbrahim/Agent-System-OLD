@@ -305,6 +305,112 @@ services:
     networks:
       - agent-network
 
+  websocket-gateway:
+    build:
+      context: .
+      dockerfile: services/websocket-gateway/Dockerfile
+    container_name: agent-websocket-gateway
+    ports:
+      - "8002:8002"
+    environment:
+      # Database (required for auth — tenant/key lookups)
+      - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-10}
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Authentication
+      - JWT_SECRET=${JWT_SECRET:-change_in_production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - MASTER_ADMIN_KEY=${MASTER_ADMIN_KEY:-change_in_production_use_long_random_string_min_32_chars}
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
+      # Service Configuration
+      - WEBSOCKET_GATEWAY_PORT=${WEBSOCKET_GATEWAY_PORT:-8002}
+      - WS_MAX_CONNECTIONS_PER_TENANT=${WS_MAX_CONNECTIONS_PER_TENANT:-100}
+      - WS_MAX_MESSAGE_SIZE=${WS_MAX_MESSAGE_SIZE:-5242880}
+      # Logging & Environment
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8002/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-network
+
+  live-session-manager:
+    build:
+      context: .
+      dockerfile: services/live-session-manager/Dockerfile
+    container_name: agent-live-session-manager
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    environment:
+      # Database
+      - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Kafka
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP:-agent-system}
+      # Authentication
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
+      # LLM
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_DEFAULT_MODEL=${ANTHROPIC_DEFAULT_MODEL:-claude-sonnet-4-20250514}
+      - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-4o-mini}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
+      # Deepgram STT
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY:-}
+      - DEEPGRAM_MODEL=${DEEPGRAM_MODEL:-nova-3}
+      - DEEPGRAM_LANGUAGE=${DEEPGRAM_LANGUAGE:-en-US}
+      - DEEPGRAM_SAMPLE_RATE=${DEEPGRAM_SAMPLE_RATE:-16000}
+      - DEEPGRAM_ENDPOINTING=${DEEPGRAM_ENDPOINTING:-500}
+      # ElevenLabs TTS
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ELEVENLABS_DEFAULT_VOICE_ID=${ELEVENLABS_DEFAULT_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}
+      - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-eleven_turbo_v2_5}
+      # Live Session Settings
+      - LIVE_SESSION_TIMEOUT_SECONDS=${LIVE_SESSION_TIMEOUT_SECONDS:-3600}
+      - LIVE_SESSION_MAX_PER_TENANT=${LIVE_SESSION_MAX_PER_TENANT:-10}
+      - SCREEN_FRAME_MAX_WIDTH=${SCREEN_FRAME_MAX_WIDTH:-720}
+      - SCREEN_FRAME_MAX_HEIGHT=${SCREEN_FRAME_MAX_HEIGHT:-512}
+      # File Storage
+      - FILE_STORAGE_PERSIST=${FILE_STORAGE_PERSIST:-false}
+      - FILE_STORAGE_PATH=${FILE_STORAGE_PATH:-./file_uploads}
+      # Logging & Environment
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - agent-network
+
   # ===================
   # PROCESSING
   # ===================
@@ -314,6 +420,9 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     container_name: agent-orchestrator
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       # Database
       - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
@@ -364,6 +473,9 @@ services:
       context: .
       dockerfile: services/tool-workers/Dockerfile
     container_name: agent-tool-workers
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       # Redis
       - REDIS_URL=redis://redis:6379/0

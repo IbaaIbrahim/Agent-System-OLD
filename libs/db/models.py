@@ -1081,6 +1081,87 @@ class FileUpload(Base):
     )
 
 
+class LiveSessionStatus(str, Enum):
+    """Live session status enumeration."""
+
+    ACTIVE = "active"
+    PAUSED = "paused"
+    ENDED = "ended"
+
+
+class LiveSession(Base, TimestampMixin):
+    """Live assistant session for real-time voice + vision interaction."""
+
+    __tablename__ = "live_sessions"
+    __table_args__ = (
+        Index("ix_live_sessions_tenant_id", "tenant_id"),
+        Index("ix_live_sessions_user_id", "user_id"),
+        {"schema": "jobs"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.conversations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Session configuration
+    stt_provider: Mapped[str] = mapped_column(
+        String(50), default="deepgram", nullable=False
+    )
+    tts_provider: Mapped[str] = mapped_column(
+        String(50), default="elevenlabs", nullable=False
+    )
+    tts_voice_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    language: Mapped[str] = mapped_column(String(10), default="en", nullable=False)
+
+    # Session state
+    status: Mapped[LiveSessionStatus] = mapped_column(
+        String(20), default=LiveSessionStatus.ACTIVE, nullable=False
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Usage tracking
+    audio_input_seconds: Mapped[float] = mapped_column(
+        Numeric(10, 2), default=0, nullable=False
+    )
+    audio_output_seconds: Mapped[float] = mapped_column(
+        Numeric(10, 2), default=0, nullable=False
+    )
+    screen_frames_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    total_turns: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Metadata
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, default=dict
+    )
+
+    # Relationships
+    conversation: Mapped["Conversation | None"] = relationship()
+
+
 class KnowledgeBaseEntry(Base, TimestampMixin):
     """Knowledge base entry model for storing searchable content.
 

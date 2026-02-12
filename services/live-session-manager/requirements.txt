@@ -1,0 +1,43 @@
+# Live Session Manager Requirements
+
+# Core Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.25
+asyncpg>=0.29.0
+
+# Redis
+redis>=5.0.0
+
+# Kafka
+aiokafka>=0.10.0
+
+# LLM Providers
+anthropic>=0.18.0
+openai>=1.10.0
+
+# HTTP Client
+httpx>=0.26.0
+
+# Authentication
+pyjwt>=2.8.0
+
+# Logging
+structlog>=24.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Image Processing
+Pillow>=10.0.0
+
+# STT/TTS
+deepgram-sdk>=3.0.0
+elevenlabs>=1.0.0
+
+# File Processing
+python-multipart>=0.0.22
