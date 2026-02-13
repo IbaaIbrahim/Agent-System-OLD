@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8000")
-API_KEY = os.getenv("API_KEY", "test-api-key")
+TENANT_API_KEY = os.getenv("TENANT_API_KEY", "test-api-key")
 USER_ID = os.getenv("USER_ID", "test-user-id")
 
 app = FastAPI(title="Auth Broker", version="1.0.0")
@@ -43,13 +43,13 @@ async def request_token():
     """
     try:
         async with httpx.AsyncClient() as client:
-            print(f"Using API_KEY: {API_KEY[:5]}...{API_KEY[-5:] if len(API_KEY) > 10 else ''}")
+            print(f"Using TENANT_API_KEY: {TENANT_API_KEY[:5]}...{TENANT_API_KEY[-5:] if len(TENANT_API_KEY) > 10 else ''}")
             
             # The gateway authenticates API keys via Authorization header
             # and expects a JSON body with user_id for the token endpoint
             response = await client.post(
                 f"{GATEWAY_URL}/api/v1/auth/token",
-                headers={"Authorization": f"{API_KEY}"},
+                headers={"Authorization": f"{TENANT_API_KEY}"},
                 json={"user_id": USER_ID}
             )
 
