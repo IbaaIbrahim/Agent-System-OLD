@@ -23,6 +23,32 @@ services:
     networks:
       - agent-network
 
+  auth-broker:
+    build:
+      context: .
+      dockerfile: services/auth-broker/Dockerfile
+    container_name: agent-auth-broker
+    ports:
+      - "11700:7003"
+    environment:
+      # Database
+      - GATEWAY_URL=${GATEWAY_URL:-http://localhost:8000}
+      - API_KEY=sk-agent-bg9FI1g5RuWPQoCG_ibWuuUY0l6G_FKfLqIoix268lI
+      - USER_ID=26b744c3-d264-4519-bd4c-f4c355846b46
+      - PORT=7003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7003/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-network
+
   pgadmin:
     image: dpage/pgadmin4
     container_name: agent-pgadmin
