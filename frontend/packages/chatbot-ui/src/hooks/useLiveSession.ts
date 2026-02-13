@@ -150,7 +150,7 @@ export function useLiveSession(options: UseLiveSessionOptions): UseLiveSessionRe
     }, []);
 
     // VAD hook
-    const { isListening, isSpeaking, start: startVAD, stop: stopVAD, error: vadError } = useVAD({
+    const { start: startVAD, stop: stopVAD, error: vadError } = useVAD({
         onSpeechStart,
         onSpeechEnd,
     });
