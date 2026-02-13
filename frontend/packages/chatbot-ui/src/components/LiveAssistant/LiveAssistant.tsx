@@ -58,7 +58,6 @@ export const LiveAssistant: React.FC<LiveAssistantProps> = ({
         sendScreenFrame,
         currentTranscript,
         isAudioPlaying,
-        sessionId,
         error,
     } = useLiveSession({
         wsUrl,
