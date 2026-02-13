@@ -143,10 +143,11 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
             },
             "required": ["title", "context"],
         },
-        behavior=ToolBehavior.CONFIRM_REQUIRED,
-        preferred_provider="anthropic",
-        preferred_model="claude-3-5-sonnet-20241022",  # Complex generation needs strong model
-        required_plan_feature="tools.checklist_generator",
+        behavior=ToolBehavior.AUTO_EXECUTE,
+        preferred_provider="openai",
+        preferred_model="gpt-4o-mini",  # Complex generation needs strong model
+        # required_plan_feature="tools.checklist_generator",
+        required_plan_feature=None,
         confirm_button_label="Generate Checklist",
         confirm_description_template="Create '{title}' checklist with {context}",
     ),
