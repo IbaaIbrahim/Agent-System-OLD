@@ -1,6 +1,7 @@
 """Deepgram real-time STT client using WebSocket streaming."""
 
 import base64
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -33,6 +34,7 @@ class DeepgramSTTClient(BaseSTTClient):
         self._client: Any = None
         self._on_transcript: Callable[[str, bool], Any] | None = None
         self._paused = False
+        self._thread: threading.Thread | None = None
 
     async def connect(
         self, on_transcript: Callable[[str, bool], Any]
@@ -41,13 +43,12 @@ class DeepgramSTTClient(BaseSTTClient):
         self._on_transcript = on_transcript
 
         try:
-            from deepgram import DeepgramClient, LiveTranscriptionEvents
+            from deepgram import DeepgramClient
 
-            self._client = DeepgramClient(self._api_key)
-            self._connection = self._client.listen.asyncwebsocket.v("1")
+            self._client = DeepgramClient(api_key=self._api_key)
 
-            # Register event handlers
-            async def on_message(_, result, **kwargs):
+            # Define event handlers
+            def on_message(result, **kwargs):
                 if self._paused:
                     return
                 transcript = result.channel.alternatives[0].transcript
@@ -55,28 +56,43 @@ class DeepgramSTTClient(BaseSTTClient):
                 if transcript and self._on_transcript:
                     self._on_transcript(transcript, is_final)
 
-            async def on_error(_, error, **kwargs):
+            def on_error(error, **kwargs):
                 logger.error("Deepgram STT error", error=str(error))
 
-            self._connection.on(LiveTranscriptionEvents.Transcript, on_message)
-            self._connection.on(LiveTranscriptionEvents.Error, on_error)
+            # Use context manager pattern - run in thread
+            def run_connection():
+                try:
+                    with self._client.listen.v2.connect(
+                        model=self._model,
+                        encoding=self._encoding,
+                        sample_rate=self._sample_rate,
+                    ) as self._connection:
 
-            await self._connection.start({
-                "model": self._model,
-                "language": self._language,
-                "encoding": self._encoding,
-                "sample_rate": self._sample_rate,
-                "smart_format": True,
-                "interim_results": True,
-                "endpointing": self._endpointing,
-                "vad_events": True,
-            })
+                        # Register event handlers using 'on' method
+                        self._connection.on("Transcript", on_message)
+                        self._connection.on("Error", on_error)
 
-            logger.info(
-                "Deepgram STT connected",
-                model=self._model,
-                language=self._language,
-            )
+                        # Start listening
+                        self._connection.start_listening()
+
+                        logger.info(
+                            "Deepgram STT connected",
+                            model=self._model,
+                            language=self._language,
+                        )
+
+                        # Keep thread alive
+                        while self._connection:
+                            import time
+                            time.sleep(1)
+
+                except Exception as e:
+                    logger.error("Deepgram connection error", error=str(e))
+                    raise
+
+            # Run connection in a thread to not block
+            self._thread = threading.Thread(target=run_connection, daemon=True)
+            self._thread.start()
 
         except ImportError:
             logger.error(
@@ -94,7 +110,7 @@ class DeepgramSTTClient(BaseSTTClient):
 
         try:
             audio_bytes = base64.b64decode(audio_base64)
-            await self._connection.send(audio_bytes)
+            self._connection.send_media(audio_bytes)
         except Exception as e:
             logger.error("Error sending audio to Deepgram", error=str(e))
 
@@ -110,7 +126,8 @@ class DeepgramSTTClient(BaseSTTClient):
         """Close Deepgram connection."""
         if self._connection:
             try:
-                await self._connection.finish()
+                self._connection.finish()
             except Exception as e:
                 logger.debug("Error closing Deepgram connection", error=str(e))
             self._connection = None
+            self._thread = None

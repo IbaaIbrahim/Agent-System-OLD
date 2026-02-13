@@ -32,7 +32,7 @@ services:
       - "11700:7003"
     environment:
       # Database
-      - GATEWAY_URL=${GATEWAY_URL:-http://localhost:8000}
+      - GATEWAY_URL=${AUTH_BROKER_GATEWAY_URL:-http://api-gateway:8000}
       - TENANT_API_KEY=${TENANT_API_KEY:?TENANT_API_KEY is required}
       - USER_ID=${USER_ID:?USER_ID is required}
       - PORT=7003
@@ -42,7 +42,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:7003/health" ]
+      test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:7003/health', timeout=2)" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -399,7 +399,7 @@ services:
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_DEFAULT_MODEL=${ANTHROPIC_DEFAULT_MODEL:-claude-sonnet-4-20250514}
+      - ANTHROPIC_DEFAULT_MODEL=${ANTHROPIC_DEFAULT_MODEL:-claude-sonnet-4-5}
       - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-4o-mini}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
       # Deepgram STT

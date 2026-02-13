@@ -26,12 +26,15 @@ session_manager = SessionManager()
 
 async def listen_control_events() -> None:
     """Listen for session control events on Redis."""
+    logger.info("Starting control events listener")
     pubsub = RedisPubSub()
     await pubsub.connect()
     await pubsub.subscribe("live_sessions:control")
+    logger.info("Subscribed to control channel")
 
     try:
         async for _channel, data in pubsub.listen():
+            logger.debug("Received control event", channel=_channel, data=data)
             action = data.get("action")
             session_id = data.get("session_id")
 
@@ -39,6 +42,7 @@ async def listen_control_events() -> None:
                 continue
 
             if action == "start":
+                logger.info("Starting session from control event", session_id=session_id)
                 await session_manager.start_session(data)
             elif action == "end" and session_id:
                 await session_manager.end_session(session_id)
@@ -55,6 +59,7 @@ async def listen_control_events() -> None:
         pass
     finally:
         await pubsub.disconnect()
+        logger.info("Control events listener stopped")
 
 
 @asynccontextmanager

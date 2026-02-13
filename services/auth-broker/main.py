@@ -49,7 +49,7 @@ async def request_token():
             # and expects a JSON body with user_id for the token endpoint
             response = await client.post(
                 f"{GATEWAY_URL}/api/v1/auth/token",
-                headers={"Authorization": f"{TENANT_API_KEY}"},
+                headers={"Authorization": f"Bearer {TENANT_API_KEY}"},
                 json={"user_id": USER_ID}
             )
 
