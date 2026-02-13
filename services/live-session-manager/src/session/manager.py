@@ -349,9 +349,11 @@ class SessionManager:
         await pubsub.connect()
         channel = f"live_session:{session_id}:audio_in"
         await pubsub.subscribe(channel)
+        logger.debug("Listening for audio input", session_id=session_id, channel=channel)
 
         stt_client = self._stt_clients.get(session_id)
         if not stt_client:
+            logger.error("No STT client for session", session_id=session_id)
             return
 
         try:
@@ -369,6 +371,7 @@ class SessionManager:
 
                 audio_data = data.get("data", "")
                 if audio_data:
+                    logger.debug("Sending audio to STT", session_id=session_id, data_len=len(audio_data))
                     await stt_client.send_audio(audio_data)
         except asyncio.CancelledError:
             pass

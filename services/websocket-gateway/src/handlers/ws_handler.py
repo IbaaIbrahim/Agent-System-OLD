@@ -100,6 +100,7 @@ async def handle_ws_connection(websocket: WebSocket, auth: AuthContext) -> None:
         user_id=str(auth.user_id) if auth.user_id else None,
         auth_tier=auth.auth_tier,
     )
+    logger.debug("Starting message loop for connection", connection_id=connection_id)
 
     try:
         # Send connection confirmation
@@ -212,10 +213,13 @@ async def _handle_start_session(conn: LiveConnection, message: dict) -> None:
     )
 
     # Publish session start event for the Live Session Manager
-    await redis.publish(
+    event = {"action": "start", **session_data}
+    logger.debug("Publishing session start event", session_id=session_id, event_data=event)
+    count = await redis.publish(
         "live_sessions:control",
-        json.dumps({"action": "start", **session_data}),
+        json.dumps(event),
     )
+    logger.info("Session start event published", subscribers=count, session_id=session_id)
 
     # Subscribe to events for this session
     conn._redis_task = asyncio.create_task(
@@ -270,10 +274,12 @@ async def _handle_audio(conn: LiveConnection, message: dict) -> None:
         return
 
     redis = await get_redis_client()
+    audio_data = message.get("data", "")
+    logger.debug("Received audio from client", session_id=conn.session_id, data_len=len(audio_data))
     await redis.publish(
         f"live_session:{conn.session_id}:audio_in",
         json.dumps({
-            "data": message.get("data", ""),
+            "data": audio_data,
             "seq": message.get("seq", 0),
             "sample_rate": message.get("sample_rate", 16000),
         }),

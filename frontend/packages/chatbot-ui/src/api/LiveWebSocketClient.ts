@@ -147,6 +147,7 @@ export class LiveWebSocketClient {
     }
 
     private handleOpen(): void {
+        console.log('[LiveWS] WebSocket opened');
         this.reconnectAttempts = 0;
 
         // Send auth message immediately

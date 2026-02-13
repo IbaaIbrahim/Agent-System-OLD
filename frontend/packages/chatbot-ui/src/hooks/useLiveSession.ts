@@ -143,9 +143,21 @@ export function useLiveSession(options: UseLiveSessionOptions): UseLiveSessionRe
     }, [isAudioPlaying, stopAudio]);
 
     const onSpeechEnd = useCallback((audio: Float32Array) => {
-        if (!wsRef.current?.isConnected) return;
+        console.log('[LiveSession] onSpeechEnd called', {
+            isConnected: wsRef.current?.isConnected,
+            wsReadyState: wsRef.current?.['ws']?.readyState,
+            audioLength: audio.length,
+        });
+        if (!wsRef.current?.isConnected) {
+            console.warn('[LiveSession] Cannot send audio - not connected');
+            return;
+        }
 
         const base64 = float32ToBase64PCM(audio);
+        console.log('[LiveSession] Sending audio to WebSocket', {
+            base64Length: base64.length,
+            seq: audioSeqRef.current,
+        });
         wsRef.current.sendAudio(base64, audioSeqRef.current++);
     }, []);
 
