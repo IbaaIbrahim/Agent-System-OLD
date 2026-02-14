@@ -4,40 +4,22 @@ import uuid
 from typing import Any
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior
 from libs.db.session import get_session_context
 from libs.vectordb import get_milvus_client
 from sqlalchemy import delete as sql_delete
 
-from .base import BaseTool
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
 
+@catalog_tool("delete_from_knowledge_base")
 class DeleteFromKnowledgeBaseTool(BaseTool):
     """Delete knowledge base entries by ID.
 
     Permanently removes entries from both PostgreSQL and Milvus.
     Requires user confirmation due to destructive nature.
     """
-
-    name = "delete_from_knowledge_base"
-    description = (
-        "Delete an entry from the knowledge base. Use this when the user asks to "
-        "remove or forget saved information. Requires the entry ID."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "entry_id": {
-                "type": "string",
-                "description": "UUID of the knowledge base entry to delete",
-            },
-        },
-        "required": ["entry_id"],
-    }
-    behavior = ToolBehavior.CONFIRM_REQUIRED
-    required_plan_feature = None
 
     async def execute(
         self,

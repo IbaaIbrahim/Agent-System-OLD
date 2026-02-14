@@ -6,13 +6,13 @@ from typing import Any
 sys.path.insert(0, "services/tool-workers")
 
 from libs.common import get_logger
-from libs.common.tool_catalog import get_tool_metadata
 
-from .base import BaseTool
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
 
+@catalog_tool("get_file_description")
 class GetFileDescriptionTool(BaseTool):
     """Fetch a previously generated file analysis description from the database.
 
@@ -20,16 +20,6 @@ class GetFileDescriptionTool(BaseTool):
     without re-analyzing the file. It checks the file_uploads table for
     an existing analysis_description.
     """
-
-    _meta = get_tool_metadata("get_file_description")
-    if not _meta:
-        raise ValueError("Tool definition for 'get_file_description' not found in catalog")
-
-    name = _meta.name
-    description = _meta.description
-    parameters = _meta.parameters
-    behavior = _meta.behavior
-    required_plan_feature = _meta.required_plan_feature
 
     async def execute(self, arguments: dict[str, Any], context: dict[str, Any]) -> str:
         """Fetch file description from the database.

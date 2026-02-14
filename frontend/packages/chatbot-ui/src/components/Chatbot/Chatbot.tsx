@@ -7,6 +7,7 @@ import { WelcomeScreen } from '../WelcomeScreen/WelcomeScreen';
 import { PendingMessageList } from '../PendingMessageList/PendingMessageList';
 import { ThinkingIndicator } from '../ThinkingIndicator/ThinkingIndicator';
 import { LiveAssistant, LiveModeToggle } from '../LiveAssistant/LiveAssistant';
+import { ChatbotProvider } from '../../context/ChatbotContext';
 import { useChat } from '../../hooks/useChat';
 import { ChatClient, ConversationSummary } from '../../api/types';
 
@@ -34,6 +35,10 @@ export interface ChatbotProps {
     liveAssistantEnabled?: boolean;
     wsUrl?: string;   // WebSocket gateway URL (e.g., ws://localhost:8002/ws)
     wsToken?: string;  // Auth token for WS connection
+
+    // Authentication for file/image display
+    accessToken?: string | null;
+    apiBaseUrl?: string;
 }
 
 export const Chatbot: React.FC<ChatbotProps> = ({
@@ -56,6 +61,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     liveAssistantEnabled = false,
     wsUrl,
     wsToken,
+    accessToken,
+    apiBaseUrl,
 }) => {
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
     const [isReadingPage, setIsReadingPage] = React.useState(false);
@@ -72,6 +79,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     // Internal state for toggles if not controlled
     const [internalWebSearch, setInternalWebSearch] = React.useState(false);
     const [internalPageContext, setInternalPageContext] = React.useState(false);
+    const [internalEffortLevel, setInternalEffortLevel] = React.useState<'low' | 'medium' | 'high'>('medium');
 
     const webSearchEnabled = controlledWebSearch !== undefined ? controlledWebSearch : internalWebSearch;
     const pageContextEnabled = controlledPageContext !== undefined ? controlledPageContext : internalPageContext;
@@ -105,6 +113,16 @@ export const Chatbot: React.FC<ChatbotProps> = ({
             setInternalPageContext(enabled);
         }
         client?.enablePageContext(enabled);
+    };
+
+    // Sync effort level to client
+    React.useEffect(() => {
+        client?.setEffortLevel?.(internalEffortLevel);
+    }, [client, internalEffortLevel]);
+
+    const setEffortLevel = (level: 'low' | 'medium' | 'high') => {
+        setInternalEffortLevel(level);
+        client?.setEffortLevel?.(level);
     };
 
     const {
@@ -238,7 +256,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     );
 
     return (
-        <>
+        <ChatbotProvider accessToken={accessToken} apiBaseUrl={apiBaseUrl}>
             {isReadingPage && <div className="cb-page-reading-indicator" />}
             <ChatContainer
                 mode={mode}
@@ -278,6 +296,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                                 onSend={sendMessage}
                                 disabled={false}
                                 placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}
+                                effortLevel={internalEffortLevel}
+                                onEffortLevelChange={setEffortLevel}
                                 webSearchEnabled={webSearchEnabled}
                                 onWebSearchChange={setWebSearch}
                                 pageContextEnabled={pageContextEnabled}
@@ -311,6 +331,6 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                     </>
                 )}
             </ChatContainer>
-        </>
+        </ChatbotProvider>
     );
 };

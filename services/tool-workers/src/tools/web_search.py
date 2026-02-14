@@ -5,42 +5,18 @@ from typing import Any, Literal
 import httpx
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior
 
-from .base import BaseTool
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
 
+@catalog_tool("web_search")
 class WebSearchTool(BaseTool):
     """Tool for performing web searches.
 
     Supports DuckDuckGo (no API key required) and Brave Search (requires API key).
     """
-
-    name = "web_search"
-    description = (
-        "Search the web for information. Use this when you need to find "
-        "current information, facts, or data that may not be in your training data."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "The search query",
-            },
-            "num_results": {
-                "type": "integer",
-                "description": "Number of results to return (default: 5, max: 10)",
-                "default": 5,
-            },
-        },
-        "required": ["query"],
-    }
-    behavior = ToolBehavior.USER_ENABLED
-    # required_plan_feature = "tools.web_search"
-    required_plan_feature = None  # Always available, no plan restriction
 
     def __init__(
         self,

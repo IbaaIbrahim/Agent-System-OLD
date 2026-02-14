@@ -4,11 +4,10 @@ import json
 from typing import Any
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior
 from libs.llm import get_provider
 
 from .assets import load_json_asset, load_text_asset
-from .base import BaseTool, ToolCategory
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
@@ -16,6 +15,7 @@ logger = get_logger(__name__)
 _TOOL_NAME = "checklist_generator"
 
 
+@catalog_tool("generate_checklist")
 class ChecklistGeneratorTool(BaseTool):
     """Tool for generating structured Flowdit checklists.
 
@@ -23,43 +23,6 @@ class ChecklistGeneratorTool(BaseTool):
     checklists that conform to the Flowdit schema. The agent calls this
     when the user wants to create a checklist, inspection form, or audit template.
     """
-
-    name = "generate_checklist"
-    description = (
-        "Generate a structured Flowdit checklist based on conversation context. "
-        "Use this when the user wants to create a checklist, inspection form, "
-        "audit template, or any structured data collection workflow. "
-        "The tool will generate a complete checklist with sections and items."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "title": {
-                "type": "string",
-                "description": "Title for the checklist",
-            },
-            "description": {
-                "type": "string",
-                "description": "Brief description of the checklist purpose",
-            },
-            "context": {
-                "type": "string",
-                "description": (
-                    "Full conversation context and user requirements. "
-                    "Include all details about what items, sections, and structure the user wants."
-                ),
-            },
-            "language": {
-                "type": "string",
-                "description": "Language code for the checklist content (default: en)",
-                "default": "en",
-            },
-        },
-        "required": ["title", "context"],
-    }
-    category = ToolCategory.CONFIGURABLE
-    behavior = ToolBehavior.CONFIRM_REQUIRED
-    required_plan_feature = "tools.checklist_generator"
 
     def __init__(self) -> None:
         """Initialize the checklist generator tool.
@@ -111,12 +74,20 @@ class ChecklistGeneratorTool(BaseTool):
             language=language,
             job_id=job_id,
             tenant_id=tenant_id,
+            context_length=len(user_context),
         )
 
         try:
             # Load schema and prompt
             schema = self._load_schema()
             system_prompt = self._load_system_prompt()
+
+            logger.debug(
+                "Loaded checklist assets",
+                schema_keys=len(schema.get("properties", {})),
+                schema_definitions=len(schema.get("definitions", {})),
+                prompt_length=len(system_prompt),
+            )
 
             # Build user prompt with requirements
             user_prompt = f"""
@@ -131,13 +102,22 @@ User Requirements:
             # Get OpenAI provider for structured output
             provider = get_provider("openai")
 
-            # Generate checklist using structured output
+            logger.info(
+                "Calling OpenAI structured output API",
+                job_id=job_id,
+                model="gpt-4o-mini",
+                user_prompt_length=len(user_prompt),
+            )
+
+            # Generate checklist using structured output (with retry logic)
             result = await provider.complete_structured(
                 system=system_prompt,
                 user_message=user_prompt,
                 json_schema=schema,
                 schema_name="FlowditChecklist",
                 model="gpt-4o-mini",
+                max_retries=3,
+                base_delay=2.0,
             )
 
             logger.info(
@@ -161,14 +141,18 @@ User Requirements:
                 "message": "Checklist generation configuration error",
             })
         except Exception as e:
+            error_type = type(e).__name__
             logger.error(
                 "Checklist generation failed",
                 error=str(e),
+                error_type=error_type,
                 job_id=job_id,
                 tenant_id=tenant_id,
+                title=title,
+                context_length=len(user_context),
             )
             return json.dumps({
-                "error": str(e),
+                "error": f"{error_type}: {e}",
                 "success": False,
                 "message": "Failed to generate checklist",
             })

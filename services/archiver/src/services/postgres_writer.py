@@ -158,12 +158,13 @@ class PostgresWriter:
 
                     elif event_type == "tool_call":
                         # Tool calls are part of conversation history
+                        # Content may include text like "I'll search for that" before tool use
                         max_seq += 1
                         message = ChatMessage(
                             job_id=job_id,
                             sequence_num=max_seq,
                             role=MessageRole.ASSISTANT,
-                            content=None,  # Tool calls have no content
+                            content=data.get("content"),  # Preserve pre-tool content
                             tool_calls=data.get("tool_calls"),  # LLM's tool requests
                             metadata_={
                                 "event_id": event["event_id"],

@@ -14,6 +14,7 @@ export class RealChatClient implements ChatClient {
     private customHandlers: Map<string, (args: any) => Promise<string | any>> = new Map();
     private libraryTools: Set<string> = new Set();
     private conversationId: string | null = null;
+    private effortLevel: 'low' | 'medium' | 'high' = 'medium';
 
     constructor(token: string, apiBaseUrl?: string) {
         this.accessToken = token;
@@ -80,6 +81,10 @@ export class RealChatClient implements ChatClient {
         return Array.from(all);
     }
 
+    setEffortLevel(level: 'low' | 'medium' | 'high') {
+        this.effortLevel = level;
+    }
+
     setPageReadingCallback(callback: (isReading: boolean) => void) {
         this.pageReadingCallback = callback;
     }
@@ -103,6 +108,7 @@ export class RealChatClient implements ChatClient {
                 name: f.filename,
                 size: f.size_bytes,
                 contentType: f.content_type,
+                localUrl: f.localBlobUrl,
             }))
         };
         this.messages = [...this.messages, userMsg];
@@ -118,7 +124,8 @@ export class RealChatClient implements ChatClient {
 
             // Build metadata with file_ids if present
             const metadata: Record<string, any> = {
-                enabled_tools: this.getActiveTools()
+                enabled_tools: this.getActiveTools(),
+                effort_level: this.effortLevel,
             };
             if (fileIds && fileIds.length > 0) {
                 metadata.file_ids = fileIds;

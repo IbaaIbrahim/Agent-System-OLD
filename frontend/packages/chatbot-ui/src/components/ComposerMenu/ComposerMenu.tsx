@@ -1,12 +1,15 @@
 import React from 'react';
-const { useState } = React;
 import './ComposerMenu.css';
 
 interface MenuProps {
    onClose: () => void;
 }
 
+export type EffortLevel = 'low' | 'medium' | 'high';
+
 export interface ReasoningMenuProps extends MenuProps {
+   effortLevel?: EffortLevel;
+   onEffortLevelChange?: (level: EffortLevel) => void;
    webSearchEnabled?: boolean;
    onWebSearchChange?: (enabled: boolean) => void;
    pageContextEnabled?: boolean;
@@ -15,13 +18,14 @@ export interface ReasoningMenuProps extends MenuProps {
 
 export const ReasoningMenu: React.FC<ReasoningMenuProps> = ({
    onClose,
+   effortLevel = 'medium',
+   onEffortLevelChange,
    webSearchEnabled = false,
    onWebSearchChange,
    pageContextEnabled = false,
    onPageContextChange
 }) => {
-   const [reasoning, setReasoning] = useState<'rovo' | 'deep' | 'research'>('rovo');
-   const [toggles, setToggles] = useState({
+   const [toggles, setToggles] = React.useState({
       knowledge: true,
       autoApply: true
    });
@@ -42,38 +46,38 @@ export const ReasoningMenu: React.FC<ReasoningMenuProps> = ({
       <div className="cb-menu-overlay" onClick={onClose}>
          <div className="cb-menu-content reasoning" onClick={e => e.stopPropagation()}>
             <div className="cb-menu-header">
-               <span>Reasoning</span>
+               <span>Effort</span>
             </div>
             <div className="cb-menu-section">
-               <div className={`cb-menu-item ${reasoning === 'rovo' ? 'active' : ''}`} onClick={() => setReasoning('rovo')}>
+               <div className={`cb-menu-item ${effortLevel === 'low' ? 'active' : ''}`} onClick={() => onEffortLevelChange?.('low')}>
                   <div className="cb-menu-icon-circle">
                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
                   </div>
                   <div className="cb-menu-info">
-                     <span className="cb-menu-title">Let Rovo decide</span>
-                     <span className="cb-menu-desc">Rovo picks the best reasoning</span>
+                     <span className="cb-menu-title">Quick</span>
+                     <span className="cb-menu-desc">Direct answers, minimal tool use</span>
                   </div>
-                  {reasoning === 'rovo' && <div className="cb-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg></div>}
+                  {effortLevel === 'low' && <div className="cb-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg></div>}
                </div>
-               <div className={`cb-menu-item ${reasoning === 'deep' ? 'active' : ''}`} onClick={() => setReasoning('deep')}>
+               <div className={`cb-menu-item ${effortLevel === 'medium' ? 'active' : ''}`} onClick={() => onEffortLevelChange?.('medium')}>
                   <div className="cb-menu-icon-circle">
                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                   </div>
                   <div className="cb-menu-info">
-                     <span className="cb-menu-title">Think deeper</span>
-                     <span className="cb-menu-desc">Longer thinking for robust responses</span>
+                     <span className="cb-menu-title">Standard</span>
+                     <span className="cb-menu-desc">Proactive tool use for richer responses</span>
                   </div>
-                  {reasoning === 'deep' && <div className="cb-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg></div>}
+                  {effortLevel === 'medium' && <div className="cb-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg></div>}
                </div>
-               <div className={`cb-menu-item ${reasoning === 'research' ? 'active' : ''}`} onClick={() => setReasoning('research')}>
+               <div className={`cb-menu-item ${effortLevel === 'high' ? 'active' : ''}`} onClick={() => onEffortLevelChange?.('high')}>
                   <div className="cb-menu-icon-circle">
                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M16.2 7.8l-2 6.3-6.4 2.1 2-6.3z" /></svg>
                   </div>
                   <div className="cb-menu-info">
-                     <span className="cb-menu-title">Deep research</span>
-                     <span className="cb-menu-desc">Synthesize insights and create reports</span>
+                     <span className="cb-menu-title">Deep</span>
+                     <span className="cb-menu-desc">Exhaustive research and cross-referencing</span>
                   </div>
-                  {reasoning === 'research' && <div className="cb-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg></div>}
+                  {effortLevel === 'high' && <div className="cb-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg></div>}
                </div>
             </div>
 

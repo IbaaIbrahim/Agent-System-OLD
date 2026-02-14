@@ -5,6 +5,7 @@ export interface AttachedFile {
     filename: string;
     content_type: string;
     size_bytes: number;
+    localBlobUrl?: string;
 }
 
 export interface ChatState {
@@ -60,6 +61,7 @@ export interface ChatClient {
     setToolHandler: (name: string, handler: (args: any) => Promise<string | any>) => void;
     enableWebSearch: (enabled: boolean) => void;
     enablePageContext: (enabled: boolean) => void;
+    setEffortLevel?: (level: 'low' | 'medium' | 'high') => void;
     sendConfirmResponse?: (toolCallId: string, confirmed: boolean) => Promise<void>;
     setPageReadingCallback?: (callback: (isReading: boolean) => void) => void;
     uploadFile?: (file: File) => Promise<AttachedFile>;

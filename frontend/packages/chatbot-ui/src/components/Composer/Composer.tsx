@@ -1,13 +1,15 @@
 import React from 'react';
 const { useState, useRef, useEffect, useCallback } = React;
 import './Composer.css';
-import { ReasoningMenu, PlusMenu } from '../ComposerMenu/ComposerMenu';
+import { ReasoningMenu, PlusMenu, EffortLevel } from '../ComposerMenu/ComposerMenu';
 import { AttachedFile } from '../../api/types';
 
 export interface ComposerProps {
     onSend?: (text: string, fileIds?: string[], attachedFiles?: AttachedFile[]) => void;
     disabled?: boolean;
     placeholder?: string;
+    effortLevel?: EffortLevel;
+    onEffortLevelChange?: (level: EffortLevel) => void;
     webSearchEnabled?: boolean;
     onWebSearchChange?: (enabled: boolean) => void;
     pageContextEnabled?: boolean;
@@ -46,6 +48,8 @@ export const Composer: React.FC<ComposerProps> = ({
     onSend,
     disabled = false,
     placeholder = "Ask, @mention, or / for actions",
+    effortLevel = 'medium',
+    onEffortLevelChange,
     webSearchEnabled = false,
     onWebSearchChange,
     pageContextEnabled = false,
@@ -119,6 +123,8 @@ export const Composer: React.FC<ComposerProps> = ({
             console.log('[Composer] Uploading file...');
             const result = await onFileUpload(file);
             console.log('[Composer] Upload result:', result);
+            // Create a local blob URL so the image can display immediately without a server round-trip
+            result.localBlobUrl = URL.createObjectURL(file);
             setAttachedFiles(prev => [...prev, result]);
         } catch (err: any) {
             console.error('[Composer] Upload failed:', err);
@@ -214,6 +220,8 @@ export const Composer: React.FC<ComposerProps> = ({
             {activeMenu === 'reasoning' && (
                 <ReasoningMenu
                     onClose={() => setActiveMenu(null)}
+                    effortLevel={effortLevel}
+                    onEffortLevelChange={onEffortLevelChange}
                     webSearchEnabled={webSearchEnabled}
                     onWebSearchChange={onWebSearchChange}
                     pageContextEnabled={pageContextEnabled}

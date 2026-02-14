@@ -141,6 +141,17 @@ async def create_chat_completion(
     # Get enabled_tools from metadata for USER_ENABLED tools
     enabled_tools = (body.metadata or {}).get("enabled_tools", [])
 
+    # Validate effort_level if present
+    effort_level = (body.metadata or {}).get("effort_level")
+    if effort_level is not None and effort_level not in ("low", "medium", "high"):
+        raise ValidationError(
+            message="Invalid effort_level",
+            errors=[{
+                "field": "metadata.effort_level",
+                "message": "Must be one of: low, medium, high",
+            }],
+        )
+
     # Inject tools from catalog based on behavior
     for tool_name, tool_metadata in TOOL_CATALOG.items():
         # Skip if tool is already in the list (e.g., sent from frontend)

@@ -4,58 +4,24 @@ import uuid
 from typing import Any
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior
 from libs.db.models import KnowledgeBaseEntry
 from libs.db.session import get_session_context
 from libs.embeddings import get_embedder
 from libs.vectordb import get_milvus_client
 from sqlalchemy import select
 
-from .base import BaseTool
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
 
+@catalog_tool("search_knowledge_base")
 class SearchKnowledgeBaseTool(BaseTool):
     """Semantic search across knowledge base entries.
 
     Uses Milvus vector search for semantic similarity matching.
     Results are retrieved from PostgreSQL for full content display.
     """
-
-    name = "search_knowledge_base"
-    description = (
-        "Search the knowledge base using semantic similarity. Use this when the user "
-        "asks about previously saved information, documented procedures, or references "
-        "specific topics that may have been stored. Returns relevant entries with content, "
-        "categories, and associated files."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "Natural language search query",
-            },
-            "category": {
-                "type": "string",
-                "description": "Optional category filter to narrow results",
-            },
-            "tags": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Optional tags to filter results (matches if any tag overlaps)",
-            },
-            "top_k": {
-                "type": "integer",
-                "description": "Number of results to return (default: 5, max: 20)",
-                "default": 5,
-            },
-        },
-        "required": ["query"],
-    }
-    behavior = ToolBehavior.AUTO_EXECUTE
-    required_plan_feature = None
 
     async def execute(
         self,

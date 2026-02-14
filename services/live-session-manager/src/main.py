@@ -43,7 +43,10 @@ async def listen_control_events() -> None:
 
             if action == "start":
                 logger.info("Starting session from control event", session_id=session_id)
-                await session_manager.start_session(data)
+                try:
+                    await session_manager.start_session(data)
+                except ValueError as e:
+                    logger.error("Failed to start session", session_id=session_id, error=str(e))
             elif action == "end" and session_id:
                 await session_manager.end_session(session_id)
             elif action == "pause" and session_id:

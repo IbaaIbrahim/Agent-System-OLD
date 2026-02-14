@@ -24,6 +24,9 @@ from ..config import get_config
 from ..stt.deepgram_client import DeepgramSTTClient
 from ..tts.elevenlabs_client import ElevenLabsTTSClient
 from ..vision.frame_processor import FrameProcessor
+import time
+import os
+import json
 from .state import LiveSessionData, SessionState
 
 logger = get_logger(__name__)
@@ -38,6 +41,30 @@ class SessionManager:
         self._tts_clients: dict[str, ElevenLabsTTSClient] = {}
         self._frame_processor = FrameProcessor()
 
+    # #region agent log helper
+    def _write_debug(self, message: str, data: dict, hypothesis_id: str = "STATE") -> None:
+        try:
+            payload = {
+                "id": f"log_{int(time.time()*1000)}",
+                "timestamp": int(time.time() * 1000),
+                "location": "session.manager",
+                "message": message,
+                "data": data,
+                "hypothesisId": hypothesis_id,
+            }
+            paths = [".cursor/debug.log", os.path.join(os.getcwd(), ".cursor", "debug.log")]
+            for path in paths:
+                try:
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "a", encoding="utf-8") as f:
+                        f.write(json.dumps(payload) + "\n")
+                    break
+                except OSError:
+                    continue
+        except Exception:
+            pass
+    # #endregion
+
     @property
     def active_count(self) -> int:
         return len(self._sessions)
@@ -49,6 +76,21 @@ class SessionManager:
         """Start a new live session with STT/TTS pipelines."""
         config = get_config()
         session_id = session_data["session_id"]
+
+        if not (config.deepgram_api_key or "").strip():
+            redis = await get_redis_client()
+            await redis.publish(
+                f"live_session:{session_id}",
+                json.dumps({
+                    "type": "error",
+                    "message": "Voice assistant is not configured: DEEPGRAM_API_KEY is missing. Set it in your environment or .env.",
+                }),
+            )
+            logger.error(
+                "Cannot start live session: DEEPGRAM_API_KEY is not set",
+                session_id=session_id,
+            )
+            raise ValueError("DEEPGRAM_API_KEY is required for live sessions")
 
         session = LiveSessionData(
             session_id=session_id,
@@ -83,12 +125,17 @@ class SessionManager:
         )
         self._tts_clients[session_id] = tts_client
 
-        # Start STT connection
-        await stt_client.connect(
-            on_transcript=lambda text, is_final: asyncio.create_task(
-                self._on_transcript(session_id, text, is_final)
+        # Start STT connection (callback runs in Deepgram's worker thread;
+        # schedule coroutine on main loop via run_coroutine_threadsafe)
+        main_loop = asyncio.get_running_loop()
+
+        def on_transcript(text: str, is_final: bool) -> None:
+            asyncio.run_coroutine_threadsafe(
+                self._on_transcript(session_id, text, is_final),
+                main_loop,
             )
-        )
+
+        await stt_client.connect(on_transcript=on_transcript)
 
         # Start listening for audio input from Redis
         session.stt_task = asyncio.create_task(
@@ -371,6 +418,15 @@ class SessionManager:
 
                 audio_data = data.get("data", "")
                 if audio_data:
+                    # Instrument audio in events
+                    try:
+                        self._write_debug(
+                            "Audio received from client",
+                            {"session_id": session_id, "data_len": len(audio_data), "state": session.state},
+                            "AUDIO",
+                        )
+                    except Exception:
+                        pass
                     logger.debug("Sending audio to STT", session_id=session_id, data_len=len(audio_data))
                     await stt_client.send_audio(audio_data)
         except asyncio.CancelledError:
@@ -512,6 +568,15 @@ class SessionManager:
             f"live_session:{session_id}",
             json.dumps({"type": "status", "state": state}),
         )
+        # Debug: log state transitions for live session
+        try:
+            self._write_debug(
+                "Session state changed",
+                {"session_id": session_id, "state": state},
+                "STATE",
+            )
+        except Exception:
+            pass
 
     async def _persist_session_start(self, session: LiveSessionData) -> None:
         """Persist new session to database."""
