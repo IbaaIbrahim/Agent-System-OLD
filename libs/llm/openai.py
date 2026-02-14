@@ -379,10 +379,13 @@ class OpenAIProvider(LLMProvider):
         json_schema: dict[str, Any],
         schema_name: str = "StructuredOutput",
         model: str | None = None,
+        max_retries: int = 3,
+        base_delay: float = 2.0,
     ) -> dict[str, Any]:
         """Generate structured output following a JSON schema.
 
         Uses OpenAI's Responses API with strict JSON schema validation.
+        Includes retry logic with exponential backoff for transient failures.
 
         Args:
             system: System prompt
@@ -390,90 +393,137 @@ class OpenAIProvider(LLMProvider):
             json_schema: JSON schema to validate output against
             schema_name: Name for the schema (default: "StructuredOutput")
             model: Model to use (default: gpt-4o-mini)
+            max_retries: Maximum number of retry attempts (default: 3)
+            base_delay: Base delay in seconds for exponential backoff (default: 2.0)
 
         Returns:
             Parsed JSON object matching the schema
 
         Raises:
-            LLMError: If generation or parsing fails
+            LLMError: If generation or parsing fails after all retries
         """
+        import asyncio
+        import random
+
         model = model or "gpt-4o-mini"
+        last_error: Exception | None = None
 
-        logger.info(
-            "OpenAI structured output request",
-            model=model,
-            schema_name=schema_name,
+        for attempt in range(max_retries):
+            try:
+                logger.info(
+                    "OpenAI structured output request",
+                    model=model,
+                    schema_name=schema_name,
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                )
+
+                response = await self.client.responses.create(
+                    model=model,
+                    input=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user_message},
+                    ],
+                    text={
+                        "format": {
+                            "type": "json_schema",
+                            "name": schema_name,
+                            "schema": json_schema,
+                            "strict": True,
+                        }
+                    },
+                )
+
+                logger.info(
+                    "OpenAI structured output received",
+                    output_count=len(response.output or []),
+                    attempt=attempt + 1,
+                )
+
+                # Extract JSON from response
+                if not response.output:
+                    raise LLMError(
+                        provider="openai",
+                        message="Empty response from OpenAI Responses API",
+                        details={"model": model},
+                    )
+
+                first_block = response.output[0]
+                payload = None
+
+                # Try different ways to extract text content
+                if getattr(first_block, "type", None) == "output_text":
+                    payload = first_block.text
+                else:
+                    content = getattr(first_block, "content", None)
+                    if content and len(content) > 0 and hasattr(content[0], "text"):
+                        payload = content[0].text
+
+                if payload is None:
+                    raise LLMError(
+                        provider="openai",
+                        message="Unexpected response format from OpenAI Responses API",
+                        details={"model": model, "first_block_type": type(first_block).__name__},
+                    )
+
+                return json.loads(payload)
+
+            except json.JSONDecodeError as e:
+                logger.error(
+                    "Failed to parse structured output JSON",
+                    error=str(e),
+                    model=model,
+                    attempt=attempt + 1,
+                )
+                raise LLMError(
+                    provider="openai",
+                    message=f"Failed to parse structured output: {e}",
+                    details={"error_type": "JSONDecodeError"},
+                )
+            except openai.APIError as e:
+                last_error = e
+                error_type = type(e).__name__
+
+                # Check if this is a retryable error (timeout, rate limit, server error)
+                is_retryable = isinstance(e, (
+                    openai.APITimeoutError,
+                    openai.RateLimitError,
+                    openai.InternalServerError,
+                    openai.APIConnectionError,
+                ))
+
+                if is_retryable and attempt < max_retries - 1:
+                    # Exponential backoff with jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        "OpenAI API error, retrying",
+                        error=str(e),
+                        error_type=error_type,
+                        model=model,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        retry_delay_seconds=round(delay, 2),
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    logger.error(
+                        "OpenAI API error during structured output (no more retries)",
+                        error=str(e),
+                        error_type=error_type,
+                        model=model,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                    )
+                    raise LLMError(
+                        provider="openai",
+                        message=f"OpenAI API error: {e}",
+                        details={"error_type": error_type, "attempts": attempt + 1},
+                    )
+
+        # Should not reach here, but just in case
+        raise LLMError(
+            provider="openai",
+            message=f"OpenAI API error after {max_retries} attempts: {last_error}",
+            details={"error_type": type(last_error).__name__ if last_error else "Unknown"},
         )
-
-        try:
-            response = await self.client.responses.create(
-                model=model,
-                input=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_message},
-                ],
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": schema_name,
-                        "schema": json_schema,
-                        "strict": True,
-                    }
-                },
-            )
-
-            logger.info(
-                "OpenAI structured output received",
-                output_count=len(response.output or []),
-            )
-
-            # Extract JSON from response
-            if not response.output:
-                raise LLMError(
-                    provider="openai",
-                    message="Empty response from OpenAI Responses API",
-                    details={"model": model},
-                )
-
-            first_block = response.output[0]
-            payload = None
-
-            # Try different ways to extract text content
-            if getattr(first_block, "type", None) == "output_text":
-                payload = first_block.text
-            else:
-                content = getattr(first_block, "content", None)
-                if content and len(content) > 0 and hasattr(content[0], "text"):
-                    payload = content[0].text
-
-            if payload is None:
-                raise LLMError(
-                    provider="openai",
-                    message="Unexpected response format from OpenAI Responses API",
-                    details={"model": model, "first_block_type": type(first_block).__name__},
-                )
-
-            return json.loads(payload)
-
-        except json.JSONDecodeError as e:
-            logger.error(
-                "Failed to parse structured output JSON",
-                error=str(e),
-                model=model,
-            )
-            raise LLMError(
-                provider="openai",
-                message=f"Failed to parse structured output: {e}",
-                details={"error_type": "JSONDecodeError"},
-            )
-        except openai.APIError as e:
-            logger.error(
-                "OpenAI API error during structured output",
-                error=str(e),
-                model=model,
-            )
-            raise LLMError(
-                provider="openai",
-                message=f"OpenAI API error: {e}",
-                details={"error_type": type(e).__name__},
-            )

@@ -10,6 +10,33 @@ from .base import BaseTTSClient
 
 logger = get_logger(__name__)
 
+import time
+import os
+import json
+
+# #region agent log helper (small, local)
+def _write_debug_tts(message: str, data: dict, hypothesis_id: str = "TTS") -> None:
+    try:
+        payload = {
+            "id": f"log_{int(time.time()*1000)}",
+            "timestamp": int(time.time() * 1000),
+            "location": "elevenlabs_client.py",
+            "message": message,
+            "data": data,
+            "hypothesisId": hypothesis_id,
+        }
+        paths = [".cursor/debug.log", os.path.join(os.getcwd(), ".cursor", "debug.log")]
+        for path in paths:
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(payload) + "\n")
+                break
+            except OSError:
+                continue
+    except Exception:
+        pass
+# #endregion
 
 class ElevenLabsTTSClient(BaseTTSClient):
     """ElevenLabs streaming text-to-speech via WebSocket."""
@@ -31,6 +58,12 @@ class ElevenLabsTTSClient(BaseTTSClient):
             from elevenlabs import ElevenLabs
 
             client = ElevenLabs(api_key=self._api_key)
+
+            # Debug: note synthesize request
+            try:
+                _write_debug_tts("TTS request start", {"voice_id": self._voice_id, "model": self._model, "text_len": len(text)})
+            except Exception:
+                pass
 
             # Use streaming generation
             audio_stream = client.text_to_speech.convert(
@@ -62,6 +95,11 @@ class ElevenLabsTTSClient(BaseTTSClient):
             )
             raise
         except Exception as e:
+            # Debug: write TTS error details to debug log
+            try:
+                _write_debug_tts("TTS error", {"error": str(e), "repr": repr(e)})
+            except Exception:
+                pass
             logger.error("ElevenLabs TTS error", error=str(e))
             raise
 

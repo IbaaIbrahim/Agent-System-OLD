@@ -69,6 +69,8 @@ function App() {
                         liveAssistantEnabled={!!authToken}
                         wsUrl="ws://localhost:8002/ws"
                         wsToken={authToken ?? undefined}
+                        accessToken={authToken}
+                        apiBaseUrl="http://localhost:8000/api"
                     />
                 </>
             ) : (
@@ -84,6 +86,8 @@ function App() {
                         liveAssistantEnabled={!!authToken}
                         wsUrl="ws://localhost:8002/ws"
                         wsToken={authToken ?? undefined}
+                        accessToken={authToken}
+                        apiBaseUrl="http://localhost:8000/api"
                     />
                 </div>
             )}

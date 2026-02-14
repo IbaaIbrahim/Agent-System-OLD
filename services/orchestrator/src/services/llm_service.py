@@ -84,6 +84,7 @@ class LLMService:
         tools: list[dict[str, Any]] | None,
         plan_tools: list[str] | None,
         enabled_tools: list[str] | None,
+        effort_level: str | None = None,
     ) -> str | None:
         """Build system prompt with information about disabled tools.
 
@@ -105,6 +106,15 @@ class LLMService:
 
         # Layer 1: Default orchestration prompt (always present)
         final_prompt = DEFAULT_SYSTEM_PROMPT
+
+        # Layer 1.5: Effort level behavioral directive
+        if effort_level:
+            from ..prompts.effort_levels import get_effort_config
+
+            effort_config = get_effort_config(effort_level)
+            final_prompt += (
+                f"\n\n## Effort Level\n\n{effort_config.prompt_section}"
+            )
 
         # Layer 2: User-provided system prompt (optional override/extension)
         if base_prompt:
@@ -202,9 +212,13 @@ class LLMService:
             filtered_tools=[t["name"] for t in (filtered_tools or [])],
         )
 
+        # Extract effort level from metadata
+        effort_level = state.metadata.get("effort_level") if state.metadata else None
+
         # Enhance system prompt with disabled tool info
         system_prompt = self._build_system_prompt_with_tool_info(
-            state.system_prompt, state.tools, plan_tools, enabled_tools
+            state.system_prompt, state.tools, plan_tools, enabled_tools,
+            effort_level=effort_level,
         )
 
         logger.debug(
@@ -289,9 +303,13 @@ class LLMService:
             filtered_tools=[t["name"] for t in (filtered_tools or [])],
         )
 
+        # Extract effort level from metadata
+        effort_level = state.metadata.get("effort_level") if state.metadata else None
+
         # Enhance system prompt with disabled tool info
         system_prompt = self._build_system_prompt_with_tool_info(
-            state.system_prompt, state.tools, plan_tools, enabled_tools
+            state.system_prompt, state.tools, plan_tools, enabled_tools,
+            effort_level=effort_level,
         )
 
         logger.debug(

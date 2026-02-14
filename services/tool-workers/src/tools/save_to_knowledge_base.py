@@ -6,60 +6,23 @@ from typing import Any
 
 from libs.common import get_logger
 from libs.common.config import get_settings
-from libs.common.tool_catalog import ToolBehavior
 from libs.db.models import KnowledgeBaseEntry
 from libs.db.session import get_session_context
 from libs.embeddings import get_embedder
 from libs.vectordb import get_milvus_client
 
-from .base import BaseTool
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
 
+@catalog_tool("save_to_knowledge_base")
 class SaveToKnowledgeBaseTool(BaseTool):
     """Save or update knowledge base entries with vector embedding.
 
     This tool enables the agent to persist information for future retrieval.
     Content is automatically embedded using OpenAI's text-embedding-3-small model.
     """
-
-    name = "save_to_knowledge_base"
-    description = (
-        "Save information to the knowledge base for future retrieval. Use this when "
-        "the user explicitly asks to remember something, document a procedure, save "
-        "context, or create a reference. Generates semantic embeddings automatically."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "title": {
-                "type": "string",
-                "description": "Short descriptive title for the entry",
-            },
-            "content": {
-                "type": "string",
-                "description": "Full content to save (max 50,000 characters)",
-            },
-            "category": {
-                "type": "string",
-                "description": "Optional category (e.g., 'procedures', 'reference', 'notes')",
-            },
-            "tags": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Optional tags for organization",
-            },
-            "file_ids": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Optional file IDs to attach (screenshots, documents)",
-            },
-        },
-        "required": ["title", "content"],
-    }
-    behavior = ToolBehavior.CONFIRM_REQUIRED
-    required_plan_feature = None
 
     async def execute(
         self,

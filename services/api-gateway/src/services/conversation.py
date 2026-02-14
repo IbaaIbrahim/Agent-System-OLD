@@ -202,6 +202,10 @@ class ConversationService:
                     "created_at": msg.created_at.isoformat() if msg.created_at else None,
                 }
 
+                # Include tool_calls if present
+                if msg.tool_calls:
+                    message_dict["tool_calls"] = msg.tool_calls
+
                 # Add attachments for user messages
                 if role == "user" and str(msg.job_id) in job_file_ids:
                     attachments = []
@@ -213,7 +217,85 @@ class ConversationService:
 
                 messages.append(message_dict)
 
-            return messages
+            # Merge consecutive assistant messages from the same job
+            # This handles cases where tool_call + message events create separate records
+            merged_messages = self._merge_assistant_messages(messages)
+
+            return merged_messages
+
+    def _merge_assistant_messages(self, messages: list[dict]) -> list[dict]:
+        """Merge consecutive assistant messages from the same job.
+
+        When tools are used, multiple ChatMessage records are created per job:
+        - tool_call event: role=assistant, content=NULL, tool_calls=[...]
+        - tool_result event: role=tool, content="result"
+        - message event: role=assistant, content="final response"
+
+        This method merges these into coherent messages for the frontend,
+        combining tool_calls and content from the same job.
+        """
+        if not messages:
+            return []
+
+        merged: list[dict] = []
+        current_assistant: dict | None = None
+        current_job_id: str | None = None
+
+        for msg in messages:
+            role = msg["role"]
+            job_id = msg["job_id"]
+
+            # Skip tool messages - they're intermediate results
+            if role == "tool":
+                continue
+
+            if role == "assistant":
+                # Check if we should merge with current assistant message
+                if current_assistant is not None and current_job_id == job_id:
+                    # Merge into existing assistant message
+                    # Combine content (prefer non-null)
+                    if msg.get("content"):
+                        if current_assistant.get("content"):
+                            # Both have content - append
+                            current_assistant["content"] += "\n\n" + msg["content"]
+                        else:
+                            current_assistant["content"] = msg["content"]
+
+                    # Merge tool_calls arrays
+                    if msg.get("tool_calls"):
+                        if current_assistant.get("tool_calls"):
+                            current_assistant["tool_calls"].extend(msg["tool_calls"])
+                        else:
+                            current_assistant["tool_calls"] = msg["tool_calls"]
+
+                    # Use earliest created_at
+                    if msg.get("created_at") and current_assistant.get("created_at"):
+                        if msg["created_at"] < current_assistant["created_at"]:
+                            current_assistant["created_at"] = msg["created_at"]
+                else:
+                    # New assistant message (different job or first one)
+                    # Flush previous assistant message if any
+                    if current_assistant is not None:
+                        merged.append(current_assistant)
+
+                    # Start tracking new assistant message
+                    current_assistant = msg.copy()
+                    current_job_id = job_id
+            else:
+                # Non-assistant message (user, system)
+                # Flush current assistant message if any
+                if current_assistant is not None:
+                    merged.append(current_assistant)
+                    current_assistant = None
+                    current_job_id = None
+
+                merged.append(msg)
+
+        # Don't forget the last assistant message
+        if current_assistant is not None:
+            merged.append(current_assistant)
+
+        return merged
 
     async def search_conversations(
         self,

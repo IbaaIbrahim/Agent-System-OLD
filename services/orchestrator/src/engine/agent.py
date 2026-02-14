@@ -8,6 +8,7 @@ from libs.common.tool_catalog import get_tool_metadata
 
 from ..config import get_config
 from ..handlers.tool_handler import ToolHandler
+from ..prompts.effort_levels import get_effort_config
 from ..services.llm_service import LLMService
 from ..services.snapshot_service import SnapshotService
 from .state import AgentState
@@ -31,6 +32,16 @@ class AgentExecutor:
         self.event_callback = event_callback
         self.config = get_config()
 
+    def _resolve_max_iterations(self, state: AgentState) -> int:
+        """Resolve max iterations based on effort level in metadata.
+
+        Falls back to config default if no effort level is specified.
+        """
+        effort_level = state.metadata.get("effort_level") if state.metadata else None
+        if effort_level:
+            return get_effort_config(effort_level).max_iterations
+        return self.config.max_iterations
+
     async def execute(self, state: AgentState) -> AgentState:
         """Execute the agent loop.
 
@@ -47,13 +58,13 @@ class AgentExecutor:
             model=state.model,
         )
 
-
+        max_iterations = self._resolve_max_iterations(state)
 
         state.mark_running()
         await self._emit_event(state, "start", {"status": "running"})
 
         try:
-            while state.iteration < self.config.max_iterations:
+            while state.iteration < max_iterations:
                 state.iteration += 1
 
                 # Periodic snapshot for crash recovery
@@ -111,8 +122,10 @@ class AgentExecutor:
                         if self._should_emit_tool_event(tc.name)
                     ]
                     if visible_tool_calls:
+                        # Include content so "I'll search for that" type messages are preserved
                         await self._emit_event(state, "tool_call", {
                             "tool_calls": visible_tool_calls,
+                            "content": response.content,
                         })
 
                     # Check feature flag for suspend/resume
@@ -187,7 +200,7 @@ class AgentExecutor:
                 # Max iterations reached
                 state.mark_failed(
                     "Max iterations reached",
-                    {"max_iterations": self.config.max_iterations},
+                    {"max_iterations": max_iterations},
                 )
                 await self._emit_event(state, "error", {
                     "error": "Max iterations reached",
@@ -231,13 +244,13 @@ class AgentExecutor:
             job_id=str(state.job_id),
         )
 
-
+        max_iterations = self._resolve_max_iterations(state)
 
         state.mark_running()
         await self._emit_event(state, "start", {"status": "running"})
 
         try:
-            while state.iteration < self.config.max_iterations:
+            while state.iteration < max_iterations:
                 state.iteration += 1
 
                 # Periodic snapshot for crash recovery
@@ -312,13 +325,18 @@ class AgentExecutor:
                                     tool_calls=tool_calls,
                                 )
 
-                                for tc in tool_calls:
-                                    if self._should_emit_tool_event(tc.name):
-                                        await self._emit_event(state, "tool_call", {
-                                            "id": tc.id,
-                                            "name": tc.name,
-                                            "arguments": tc.arguments,
-                                        })
+                                # Emit single tool_call event with all visible tools
+                                visible_tool_calls = [
+                                    {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                                    for tc in tool_calls
+                                    if self._should_emit_tool_event(tc.name)
+                                ]
+                                if visible_tool_calls:
+                                    # Include content so "I'll search for that" type messages are preserved
+                                    await self._emit_event(state, "tool_call", {
+                                        "tool_calls": visible_tool_calls,
+                                        "content": content_buffer if content_buffer else None,
+                                    })
 
                                 # Check feature flag for suspend/resume
                                 if self.config.enable_suspend_resume:
@@ -392,7 +410,7 @@ class AgentExecutor:
                             break
 
             # Max iterations
-            state.mark_failed("Max iterations reached")
+            state.mark_failed("Max iterations reached", {"max_iterations": max_iterations})
             await self._emit_event(state, "error", {"error": "Max iterations reached"})
 
         except asyncio.CancelledError:

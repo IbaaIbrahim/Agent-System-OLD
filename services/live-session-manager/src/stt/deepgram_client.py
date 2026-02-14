@@ -44,53 +44,78 @@ class DeepgramSTTClient(BaseSTTClient):
 
         try:
             from deepgram import DeepgramClient
+            from deepgram.core.events import EventType
 
             self._client = DeepgramClient(api_key=self._api_key)
 
-            # Define event handlers
-            def on_message(result, **kwargs):
-                if self._paused:
+            # v1 listen supports nova-3; v2 listen is for Flux (flux-general-en) and rejects nova-3 with HTTP 400
+            def on_message(msg: Any) -> None:
+                if self._paused or not self._on_transcript:
                     return
-                transcript = result.channel.alternatives[0].transcript
-                is_final = result.is_final
-                if transcript and self._on_transcript:
+                # ListenV1ResultsEvent has type "Results", channel.alternatives[0].transcript, is_final
+                if getattr(msg, "type", None) != "Results":
+                    return
+                if not getattr(msg, "channel", None) or not getattr(msg.channel, "alternatives", None):
+                    return
+                alternatives = msg.channel.alternatives
+                if not alternatives:
+                    return
+                transcript = getattr(alternatives[0], "transcript", "") or ""
+                is_final = bool(getattr(msg, "is_final", False))
+                if transcript:
                     self._on_transcript(transcript, is_final)
 
-            def on_error(error, **kwargs):
-                logger.error("Deepgram STT error", error=str(error))
+            def on_error(exc: Exception) -> None:
+                logger.error("Deepgram STT error", error=str(exc))
 
-            # Use context manager pattern - run in thread
-            def run_connection():
-                try:
-                    with self._client.listen.v2.connect(
-                        model=self._model,
-                        encoding=self._encoding,
-                        sample_rate=self._sample_rate,
-                    ) as self._connection:
-
-                        # Register event handlers using 'on' method
-                        self._connection.on("Transcript", on_message)
-                        self._connection.on("Error", on_error)
-
-                        # Start listening
-                        self._connection.start_listening()
-
-                        logger.info(
-                            "Deepgram STT connected",
+            def run_connection() -> None:
+                import time as _time
+                last_error: Exception | None = None
+                max_attempts = 3
+                for attempt in range(1, max_attempts + 1):
+                    try:
+                        with self._client.listen.v1.connect(
                             model=self._model,
+                            encoding=self._encoding,
+                            sample_rate=str(self._sample_rate),
                             language=self._language,
-                        )
+                            endpointing=str(self._endpointing),
+                        ) as self._connection:
+                            self._connection.on(EventType.MESSAGE, on_message)
+                            self._connection.on(EventType.ERROR, on_error)
+                            self._connection.start_listening()
 
-                        # Keep thread alive
-                        while self._connection:
-                            import time
-                            time.sleep(1)
+                            logger.info(
+                                "Deepgram STT connected (v1 listen)",
+                                model=self._model,
+                                language=self._language,
+                            )
 
-                except Exception as e:
-                    logger.error("Deepgram connection error", error=str(e))
-                    raise
+                            while self._connection:
+                                _time.sleep(1)
+                        return
+                    except (OSError, ConnectionError) as e:
+                        last_error = e
+                        if attempt < max_attempts:
+                            logger.warning(
+                                "Deepgram connection attempt failed, retrying",
+                                attempt=attempt,
+                                max_attempts=max_attempts,
+                                error=str(e),
+                            )
+                            _time.sleep(1.5 * attempt)
+                        else:
+                            break
+                    except Exception as e:
+                        last_error = e
+                        break
 
-            # Run connection in a thread to not block
+                e = last_error
+                if e is None:
+                    return
+                logger.error("Deepgram connection error", error=str(e))
+                raise e
+
             self._thread = threading.Thread(target=run_connection, daemon=True)
             self._thread.start()
 
@@ -126,7 +151,10 @@ class DeepgramSTTClient(BaseSTTClient):
         """Close Deepgram connection."""
         if self._connection:
             try:
-                self._connection.finish()
+                if hasattr(self._connection, "finish"):
+                    self._connection.finish()
+                elif hasattr(self._connection, "_websocket"):
+                    self._connection._websocket.close()
             except Exception as e:
                 logger.debug("Error closing Deepgram connection", error=str(e))
             self._connection = None

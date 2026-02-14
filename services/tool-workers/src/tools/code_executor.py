@@ -7,40 +7,16 @@ from io import StringIO
 from typing import Any
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior
 
 from ..config import get_config
-from .base import BaseTool
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
 
+@catalog_tool("code_executor")
 class CodeExecutorTool(BaseTool):
     """Tool for executing Python code in a sandboxed environment."""
-
-    name = "code_executor"
-    description = (
-        "Execute Python code and return the output. Use this for calculations, "
-        "data processing, or any task that requires running code. "
-        "The code runs in an isolated environment with limited capabilities."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "code": {
-                "type": "string",
-                "description": "Python code to execute",
-            },
-            "timeout": {
-                "type": "integer",
-                "description": "Execution timeout in seconds (default: 30, max: 60)",
-                "default": 30,
-            },
-        },
-        "required": ["code"],
-    }
-    behavior = ToolBehavior.AUTO_EXECUTE
-    required_plan_feature = "tools.code_executor"
 
     def __init__(self) -> None:
         self.config = get_config()

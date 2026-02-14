@@ -8,15 +8,16 @@ from typing import Any
 sys.path.insert(0, "services/tool-workers")
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior, get_tool_metadata, get_tool_model_preference
+from libs.common.tool_catalog import get_tool_model_preference
 from libs.llm import LLMMessage, MessageRole, get_provider
 from libs.messaging.redis import get_redis_client
 
-from .base import BaseTool
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
 
+@catalog_tool("analyze_file")
 class AnalyzeFileTool(BaseTool):
     """Analyze uploaded files using vision models.
 
@@ -25,18 +26,6 @@ class AnalyzeFileTool(BaseTool):
     - PDFs: Text extraction and analysis (future: OCR)
     - Text files: Direct content analysis
     """
-
-    # Load configuration from Tool Catalog to avoid duplication
-    _meta = get_tool_metadata("analyze_file")
-    if not _meta:
-        # Fallback if catalog not loaded (should not happen in app)
-        raise ValueError("Tool definition for 'analyze_file' not found in catalog")
-
-    name = _meta.name
-    description = _meta.description
-    parameters = _meta.parameters
-    behavior = _meta.behavior
-    required_plan_feature = _meta.required_plan_feature
 
     async def execute(self, arguments: dict[str, Any], context: dict[str, Any]) -> str:
         """Execute file analysis using vision models.

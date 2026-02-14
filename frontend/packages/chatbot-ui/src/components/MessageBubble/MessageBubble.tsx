@@ -3,6 +3,7 @@ const { useState, useEffect, useRef } = React;
 import './MessageBubble.css';
 import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
+import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -13,6 +14,7 @@ export interface Attachment {
     name?: string;
     size?: number;
     contentType?: string;
+    localUrl?: string;
 }
 
 export type MessageStepType = 'text' | 'thinking' | 'tool-call' | 'confirm-request';
@@ -72,12 +74,27 @@ const MAX_VISIBLE_ATTACHMENTS = 2;
 const AttachmentItem: React.FC<{ att: Attachment; onClick?: () => void }> = ({ att, onClick }) => (
     att.type === 'image' ? (
         <div className="cb-msg-attachment-image" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
-            <img src={att.url} alt={att.name || 'Attached image'} onError={(e) => {
-                // Handle broken image - show placeholder
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-                target.parentElement?.classList.add('cb-msg-attachment-broken');
-            }} />
+            {att.localUrl ? (
+                <img
+                    src={att.localUrl}
+                    alt={att.name || 'Attached image'}
+                    onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.parentElement?.classList.add('cb-msg-attachment-broken');
+                    }}
+                />
+            ) : (
+                <AuthenticatedImage
+                    src={att.url}
+                    alt={att.name || 'Attached image'}
+                    onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.parentElement?.classList.add('cb-msg-attachment-broken');
+                    }}
+                />
+            )}
             {att.name && <span className="cb-msg-att-name">{att.name}</span>}
         </div>
     ) : (

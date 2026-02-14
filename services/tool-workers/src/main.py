@@ -7,7 +7,7 @@ import sys
 from typing import Any
 
 from libs.common import get_logger, setup_logging
-from libs.common.tool_catalog import ToolBehavior
+from libs.common.tool_catalog import ToolBehavior, get_tool_metadata
 from libs.messaging.kafka import create_consumer
 from libs.messaging.redis import get_redis_client
 
@@ -206,6 +206,18 @@ async def main() -> None:
     registry = ToolRegistry()
     registry.register_all()
     logger.info(f"Registered {len(registry.tools)} tools")
+
+    # Validate all registered tools exist in TOOL_CATALOG
+    missing_tools = []
+    for tool_name in registry.tools:
+        if not get_tool_metadata(tool_name):
+            missing_tools.append(tool_name)
+
+    if missing_tools:
+        raise ValueError(
+            f"Tools not found in TOOL_CATALOG: {', '.join(missing_tools)}. "
+            "All tools must be defined in libs/common/tool_catalog.py"
+        )
 
     # Create Kafka consumer
     consumer = await create_consumer(

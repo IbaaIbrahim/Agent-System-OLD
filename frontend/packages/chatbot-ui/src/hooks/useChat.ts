@@ -95,10 +95,16 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         setMessageQueue([]);
         setIsProcessing(false);
         setIsTyping(false);
-        // Load from API — sets messages and conversationId on client
-        await client.loadConversation(conversationId, setChatState);
+        // Load from API — use a local state capture to get loaded messages
+        let loadedMessages: typeof chatState.messages = [];
+        await client.loadConversation(conversationId, (newState) => {
+            loadedMessages = newState.messages;
+            setChatState(newState);
+        });
         // Mark all loaded messages as already finished (no animation)
-        chatState.messages.forEach(m => finishedMessageIdsRef.current.add(m.id));
+        // Use loadedMessages from callback since chatState update is async
+        loadedMessages.forEach(m => finishedMessageIdsRef.current.add(m.id));
+        prevMsgCountRef.current = loadedMessages.length;
     };
 
     const reset = () => {
