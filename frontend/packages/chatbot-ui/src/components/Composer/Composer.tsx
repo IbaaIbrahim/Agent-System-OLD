@@ -306,7 +306,7 @@ export const Composer: React.FC<ComposerProps> = ({
                 <div className="cb-composer-actions">
                     <div className="cb-actions-left">
                         {/* Main Plus Button */}
-                        <button
+                        {/* <button
                             className={`cb-action-btn circle ${activeMenu === 'plus' ? 'active-state' : ''}`}
                             onClick={() => toggleMenu('plus')}
                             title="Add..."
@@ -316,7 +316,7 @@ export const Composer: React.FC<ComposerProps> = ({
                             ) : (
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                             )}
-                        </button>
+                        </button> */}
 
                         {/* Attach file shortcut button */}
                         {onFileUpload && (
