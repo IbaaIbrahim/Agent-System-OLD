@@ -240,7 +240,7 @@ class AgentExecutor:
             Updated agent state
         """
         logger.info(
-            "Starting streaming agent execution",
+            "✅ Starting streaming agent execution",
             job_id=str(state.job_id),
         )
 
@@ -257,7 +257,7 @@ class AgentExecutor:
                 if state.iteration % self.config.snapshot_interval == 0:
                     await self.snapshot_service.save_snapshot(state)
                     logger.debug(
-                        "Periodic snapshot saved (streaming)",
+                        "💾 Periodic snapshot saved (streaming)",
                         job_id=str(state.job_id),
                         iteration=state.iteration,
                     )
@@ -268,7 +268,7 @@ class AgentExecutor:
                 tool_calls = []
 
                 logger.info(
-                    "Calling llm_service.stream now",
+                    "🏃‍♂️ Calling llm_service.stream now",
                     job_id=str(state.job_id),
                     provider=state.provider,
                     model=state.model,
@@ -288,7 +288,7 @@ class AgentExecutor:
                         tool_calls_count = len(chunk.tool_calls) if chunk.tool_calls else 0
 
                         logger.debug(
-                            "Stream chunk received",
+                            "🔄 Stream chunk received",
                             job_id=str(state.job_id),
                             content_len=content_len,
                             reasoning_len=reasoning_len,
@@ -419,7 +419,7 @@ class AgentExecutor:
             raise
 
         except Exception as e:
-            logger.exception("Streaming agent execution failed", job_id=str(state.job_id))
+            logger.exception("💀 Streaming agent execution failed", job_id=str(state.job_id))
             state.mark_failed(str(e))
             await self._emit_event(state, "error", {"error": str(e)})
 

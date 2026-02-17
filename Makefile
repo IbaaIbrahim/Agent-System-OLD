@@ -2,11 +2,27 @@
 -include .env
 export
 
-# Cross-platform sleep command (Windows uses timeout, Unix uses sleep)
+# Detect OS
 ifeq ($(OS),Windows_NT)
-	SLEEP = timeout /t
+	IS_WINDOWS = 1
+	SHELL = cmd.exe
+	SLEEP = timeout /t /nobreak
+	RM = del /Q
+	PYTHON = python
+	# Windows Python path setting
+	SET_PYTHONPATH = set PYTHONPATH=$(shell cd)
+	# Check if watchfiles exists (Windows)
+	CHECK_WATCHFILES = where watchfiles >nul 2>&1
 else
+	IS_WINDOWS = 0
+	SHELL = bash
 	SLEEP = sleep
+	RM = rm -f
+	PYTHON = python3
+	# Unix Python path setting
+	SET_PYTHONPATH = PYTHONPATH=$(PWD)
+	# Check if watchfiles exists (Unix)
+	CHECK_WATCHFILES = command -v watchfiles > /dev/null
 endif
 
 .PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend postman openapi ws live-session
@@ -14,6 +30,9 @@ endif
 # Default target
 help:
 	@echo "Agent System - Development Commands"
+	@echo ""
+	@echo "Note: This Makefile supports both Linux/macOS and Windows (PowerShell/Make)"
+	@echo "      Windows users can also use 'dev.bat' for native Windows commands"
 	@echo ""
 	@echo "Infrastructure:"
 	@echo "  make up          - Start all Docker services"
@@ -69,7 +88,7 @@ help:
 
 up:
 	docker compose up -d
-	make migrate
+	$(MAKE) migrate
 	@echo "Waiting for services to be healthy..."
 	@$(SLEEP) 10
 	@docker compose ps
@@ -130,53 +149,85 @@ dev: infra
 	@echo "  make frontend"
 
 api:
+ifeq ($(IS_WINDOWS),1)
+	@set PYTHONPATH=$(shell cd) && uvicorn services.api-gateway.src.main:app --reload --port 8000 --host $(or $(API_HOST),localhost)
+else
 	PYTHONPATH=$(PWD) uvicorn services.api-gateway.src.main:app --reload --port 8000 --host $(or $(API_HOST),localhost)
+endif
 
 stream:
+ifeq ($(IS_WINDOWS),1)
+	@set PYTHONPATH=$(shell cd) && uvicorn services.stream-edge.src.main:app --reload --port 8001 --host $(or $(API_HOST),localhost)
+else
 	PYTHONPATH=$(PWD) uvicorn services.stream-edge.src.main:app --reload --port 8001 --host $(or $(API_HOST),localhost)
+endif
 
 orchestrator:
-	@if command -v watchfiles > /dev/null; then \
-		PYTHONPATH=$(PWD) watchfiles --ignore-paths .cursor "python -m services.orchestrator.src.main"; \
-	else \
-		PYTHONPATH=$(PWD) python -m services.orchestrator.src.main; \
-	fi
+ifeq ($(IS_WINDOWS),1)
+	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles --ignore-paths .cursor "python -m services.orchestrator.src.main") || (set PYTHONPATH=$(shell cd) && python -m services.orchestrator.src.main)
+else
+	@$(CHECK_WATCHFILES) && \
+		PYTHONPATH=$(PWD) watchfiles --ignore-paths .cursor "$(PYTHON) -m services.orchestrator.src.main" || \
+		PYTHONPATH=$(PWD) $(PYTHON) -m services.orchestrator.src.main
+endif
 
 workers:
-	@if command -v watchfiles > /dev/null; then \
-		PYTHONPATH=$(PWD) watchfiles "python -m services.tool-workers.src.main"; \
-	else \
-		PYTHONPATH=$(PWD) python -m services.tool-workers.src.main; \
-	fi
+ifeq ($(IS_WINDOWS),1)
+	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "python -m services.tool-workers.src.main") || (set PYTHONPATH=$(shell cd) && python -m services.tool-workers.src.main)
+else
+	@$(CHECK_WATCHFILES) && \
+		PYTHONPATH=$(PWD) watchfiles "$(PYTHON) -m services.tool-workers.src.main" || \
+		PYTHONPATH=$(PWD) $(PYTHON) -m services.tool-workers.src.main
+endif
 
 archiver:
-	@if command -v watchfiles > /dev/null; then \
-		PYTHONPATH=$(PWD) watchfiles "python -m services.archiver.src.main"; \
-	else \
-		PYTHONPATH=$(PWD) python -m services.archiver.src.main; \
-	fi
+ifeq ($(IS_WINDOWS),1)
+	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "python -m services.archiver.src.main") || (set PYTHONPATH=$(shell cd) && python -m services.archiver.src.main)
+else
+	@$(CHECK_WATCHFILES) && \
+		PYTHONPATH=$(PWD) watchfiles "$(PYTHON) -m services.archiver.src.main" || \
+		PYTHONPATH=$(PWD) $(PYTHON) -m services.archiver.src.main
+endif
 
 ws:
+ifeq ($(IS_WINDOWS),1)
+	@set PYTHONPATH=$(shell cd) && uvicorn services.websocket-gateway.src.main:app --reload --port 8002 --host $(or $(API_HOST),localhost)
+else
 	PYTHONPATH=$(PWD) uvicorn services.websocket-gateway.src.main:app --reload --port 8002 --host $(or $(API_HOST),localhost)
+endif
 
 live-session:
-	@if command -v watchfiles > /dev/null; then \
-		PYTHONPATH=$(PWD) watchfiles "python -m services.live-session-manager.src.main"; \
-	else \
-		PYTHONPATH=$(PWD) python -m services.live-session-manager.src.main; \
-	fi
+ifeq ($(IS_WINDOWS),1)
+	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "python -m services.live-session-manager.src.main") || (set PYTHONPATH=$(shell cd) && python -m services.live-session-manager.src.main)
+else
+	@$(CHECK_WATCHFILES) && \
+		PYTHONPATH=$(PWD) watchfiles "$(PYTHON) -m services.live-session-manager.src.main" || \
+		PYTHONPATH=$(PWD) $(PYTHON) -m services.live-session-manager.src.main
+endif
 
 auth-broker:
+ifeq ($(IS_WINDOWS),1)
+	cd services\auth-broker && python main.py
+else
 	cd services/auth-broker && python main.py
+endif
 
 frontend:
 	cd frontend/apps/demo && npm run dev
 
 postman:
+ifeq ($(IS_WINDOWS),1)
+	@set PYTHONPATH=$(shell cd) && python services/api-gateway/scripts/generate_postman.py > postman_collection.json
+else
 	PYTHONPATH=$(PWD) python3 services/api-gateway/scripts/generate_postman.py > postman_collection.json
+endif
 
 openapi:
+ifeq ($(IS_WINDOWS),1)
+	cd services/api-gateway && set PYTHONPATH=$(shell cd)\.. && python -c "from src.main import app; import json; print(json.dumps(app.openapi()))" > ..\openapi.json
+else
 	cd services/api-gateway && PYTHONPATH=../../ python3 -c "from src.main import app; import json; print(json.dumps(app.openapi()))" > ../../openapi.json
+endif
 
 # ===================
 # DATABASE
@@ -186,8 +237,12 @@ migrate:
 	python -m alembic -c migrations/alembic.ini upgrade head
 
 migrate-new:
+ifeq ($(IS_WINDOWS),1)
+	@set /p name="Migration name: " && python -m alembic -c migrations/alembic.ini revision --autogenerate -m "!name!"
+else
 	@read -p "Migration name: " name; \
 	python -m alembic -c migrations/alembic.ini revision --autogenerate -m "$$name"
+endif
 
 migrate-down:
 	python -m alembic -c migrations/alembic.ini downgrade -1
@@ -243,8 +298,11 @@ test-int-clean-after:
 # Reset database only (drops all tables and runs migrations)
 test-reset-db:
 	@echo "Resetting database..."
-	PYTHONPATH=. alembic -c migrations/alembic.ini downgrade base
-	PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+ifeq ($(IS_WINDOWS),1)
+	@set PYTHONPATH=. && alembic -c migrations/alembic.ini downgrade base && alembic -c migrations/alembic.ini upgrade head
+else
+	@PYTHONPATH=. alembic -c migrations/alembic.ini downgrade base && PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+endif
 	@echo "Clearing Redis cache..."
 	redis-cli -u $(REDIS_URL) FLUSHDB || true
 	@echo "Database reset complete."
@@ -283,16 +341,24 @@ test-services-down:
 # Run migrations on test database
 test-isolated-migrate:
 	@echo "Running migrations on test database..."
-	DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test \
+ifeq ($(IS_WINDOWS),1)
+	@set DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test && set PYTHONPATH=. && alembic -c migrations/alembic.ini upgrade head
+else
+	@DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test \
 		PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+endif
 
 # Reset test database only
 test-isolated-reset:
 	@echo "Resetting test database..."
-	DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test \
-		PYTHONPATH=. alembic -c migrations/alembic.ini downgrade base
+ifeq ($(IS_WINDOWS),1)
+	@set DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test && set PYTHONPATH=. && alembic -c migrations/alembic.ini downgrade base && alembic -c migrations/alembic.ini upgrade head
+else
+	@DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test \
+		PYTHONPATH=. alembic -c migrations/alembic.ini downgrade base && \
 	DATABASE_URL=postgresql+asyncpg://agent:agent_secret@localhost:5433/agent_db_test \
 		PYTHONPATH=. alembic -c migrations/alembic.ini upgrade head
+endif
 	@echo "Clearing test Redis cache..."
 	redis-cli -p 6380 FLUSHDB || true
 	@echo "Test database reset complete."
@@ -328,11 +394,15 @@ kafka-topics:
 	docker compose exec kafka kafka-topics --list --bootstrap-server localhost:9092
 
 kafka-consume:
+ifeq ($(IS_WINDOWS),1)
+	@set /p topic="Topic name: " && docker compose exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic !topic! --from-beginning
+else
 	@read -p "Topic name: " topic; \
 	docker compose exec kafka kafka-console-consumer \
 		--bootstrap-server localhost:9092 \
 		--topic $$topic \
 		--from-beginning
+endif
 
 # Build all Docker images
 build:

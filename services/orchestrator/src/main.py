@@ -30,7 +30,7 @@ async def main() -> None:
     )
 
     logger.info(
-        "Starting Orchestrator",
+        "✅ Starting Orchestrator",
         suspend_resume_enabled=config.enable_suspend_resume,
     )
 
@@ -64,15 +64,15 @@ async def main() -> None:
 
     def signal_handler():
         shutdown_event.set()
-        logger.info("Shutdown signal received")
+        logger.info("⚠️ Shutdown signal received")
 
     if sys.platform != "win32":
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, signal_handler)
     else:
-        logger.info("Signal handlers skipped (not supported on Windows asyncio loop)")
+        logger.info("⚠️ Signal handlers skipped (not supported on Windows asyncio loop)")
 
-    logger.info("Orchestrator started successfully")
+    logger.info("✅ Orchestrator started successfully")
 
     # Start consumers based on feature flag
     if config.enable_suspend_resume:
