@@ -112,7 +112,7 @@ class OpenAIProvider(LLMProvider):
         if tools:
             request_kwargs["tools"] = [t.to_openai() for t in tools]
 
-        logger.info(f"DEBUG: OpenAI complete final kwargs keys: {list(request_kwargs.keys())}")
+        logger.info(f"DEBUG: 🔍 OpenAI complete final kwargs keys: {list(request_kwargs.keys())}")
 
         try:
             response = await self.client.chat.completions.create(**request_kwargs)
@@ -123,20 +123,20 @@ class OpenAIProvider(LLMProvider):
             except Exception:
                 msg = ""
             if "reasoning_effort" in msg and "unexpected" in msg.lower():
-                logger.warning("OpenAI SDK rejected 'reasoning_effort' kwarg, retrying without it", error=msg)
+                logger.warning("💀 OpenAI SDK rejected 'reasoning_effort' kwarg, retrying without it", error=msg)
                 request_kwargs.pop("reasoning_effort", None)
                 response = await self.client.chat.completions.create(**request_kwargs)
             else:
                 raise
         except openai.APIError as e:
             logger.error(
-                "OpenAI API error",
+                "💀 OpenAI API error",
                 error=str(e),
                 model=model,
             )
             raise LLMError(
                 provider="openai",
-                message=f"OpenAI API error: {e}",
+                message=f"💀 OpenAI API error: {e}",
                 details={"error_type": type(e).__name__},
             )
 

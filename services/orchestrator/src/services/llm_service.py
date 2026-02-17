@@ -313,14 +313,14 @@ class LLMService:
         )
 
         logger.debug(
-            "Starting LLM stream",
+            "✅ Starting LLM stream",
             job_id=str(state.job_id),
             provider=state.provider,
             model=state.model,
         )
         # Visible info log for container stdout
         logger.info(
-            "LLM stream params",
+            "🔍 LLM stream params",
             job_id=str(state.job_id),
             provider=state.provider,
             model=state.model,
@@ -344,7 +344,7 @@ class LLMService:
             reasoning_effort=reasoning_effort,
         ):
             logger.debug(
-                "llm_service.stream yielding chunk",
+                "🔄 llm_service.stream yielding chunk",
                 job_id=str(state.job_id),
                 has_content=bool(getattr(chunk, "content", None)),
                 content_len=len(getattr(chunk, "content", "")) if getattr(chunk, "content", None) else 0,
@@ -356,7 +356,7 @@ class LLMService:
 
             if chunk.is_final:
                 logger.debug(
-                    "LLM stream complete",
+                    "✅ LLM stream complete",
                     job_id=str(state.job_id),
                     input_tokens=chunk.input_tokens,
                     output_tokens=chunk.output_tokens,
