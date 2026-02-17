@@ -128,6 +128,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     const {
         messages,
         isThinking,
+        isWaitingForDeltas,
         messageQueue,
         sendMessage,
         removeQueueItem,
@@ -320,6 +321,11 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                                 onAnimationComplete={() => handleAnimationComplete(msg.id)}
                                 onConfirm={handleConfirm}
                                 onReject={handleReject}
+                                isWaitingForDeltas={
+                                    isWaitingForDeltas &&
+                                    msg.role === 'assistant' &&
+                                    msg.id === messages[messages.length - 1]?.id
+                                }
                             />
                         ))}
 

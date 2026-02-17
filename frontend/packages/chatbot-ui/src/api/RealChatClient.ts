@@ -183,12 +183,77 @@ export class RealChatClient implements ChatClient {
             // Connect to SSE Stream
             const eventSource = new EventSource(stream_url);
             let fullContent = '';
+            let lastDeltaTime = Date.now(); // Initialize to now - will be updated on first delta
+            let deltaCheckInterval: ReturnType<typeof setInterval> | null = null;
+            let isStreaming = true;
+
+            // Check periodically if we're waiting for deltas (no deltas received in last 2 seconds)
+            // Only show indicator if we've been waiting for at least 2 seconds
+            const checkDeltaTimeout = () => {
+                if (!isStreaming) return;
+                const timeSinceLastDelta = Date.now() - lastDeltaTime;
+                const isWaitingForDeltas = timeSinceLastDelta > 2000;
+                onUpdate({ messages: this.messages, isThinking: true, isWaitingForDeltas });
+            };
+
+            // Start checking every 500ms after initial 2 second delay
+            setTimeout(() => {
+                if (isStreaming) {
+                    deltaCheckInterval = setInterval(checkDeltaTimeout, 500);
+                }
+            }, 2000);
+
+            // Track thinking content separately
+            let thinkingContent = '';
+
+            // Listen for 'reasoning_delta' events (thinking/reasoning tokens)
+            eventSource.addEventListener('reasoning_delta', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.content) {
+                        thinkingContent += data.content;
+                        this.messages = this.messages.map(m => {
+                            if (m.id === assistantMsgId) {
+                                let steps = m.steps ? [...m.steps] : [];
+                                
+                                // Find or create thinking step
+                                let thinkingStep = steps.find(s => s.type === 'thinking');
+                                if (!thinkingStep) {
+                                    // Create new thinking step
+                                    thinkingStep = {
+                                        id: `thinking-${Date.now()}`,
+                                        type: 'thinking' as const,
+                                        content: '',
+                                        isFinished: false,
+                                    };
+                                    steps.push(thinkingStep);
+                                } else {
+                                    // Update existing thinking step
+                                    const stepIndex = steps.findIndex(s => s.id === thinkingStep!.id);
+                                    steps[stepIndex] = {
+                                        ...thinkingStep,
+                                        content: thinkingContent,
+                                        isFinished: false,
+                                    };
+                                }
+                                
+                                return { ...m, steps };
+                            }
+                            return m;
+                        });
+                        onUpdate({ messages: this.messages, isThinking: true });
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse reasoning_delta event data', e);
+                }
+            });
 
             // Listen for 'delta' events for content updates
             eventSource.addEventListener('delta', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.content) {
+                        lastDeltaTime = Date.now(); // Update timestamp
                         fullContent += data.content;
                         this.messages = this.messages.map(m => {
                             if (m.id === assistantMsgId) {
@@ -219,7 +284,7 @@ export class RealChatClient implements ChatClient {
                             }
                             return m;
                         });
-                        onUpdate({ messages: this.messages, isThinking: true });
+                        onUpdate({ messages: this.messages, isThinking: true, isWaitingForDeltas: false });
                     }
                 } catch (e) {
                     console.warn('Failed to parse delta event data', e);
@@ -392,12 +457,39 @@ export class RealChatClient implements ChatClient {
 
             // Listen for 'complete' event to close connection
             eventSource.addEventListener('complete', () => {
+                isStreaming = false;
+                if (deltaCheckInterval) {
+                    clearInterval(deltaCheckInterval);
+                    deltaCheckInterval = null;
+                }
+                
+                // Mark thinking step as finished if it exists
+                if (thinkingContent) {
+                    this.messages = this.messages.map(m => {
+                        if (m.id === assistantMsgId && m.steps) {
+                            const steps = m.steps.map(s => {
+                                if (s.type === 'thinking') {
+                                    return { ...s, isFinished: true };
+                                }
+                                return s;
+                            });
+                            return { ...m, steps };
+                        }
+                        return m;
+                    });
+                }
+                
                 eventSource.close();
-                onUpdate({ messages: this.messages, isThinking: false });
+                onUpdate({ messages: this.messages, isThinking: false, isWaitingForDeltas: false });
             });
 
             // Handle errors
             eventSource.onerror = (err) => {
+                isStreaming = false;
+                if (deltaCheckInterval) {
+                    clearInterval(deltaCheckInterval);
+                    deltaCheckInterval = null;
+                }
                 console.error('EventSource failed:', err);
                 eventSource.close();
 
@@ -406,7 +498,7 @@ export class RealChatClient implements ChatClient {
                         m.id === assistantMsgId ? { ...m, content: 'Error: Connection to stream failed.' } : m
                     );
                 }
-                onUpdate({ messages: this.messages, isThinking: false });
+                onUpdate({ messages: this.messages, isThinking: false, isWaitingForDeltas: false });
             };
 
 

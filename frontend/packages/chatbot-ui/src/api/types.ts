@@ -11,6 +11,7 @@ export interface AttachedFile {
 export interface ChatState {
     messages: MessageProps[];
     isThinking: boolean;
+    isWaitingForDeltas?: boolean; // True when job is running but no deltas received recently
 }
 
 export interface ConversationSummary {

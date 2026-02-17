@@ -58,9 +58,11 @@ class KafkaProducer:
             client_id=self.client_id,
             value_serializer=serialize_message,
             key_serializer=serialize_key,
-            acks="all",
-            request_timeout_ms=30000,
+            acks=1,  # Changed from "all" to 1 for lower latency (leader acknowledgment is sufficient)
+            request_timeout_ms=10000,  # Reduced from 30s to 10s for faster failure detection
             max_request_size=10 * 1024 * 1024,  # 10MB
+            linger_ms=0,  # Send immediately, no batching delay
+            max_batch_size=16384,  # Small batch size for low latency (default is 16384)
         )
         await self._producer.start()
         logger.info(
