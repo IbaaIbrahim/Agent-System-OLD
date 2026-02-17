@@ -56,12 +56,45 @@ class EventPublisher:
             "id": event_id,
         }
 
-        try:
-            await self.pubsub.publish(channel, message)
-        except Exception as e:
-            logger.error(
-                "Failed to publish to Pub/Sub",
-                job_id=str(job_id),
-                event_type=event_type,
-                error=str(e),
-            )
+        # Retry logic for Pub/Sub publish (up to 3 attempts)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                subscriber_count = await self.pubsub.publish(channel, message)
+                if subscriber_count == 0:
+                    logger.debug(
+                        "Published to Pub/Sub but no subscribers",
+                        job_id=str(job_id),
+                        event_type=event_type,
+                        attempt=attempt + 1,
+                    )
+                else:
+                    logger.debug(
+                        "Published to Pub/Sub",
+                        job_id=str(job_id),
+                        event_type=event_type,
+                        subscribers=subscriber_count,
+                    )
+                break  # Success, exit retry loop
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    # Last attempt failed
+                    logger.error(
+                        "Failed to publish to Pub/Sub after retries",
+                        job_id=str(job_id),
+                        event_type=event_type,
+                        error=str(e),
+                        attempts=max_retries,
+                    )
+                else:
+                    # Retry with exponential backoff
+                    import asyncio
+                    wait_time = 0.1 * (2 ** attempt)  # 0.1s, 0.2s, 0.4s
+                    logger.warning(
+                        "Pub/Sub publish failed, retrying",
+                        job_id=str(job_id),
+                        event_type=event_type,
+                        attempt=attempt + 1,
+                        error=str(e),
+                    )
+                    await asyncio.sleep(wait_time)

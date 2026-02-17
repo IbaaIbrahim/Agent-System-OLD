@@ -13,7 +13,7 @@ interface QueuedMessage {
 }
 
 export const useChat = ({ client, onToolCall }: UseChatOptions) => {
-    const [chatState, setChatState] = React.useState<ChatState>({ messages: [], isThinking: false });
+    const [chatState, setChatState] = React.useState<ChatState>({ messages: [], isThinking: false, isWaitingForDeltas: false });
     const [messageQueue, setMessageQueue] = React.useState<QueuedMessage[]>([]);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [isTyping, setIsTyping] = React.useState(false);
@@ -119,6 +119,7 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
     return {
         messages: chatState.messages,
         isThinking: chatState.isThinking || isProcessing,
+        isWaitingForDeltas: chatState.isWaitingForDeltas || false,
         isTyping,
         messageQueue: messageQueue.map(m => m.text),
         sendMessage: handleSend,

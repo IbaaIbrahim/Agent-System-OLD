@@ -1,6 +1,7 @@
 """Agent execution loop."""
 
 import asyncio
+import re
 from typing import Any
 
 from libs.common import get_logger
@@ -266,6 +267,11 @@ class AgentExecutor:
                 content_buffer = ""
                 reasoning_buffer = ""
                 tool_calls = []
+                
+                # Stateful parser for <thinking></thinking> tags across chunks
+                thinking_buffer = ""  # Accumulates content inside thinking tags
+                in_thinking_tag = False  # Whether we're currently inside a thinking tag
+                pending_buffer = ""  # Buffer for content that might contain partial tags
 
                 logger.info(
                     "🏃‍♂️ Calling llm_service.stream now",
@@ -298,10 +304,115 @@ class AgentExecutor:
                         )
                         
                         if chunk.content:
-                            content_buffer += chunk.content
-                            await self._emit_event(state, "delta", {
-                                "content": chunk.content,
-                            })
+                            # Process content chunk by chunk, handling partial <thinking> tags
+                            content = chunk.content
+                            
+                            # Combine pending buffer with new content
+                            combined = pending_buffer + content
+                            pending_buffer = ""
+                            
+                            remaining = combined
+                            
+                            while remaining:
+                                if not in_thinking_tag:
+                                    # Look for opening <thinking> tag
+                                    open_tag_pos = remaining.find("<thinking>")
+                                    if open_tag_pos != -1:
+                                        # Found complete opening tag - emit content before it
+                                        before_tag = remaining[:open_tag_pos]
+                                        if before_tag:
+                                            content_buffer += before_tag
+                                            await self._emit_event(state, "delta", {
+                                                "content": before_tag,
+                                            })
+                                        
+                                        # Start thinking mode
+                                        in_thinking_tag = True
+                                        remaining = remaining[open_tag_pos + len("<thinking>"):]
+                                    else:
+                                        # Check for partial opening tag at end of content
+                                        # Look for "<thinking" or any prefix that could become "<thinking>"
+                                        # We need to check if content ends with a prefix of "<thinking>"
+                                        OPEN_TAG = "<thinking>"
+                                        OPEN_TAG_LEN = len(OPEN_TAG)
+                                        
+                                        # Check if content ends with a prefix of the opening tag
+                                        # Check from longest to shortest to catch longest match first
+                                        # (e.g., "<thinking", "<thinkin", "<thinki", "<think", "<thin", etc.)
+                                        partial_found = False
+                                        for i in range(OPEN_TAG_LEN, 0, -1):
+                                            tag_prefix = OPEN_TAG[:i]
+                                            if remaining.endswith(tag_prefix):
+                                                # Found a partial tag at the end - buffer it
+                                                before_partial = remaining[:-i]
+                                                if before_partial:
+                                                    content_buffer += before_partial
+                                                    await self._emit_event(state, "delta", {
+                                                        "content": before_partial,
+                                                    })
+                                                pending_buffer = remaining[-i:]
+                                                remaining = ""
+                                                partial_found = True
+                                                break
+                                        
+                                        if not partial_found:
+                                            # No partial tag found - emit all content
+                                            content_buffer += remaining
+                                            await self._emit_event(state, "delta", {
+                                                "content": remaining,
+                                            })
+                                            remaining = ""
+                                else:
+                                    # We're inside a thinking tag - look for closing </thinking>
+                                    close_tag_pos = remaining.find("</thinking>")
+                                    if close_tag_pos != -1:
+                                        # Found closing tag - emit final thinking content
+                                        thinking_content = remaining[:close_tag_pos]
+                                        if thinking_content:
+                                            thinking_buffer += thinking_content
+                                            reasoning_buffer += thinking_content
+                                            await self._emit_event(state, "reasoning_delta", {
+                                                "content": thinking_content,
+                                            })
+                                            thinking_buffer = ""
+                                        
+                                        # Exit thinking mode
+                                        in_thinking_tag = False
+                                        remaining = remaining[close_tag_pos + len("</thinking>"):]
+                                    else:
+                                        # Check for partial closing tag at end
+                                        # Look for "</thinking" or any prefix that could become "</thinking>"
+                                        CLOSE_TAG = "</thinking>"
+                                        CLOSE_TAG_LEN = len(CLOSE_TAG)
+                                        
+                                        # Check if content ends with a prefix of the closing tag
+                                        # Check from longest to shortest to catch longest match first
+                                        partial_found = False
+                                        for i in range(CLOSE_TAG_LEN, 0, -1):
+                                            tag_prefix = CLOSE_TAG[:i]
+                                            if remaining.endswith(tag_prefix):
+                                                # Found a partial closing tag at the end - emit thinking before it, buffer the rest
+                                                thinking_content = remaining[:-i]
+                                                if thinking_content:
+                                                    thinking_buffer += thinking_content
+                                                    reasoning_buffer += thinking_content
+                                                    await self._emit_event(state, "reasoning_delta", {
+                                                        "content": thinking_content,
+                                                    })
+                                                pending_buffer = remaining[-i:]
+                                                remaining = ""
+                                                partial_found = True
+                                                break
+                                        
+                                        if not partial_found:
+                                            # No partial tag found - stream thinking content incrementally
+                                            if remaining:
+                                                thinking_buffer += remaining
+                                                reasoning_buffer += remaining
+                                                await self._emit_event(state, "reasoning_delta", {
+                                                    "content": remaining,
+                                                })
+                                            remaining = ""
 
                         if chunk.reasoning_content:
                             reasoning_buffer += chunk.reasoning_content
@@ -313,6 +424,30 @@ class AgentExecutor:
                             tool_calls.extend(chunk.tool_calls)
 
                         if chunk.is_final:
+                            # Handle any remaining buffered content
+                            if pending_buffer:
+                                if in_thinking_tag:
+                                    # Stream remaining thinking content
+                                    reasoning_buffer += pending_buffer
+                                    await self._emit_event(state, "reasoning_delta", {
+                                        "content": pending_buffer,
+                                    })
+                                else:
+                                    # Stream remaining regular content
+                                    content_buffer += pending_buffer
+                                    await self._emit_event(state, "delta", {
+                                        "content": pending_buffer,
+                                    })
+                                pending_buffer = ""
+                            
+                            # Handle any remaining thinking content (in case stream ends without closing tag)
+                            if in_thinking_tag and thinking_buffer:
+                                reasoning_buffer += thinking_buffer
+                                await self._emit_event(state, "reasoning_delta", {
+                                    "content": thinking_buffer,
+                                })
+                                thinking_buffer = ""
+                            
                             state.increment_tokens(
                                 chunk.input_tokens or 0,
                                 chunk.output_tokens or 0,

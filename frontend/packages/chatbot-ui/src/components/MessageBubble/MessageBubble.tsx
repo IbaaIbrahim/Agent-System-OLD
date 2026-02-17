@@ -4,6 +4,7 @@ import './MessageBubble.css';
 import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
 import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
+import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -53,6 +54,7 @@ export interface MessageProps {
     shouldAnimate?: boolean;
     onConfirm?: (toolCallId: string) => void;
     onReject?: (toolCallId: string) => void;
+    isWaitingForDeltas?: boolean; // Show blinking indicator when waiting for deltas
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -244,6 +246,9 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                             shouldAnimate={shouldAnimate && isLast}
                                             onComplete={isLast ? props.onAnimationComplete : undefined}
                                         />
+                                        {isLast && props.isWaitingForDeltas && (!step.content || step.content.trim().length === 0) && (
+                                            <BlinkingIndicator />
+                                        )}
                                     </div>
                                 );
                             }
@@ -263,6 +268,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
 const ThinkingBlock = ({ step }: { step: MessageStep }) => {
     const [isOpen, setIsOpen] = useState(false);
     const isFinished = step.isFinished;
+    const hasContent = step.content && step.content.trim().length > 0;
 
     return (
         <div className="cb-step-thinking-block" style={{ marginBottom: 8, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, overflow: 'hidden' }}>
@@ -286,10 +292,12 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
                     <div className="cb-thinking-spinner" style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
                 )}
 
-                <span style={{ flex: 1 }}>{step.content || 'Thinking Process'}</span>
+                <span style={{ flex: 1 }}>Thinking</span>
 
-                {step.thoughts && step.thoughts.length > 0 && (
-                    <span style={{ fontSize: '11px', opacity: 0.5 }}>{step.thoughts.length} logs</span>
+                {hasContent && (
+                    <span style={{ fontSize: '11px', opacity: 0.5 }}>
+                        {isOpen ? 'Hide' : 'Show'} content
+                    </span>
                 )}
 
                 <svg
@@ -300,13 +308,17 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
                 </svg>
             </div>
 
-            {isOpen && step.thoughts && step.thoughts.length > 0 && (
-                <div className="cb-thinking-logs" style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                    {step.thoughts.map((log, idx) => (
-                        <div key={idx} style={{ fontSize: '12px', fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>
-                            {log}
-                        </div>
-                    ))}
+            {isOpen && hasContent && (
+                <div className="cb-thinking-content" style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ 
+                        fontSize: '13px', 
+                        fontFamily: 'monospace', 
+                        color: 'rgba(255,255,255,0.8)', 
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: '1.5'
+                    }}>
+                        {step.content}
+                    </div>
                 </div>
             )}
             <style>{`
@@ -490,6 +502,9 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                         </ReactMarkdown>
                         {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
                             <span className="cb-cursor">|</span>
+                        )}
+                        {role === 'assistant' && props.isWaitingForDeltas && (!content || content.trim().length === 0) && (
+                            <BlinkingIndicator />
                         )}
                     </div>
                     {attachments && attachments.length > 0 && (
