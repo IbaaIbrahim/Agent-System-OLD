@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from libs.common import get_logger
+from libs.common.tool_catalog import get_tool_model_preference
 from libs.llm import get_provider
 
 from .assets import load_json_asset, load_text_asset
@@ -91,33 +92,43 @@ class ChecklistGeneratorTool(BaseTool):
 
             # Build user prompt with requirements
             user_prompt = f"""
-Title: {title}
-Description: {description}
-Language: {language}
+                Title: {title}
+                Description: {description}
+                Language: {language}
 
-User Requirements:
-{user_context}
-"""
+                User Requirements:
+                {user_context}
+            """
 
-            # Get OpenAI provider for structured output
-            provider = get_provider("openai")
+            # Get provider and model from tool catalog
+            provider_name, model_name = get_tool_model_preference(
+                self.name,
+                default_provider="openai",
+                default_model="gpt-4o-mini",
+            )
+
+            provider = get_provider(provider_name)
 
             logger.info(
-                "Calling OpenAI structured output API",
+                "Calling LLM structured output API",
                 job_id=job_id,
-                model="gpt-4o-mini",
+                provider=provider_name,
+                model=model_name,
                 user_prompt_length=len(user_prompt),
             )
 
-            # Generate checklist using structured output (with retry logic)
+            # Generate checklist using structured output (with retry logic).
+            # The Flowdit schema is ~1825 lines with strict mode, so structured
+            # output needs more time than regular chat completions (5 min vs 2 min).
             result = await provider.complete_structured(
                 system=system_prompt,
                 user_message=user_prompt,
                 json_schema=schema,
                 schema_name="FlowditChecklist",
-                model="gpt-4o-mini",
+                model=model_name,
                 max_retries=3,
                 base_delay=2.0,
+                timeout=480.0,
             )
 
             logger.info(

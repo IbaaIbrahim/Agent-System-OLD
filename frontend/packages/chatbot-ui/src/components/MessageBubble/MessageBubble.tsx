@@ -54,6 +54,7 @@ export interface MessageProps {
     shouldAnimate?: boolean;
     onConfirm?: (toolCallId: string) => void;
     onReject?: (toolCallId: string) => void;
+    onToolCall?: Record<string, (data: any) => Promise<any> | void>;
     isWaitingForDeltas?: boolean; // Show blinking indicator when waiting for deltas
 }
 
@@ -210,6 +211,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                             }
 
                             if (step.type === 'tool-call') {
+                                const toolHandler = step.toolName ? props.onToolCall?.[step.toolName] : undefined;
                                 return (
                                     <div key={step.id} className="cb-step-tool" style={{ marginBottom: 8 }}>
                                         <ToolInvocation
@@ -217,6 +219,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                             args={step.toolArgs}
                                             status={step.toolStatus as any}
                                             result={step.toolResult}
+                                            onAction={toolHandler}
                                         />
                                     </div>
                                 );

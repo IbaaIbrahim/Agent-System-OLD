@@ -297,6 +297,10 @@ export class RealChatClient implements ChatClient {
                     const data = JSON.parse(event.data);
                     console.log('Tool call received:', data);
 
+                    // Backend sends tool_calls as an array
+                    const toolCalls: Array<{id?: string; name?: string; tool_name?: string; arguments?: any}> =
+                        data.tool_calls || [data];
+
                     this.messages = this.messages.map(m => {
                         if (m.id === assistantMsgId) {
                             let steps = m.steps ? [...m.steps] : [];
@@ -311,14 +315,17 @@ export class RealChatClient implements ChatClient {
                                 });
                             }
 
-                            const newStep: MessageStep = {
-                                id: data.id || `tool-${Date.now()}`,
-                                type: 'tool-call',
-                                toolName: data.name || data.tool_name,
-                                toolArgs: data.arguments,
-                                toolStatus: 'running'
-                            };
-                            return { ...m, steps: [...steps, newStep] };
+                            for (const tc of toolCalls) {
+                                const newStep: MessageStep = {
+                                    id: tc.id || `tool-${Date.now()}`,
+                                    type: 'tool-call',
+                                    toolName: tc.name || tc.tool_name,
+                                    toolArgs: tc.arguments,
+                                    toolStatus: 'running'
+                                };
+                                steps = [...steps, newStep];
+                            }
+                            return { ...m, steps };
                         }
                         return m;
                     });

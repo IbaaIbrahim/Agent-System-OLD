@@ -64,18 +64,30 @@ class GetFileDescriptionTool(BaseTool):
                 if tenant_id and str(file_upload.tenant_id) != str(tenant_id):
                     return f"Error: File '{file_id}' not found."
 
-                if not file_upload.analysis_description:
+                # Prefer extracted_text (full document content) over
+                # analysis_description (LLM summary for images/scanned PDFs)
+                content = (
+                    file_upload.extracted_text or file_upload.analysis_description
+                )
+
+                if not content:
                     return (
                         f"File '{file_upload.filename}' (type: {file_upload.content_type}, "
                         f"size: {file_upload.size_bytes} bytes) has not been analyzed yet. "
                         "Use the 'analyze_file' tool with this file_id to generate an analysis."
                     )
 
-                # Return the cached analysis
+                # Return the cached content
                 analyzed_at = (
                     file_upload.analyzed_at.isoformat()
                     if file_upload.analyzed_at
                     else "unknown"
+                )
+
+                label = (
+                    "Extracted Content"
+                    if file_upload.extracted_text
+                    else "Analysis"
                 )
 
                 return (
@@ -83,7 +95,7 @@ class GetFileDescriptionTool(BaseTool):
                     f"Type: {file_upload.content_type}\n"
                     f"Size: {file_upload.size_bytes} bytes\n"
                     f"Analyzed at: {analyzed_at}\n\n"
-                    f"--- Analysis ---\n{file_upload.analysis_description}"
+                    f"--- {label} ---\n{content}"
                 )
 
         except Exception as e:

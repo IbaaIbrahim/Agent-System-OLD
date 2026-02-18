@@ -16,6 +16,9 @@ from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 
 @catalog_tool("analyze_file")
 class AnalyzeFileTool(BaseTool):
@@ -68,13 +71,16 @@ class AnalyzeFileTool(BaseTool):
         # Step 2: Check DB for existing cached analysis
         file_record = await self._get_file_record(file_id)
 
-        if file_record and file_record.analysis_description:
+        if file_record and (file_record.extracted_text or file_record.analysis_description):
+            # Prefer extracted_text (full content) over analysis_description (summary)
+            cached = file_record.extracted_text or file_record.analysis_description
             logger.info(
                 "Returning cached analysis from database",
                 file_id=file_id,
                 analyzed_at=str(file_record.analyzed_at),
+                has_extracted_text=bool(file_record.extracted_text),
             )
-            return file_record.analysis_description
+            return cached
 
         # Step 3: No cached analysis — try to get file data from Redis
         try:
@@ -120,19 +126,33 @@ class AnalyzeFileTool(BaseTool):
             )
 
             # Route based on content type
+            extracted_text: str | None = None
+
             if content_type.startswith("image/"):
                 result = await self._analyze_image(
                     file_data_bytes, content_type, query, filename
                 )
             elif content_type == "application/pdf":
-                result = await self._analyze_pdf(file_data_bytes, query, filename)
+                result, extracted_text = await self._analyze_pdf(
+                    file_data_bytes, query, filename, encoded_data
+                )
+            elif content_type == DOCX_MIME:
+                result, extracted_text = await self._extract_docx(
+                    file_data_bytes, filename
+                )
+            elif content_type == XLSX_MIME:
+                result, extracted_text = await self._extract_xlsx(
+                    file_data_bytes, filename
+                )
             elif content_type.startswith("text/"):
-                result = await self._analyze_text(file_data_bytes, query, filename)
+                result, extracted_text = self._extract_text(
+                    file_data_bytes, filename
+                )
             else:
                 return f"Error: Unsupported file type '{content_type}' for analysis."
 
             # Store analysis result in database for later retrieval
-            await self._save_analysis_to_db(file_id, result)
+            await self._save_analysis_to_db(file_id, result, extracted_text)
 
             return result
 
@@ -173,12 +193,18 @@ class AnalyzeFileTool(BaseTool):
             )
             return None
 
-    async def _save_analysis_to_db(self, file_id: str, analysis: str) -> None:
+    async def _save_analysis_to_db(
+        self,
+        file_id: str,
+        analysis: str,
+        extracted_text: str | None = None,
+    ) -> None:
         """Save analysis result to the file_uploads table for later retrieval.
 
         Args:
             file_id: UUID of the file
-            analysis: The analysis text to store
+            analysis: The analysis text to store (description or raw text)
+            extracted_text: Raw extracted text from document (PDF, DOCX, XLSX)
         """
         try:
             import uuid as uuid_mod
@@ -190,14 +216,18 @@ class AnalyzeFileTool(BaseTool):
 
             file_uuid = uuid_mod.UUID(file_id)
 
+            values: dict = {
+                "analysis_description": analysis,
+                "analyzed_at": datetime.now(UTC),
+            }
+            if extracted_text is not None:
+                values["extracted_text"] = extracted_text
+
             async with get_session_context() as session:
                 stmt = (
                     update(FileUpload)
                     .where(FileUpload.id == file_uuid)
-                    .values(
-                        analysis_description=analysis,
-                        analyzed_at=datetime.now(UTC),
-                    )
+                    .values(**values)
                 )
                 await session.execute(stmt)
                 await session.commit()
@@ -206,6 +236,7 @@ class AnalyzeFileTool(BaseTool):
                 "Analysis saved to database",
                 file_id=file_id,
                 analysis_length=len(analysis),
+                has_extracted_text=extracted_text is not None,
             )
         except Exception as e:
             # Don't fail the tool if DB save fails — the analysis was still returned
@@ -287,16 +318,28 @@ class AnalyzeFileTool(BaseTool):
 
         return response.content or "No analysis generated."
 
-    async def _analyze_pdf(self, file_data: bytes, query: str, filename: str) -> str:
+    async def _analyze_pdf(
+        self,
+        file_data: bytes,
+        query: str,
+        filename: str,
+        encoded_data: str | None = None,
+    ) -> tuple[str, str | None]:
         """Analyze PDF file.
+
+        Tries text extraction first (cheap). If text is found, returns it
+        directly — the main agent LLM will analyze the content in context.
+        If no text is found, falls back to Anthropic's native PDF document
+        block for scanned/image PDFs.
 
         Args:
             file_data: Raw PDF bytes
             query: Analysis query
             filename: Original filename
+            encoded_data: Pre-encoded base64 string (avoids re-encoding)
 
         Returns:
-            Analysis result
+            Tuple of (result_text, extracted_text_or_none)
         """
         try:
             import io
@@ -314,85 +357,101 @@ class AnalyzeFileTool(BaseTool):
                     text_content += f"\n--- Page {i+1} ---\n{page_text}"
 
             if not text_content.strip():
-                return (
-                    f"Analysis Warning: No text could be extracted from '{filename}'. "
-                    "The PDF might be a scanned image without OCR text layer. "
-                    "Please convert it to an image format (PNG/JPEG) for visual analysis."
+                # No embedded text — try native PDF analysis via Anthropic
+                logger.info(
+                    "No text extracted from PDF, falling back to native PDF analysis",
+                    filename=filename,
+                    pages=page_count,
                 )
+                result = await self._analyze_pdf_native(
+                    file_data, query, filename, encoded_data
+                )
+                return result, None
 
-            provider_name, model = get_tool_model_preference("analyze_file")
-            provider = get_provider(provider_name)
-
-            message = LLMMessage(
-                role=MessageRole.USER,
-                content=(
-                    f"Analyze this PDF document (filename: {filename}).\n\n"
-                    f"Task: {query}\n\n"
-                    f"Document Content ({page_count} pages):\n{text_content}"
-                ),
+            # Return extracted text directly — no secondary LLM call needed
+            header = (
+                f"Extracted text from '{filename}' "
+                f"({page_count} page{'s' if page_count != 1 else ''}):\n"
             )
+            result = header + text_content
 
             logger.info(
-                "Calling LLM for PDF analysis",
+                "Returning extracted PDF text directly",
                 filename=filename,
                 content_length=len(text_content),
-                model=model,
+                pages=page_count,
             )
 
-            response = await provider.complete(
-                [message],
-                model=model,
-                max_tokens=4096,
-            )
-
-            return response.content or "No analysis generated."
+            return result, text_content
 
         except ImportError:
-            return "Error: PDF analysis dependency (pypdf) is missing."
+            return "Error: PDF analysis dependency (pypdf) is missing.", None
         except Exception as e:
             logger.error("PDF analysis failed", error=str(e))
-            return f"Error analyzing PDF: {str(e)}"
+            return f"Error analyzing PDF: {str(e)}", None
 
-    async def _analyze_text(self, file_data: bytes, query: str, filename: str) -> str:
-        """Analyze text file.
+    async def _analyze_pdf_native(
+        self,
+        file_data: bytes,
+        query: str,
+        filename: str,
+        encoded_data: str | None = None,
+    ) -> str:
+        """Analyze a scanned/image PDF using Anthropic's native document block.
 
         Args:
-            file_data: Raw text bytes
+            file_data: Raw PDF bytes
             query: Analysis query
             filename: Original filename
+            encoded_data: Pre-encoded base64 string (avoids re-encoding)
 
         Returns:
             Analysis result
         """
-        # Decode text content
-        try:
-            text_content = file_data.decode("utf-8")
-        except UnicodeDecodeError:
-            try:
-                text_content = file_data.decode("latin-1")
-            except UnicodeDecodeError:
-                return (
-                    f"Error: Unable to decode text file '{filename}'. "
-                    "File may be corrupted or in an unsupported encoding."
-                )
+        import base64
 
-        # Use proper provider/model from catalog
         provider_name, model = get_tool_model_preference("analyze_file")
+
+        if provider_name != "anthropic":
+            return (
+                f"Analysis Warning: No text could be extracted from '{filename}'. "
+                "Native PDF analysis requires the Anthropic provider. "
+                "Please convert the PDF to an image format (PNG/JPEG) for visual analysis."
+            )
+
+        if encoded_data is None:
+            encoded_data = base64.b64encode(file_data).decode("utf-8")
+
         provider = get_provider(provider_name)
 
         message = LLMMessage(
             role=MessageRole.USER,
-            content=(
-                f"Analyze this text file (filename: {filename}).\n\n"
-                f"Task: {query}\n\n"
-                f"File Content:\n{text_content}"
-            ),
+            content=[
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": encoded_data,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": (
+                        f"Analyze this PDF document (filename: {filename}).\n\n"
+                        f"Task: {query}\n\n"
+                        "IMPORTANT: Provide an exhaustive, highly detailed description. "
+                        "Do NOT summarize or abbreviate. Describe every visible element, "
+                        "text, table, figure, layout, and structure in full detail. "
+                        "If there is text, transcribe it exactly."
+                    ),
+                },
+            ],
         )
 
         logger.info(
-            "Calling LLM for text file analysis",
+            "Calling Anthropic with native PDF document block",
             filename=filename,
-            content_length=len(text_content),
             model=model,
         )
 
@@ -402,4 +461,191 @@ class AnalyzeFileTool(BaseTool):
             max_tokens=4096,
         )
 
+        logger.info(
+            "Native PDF analysis complete",
+            filename=filename,
+            output_tokens=response.output_tokens,
+        )
+
         return response.content or "No analysis generated."
+
+    def _extract_text(
+        self, file_data: bytes, filename: str
+    ) -> tuple[str, str | None]:
+        """Extract text file content directly.
+
+        Returns the raw text content — the main agent LLM will analyze it.
+
+        Args:
+            file_data: Raw text bytes
+            filename: Original filename
+
+        Returns:
+            Tuple of (result_text, extracted_text_or_none)
+        """
+        try:
+            text_content = file_data.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                text_content = file_data.decode("latin-1")
+            except UnicodeDecodeError:
+                return (
+                    f"Error: Unable to decode text file '{filename}'. "
+                    "File may be corrupted or in an unsupported encoding.",
+                    None,
+                )
+
+        header = f"Extracted text from '{filename}':\n"
+        result = header + text_content
+
+        logger.info(
+            "Returning extracted text file content directly",
+            filename=filename,
+            content_length=len(text_content),
+        )
+
+        return result, text_content
+
+    async def _extract_docx(
+        self, file_data: bytes, filename: str
+    ) -> tuple[str, str | None]:
+        """Extract text from Word (.docx) file.
+
+        Extracts paragraphs (with heading/list style prefixes) and tables,
+        returns the raw text directly for the main agent to analyze.
+
+        Args:
+            file_data: Raw .docx bytes
+            filename: Original filename
+
+        Returns:
+            Tuple of (result_text, extracted_text_or_none)
+        """
+        try:
+            import io
+
+            from docx import Document
+        except ImportError:
+            return (
+                "Error: Word document analysis dependency (python-docx) is missing.",
+                None,
+            )
+
+        try:
+            doc = Document(io.BytesIO(file_data))
+            parts: list[str] = []
+
+            # Extract paragraphs with style context
+            for para in doc.paragraphs:
+                text = para.text.strip()
+                if not text:
+                    continue
+                style_name = (para.style.name or "").lower()
+                if "heading" in style_name:
+                    level = style_name.replace("heading", "").strip() or "1"
+                    parts.append(f"{'#' * int(level)} {text}")
+                elif "title" in style_name:
+                    parts.append(f"# {text}")
+                elif "list" in style_name:
+                    parts.append(f"- {text}")
+                else:
+                    parts.append(text)
+
+            # Extract tables
+            for i, table in enumerate(doc.tables):
+                parts.append(f"\n[Table {i + 1}]")
+                for row_idx, row in enumerate(table.rows):
+                    cells = [cell.text.strip() for cell in row.cells]
+                    parts.append("| " + " | ".join(cells) + " |")
+                    if row_idx == 0:
+                        parts.append("| " + " | ".join("---" for _ in cells) + " |")
+
+            text_content = "\n".join(parts)
+
+            if not text_content.strip():
+                return (
+                    f"Analysis Warning: No content could be extracted from '{filename}'. "
+                    "The Word document may be empty or contain only embedded objects.",
+                    None,
+                )
+
+            header = f"Extracted text from '{filename}':\n"
+            result = header + text_content
+
+            logger.info(
+                "Returning extracted Word document text directly",
+                filename=filename,
+                content_length=len(text_content),
+            )
+
+            return result, text_content
+
+        except Exception as e:
+            logger.error("Word document extraction failed", error=str(e))
+            return f"Error extracting Word document: {str(e)}", None
+
+    async def _extract_xlsx(
+        self, file_data: bytes, filename: str
+    ) -> tuple[str, str | None]:
+        """Extract text from Excel (.xlsx) file.
+
+        Extracts all sheets with rows formatted as pipe-separated values,
+        returns the raw text directly for the main agent to analyze.
+
+        Args:
+            file_data: Raw .xlsx bytes
+            filename: Original filename
+
+        Returns:
+            Tuple of (result_text, extracted_text_or_none)
+        """
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            return "Error: Excel analysis dependency (openpyxl) is missing.", None
+
+        try:
+            import io
+
+            wb = load_workbook(
+                io.BytesIO(file_data), read_only=True, data_only=True
+            )
+            parts: list[str] = []
+            sheet_count = len(wb.sheetnames)
+
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                parts.append(f"\n=== Sheet: {sheet_name} ===")
+                for row in ws.iter_rows(values_only=True):
+                    cells = [str(c) if c is not None else "" for c in row]
+                    if any(cells):
+                        parts.append("| " + " | ".join(cells) + " |")
+
+            wb.close()
+
+            text_content = "\n".join(parts)
+
+            if not text_content.strip():
+                return (
+                    f"Analysis Warning: No data could be extracted from '{filename}'. "
+                    "The Excel file may be empty.",
+                    None,
+                )
+            header = (
+                f"Extracted data from '{filename}' "
+                f"({sheet_count} sheet{'s' if sheet_count != 1 else ''}):\n"
+            )
+            result = header + text_content
+
+            logger.info(
+                "Returning extracted Excel data directly",
+                filename=filename,
+                content_length=len(text_content),
+                sheets=sheet_count,
+            )
+
+            return result, text_content
+
+        except Exception as e:
+            logger.error("Excel extraction failed", error=str(e))
+            return f"Error extracting Excel file: {str(e)}", None

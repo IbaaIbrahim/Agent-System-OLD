@@ -17,6 +17,7 @@ FILE_CACHE_TTL_SECONDS = 900
 # Maximum file sizes (in bytes)
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 MAX_PDF_SIZE_BYTES = 25 * 1024 * 1024    # 25 MB
+MAX_DOCUMENT_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB (Word, Excel)
 MAX_TEXT_SIZE_BYTES = 5 * 1024 * 1024     # 5 MB
 
 
@@ -64,12 +65,18 @@ class FileStorageService:
             content_type = metadata.get("content_type", "")
             size_bytes = len(file_data)
 
+            _DOCUMENT_MIME_TYPES = (
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
             if content_type.startswith("image/"):
                 if size_bytes > MAX_IMAGE_SIZE_BYTES:
                     raise ValueError(f"Image size ({size_bytes} bytes) exceeds maximum ({MAX_IMAGE_SIZE_BYTES} bytes)")
-            elif content_type == "application/pdf":
-                if size_bytes > MAX_PDF_SIZE_BYTES:
-                    raise ValueError(f"PDF size ({size_bytes} bytes) exceeds maximum ({MAX_PDF_SIZE_BYTES} bytes)")
+            elif content_type in _DOCUMENT_MIME_TYPES:
+                if size_bytes > MAX_DOCUMENT_SIZE_BYTES:
+                    raise ValueError(f"Document size ({size_bytes} bytes) exceeds maximum ({MAX_DOCUMENT_SIZE_BYTES} bytes)")
             elif content_type.startswith("text/"):
                 if size_bytes > MAX_TEXT_SIZE_BYTES:
                     raise ValueError(f"Text file size ({size_bytes} bytes) exceeds maximum ({MAX_TEXT_SIZE_BYTES} bytes)")

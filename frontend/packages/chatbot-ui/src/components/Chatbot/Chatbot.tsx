@@ -321,6 +321,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                                 onAnimationComplete={() => handleAnimationComplete(msg.id)}
                                 onConfirm={handleConfirm}
                                 onReject={handleReject}
+                                onToolCall={onToolCall}
                                 isWaitingForDeltas={
                                     isWaitingForDeltas &&
                                     msg.role === 'assistant' &&

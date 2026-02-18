@@ -50,6 +50,8 @@ ALLOWED_MIME_TYPES = [
     "image/webp",
     # Documents
     "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
     # Text
     "text/plain",
     "text/markdown",
@@ -70,7 +72,7 @@ async def upload_file(
 
     Allowed file types:
     - Images: JPEG, PNG, GIF, WebP (max 10MB)
-    - Documents: PDF (max 25MB)
+    - Documents: PDF, Word (.docx), Excel (.xlsx) (max 25MB)
     - Text: TXT, Markdown, CSV (max 5MB)
     """
     logger.info(
