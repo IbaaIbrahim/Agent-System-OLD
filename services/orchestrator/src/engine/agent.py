@@ -173,7 +173,7 @@ class AgentExecutor:
                                 await self._emit_event(state, "tool_result", {
                                     "tool_call_id": tc.id,
                                     "tool_name": tc.name,
-                                    "result": result[:500],  # Truncate for event
+                                    "result": result,
                                 })
 
                 else:
@@ -516,7 +516,7 @@ class AgentExecutor:
                                             await self._emit_event(state, "tool_result", {
                                                 "tool_call_id": tc.id,
                                                 "tool_name": tc.name,
-                                                "result": result[:500],
+                                                "result": result,
                                             })
 
                             elif content_buffer or reasoning_buffer:
@@ -604,7 +604,7 @@ class AgentExecutor:
                 await self._emit_event(state, "tool_result", {
                     "tool_call_id": tc.id,
                     "tool_name": tc.name,
-                    "result": result[:500],  # Truncate for event
+                    "result": result,
                 })
 
         # Clear pending tools and mark as running

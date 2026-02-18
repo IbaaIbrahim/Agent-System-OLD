@@ -144,6 +144,17 @@ class LLMMessage:
                     elif block.get("type") == "image_url":
                         # Already in OpenAI format
                         openai_content.append(block)
+                    elif block.get("type") == "document":
+                        # Anthropic-only document block (native PDF) — not
+                        # supported by OpenAI.  Convert to a text note so
+                        # callers get a clear signal rather than silent drop.
+                        openai_content.append({
+                            "type": "text",
+                            "text": (
+                                "[Unsupported: native PDF document block. "
+                                "This content requires the Anthropic provider.]"
+                            ),
+                        })
                 msg["content"] = openai_content
             else:
                 # Simple string content

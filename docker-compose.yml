@@ -228,6 +228,12 @@ services:
     container_name: agent-api-gateway
     ports:
       - "8000:8000"
+    # DNS configuration to ensure external API access (OpenAI, Anthropic)
+    # Falls back to Google DNS and Cloudflare DNS if host DNS fails
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
     environment:
       # Database
       - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
@@ -378,9 +384,12 @@ services:
       context: .
       dockerfile: services/live-session-manager/Dockerfile
     container_name: agent-live-session-manager
+    # DNS configuration to ensure external API access (OpenAI, Anthropic, Deepgram, ElevenLabs)
+    # Falls back to Google DNS and Cloudflare DNS if host DNS fails
     dns:
       - 8.8.8.8
       - 8.8.4.4
+      - 1.1.1.1
     environment:
       # Database
       - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
@@ -446,9 +455,12 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     container_name: agent-orchestrator
+    # DNS configuration to ensure external API access (OpenAI, Anthropic)
+    # Falls back to Google DNS and Cloudflare DNS if host DNS fails
     dns:
       - 8.8.8.8
       - 8.8.4.4
+      - 1.1.1.1
     environment:
       # Database
       - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
@@ -499,10 +511,18 @@ services:
       context: .
       dockerfile: services/tool-workers/Dockerfile
     container_name: agent-tool-workers
+    # DNS configuration to ensure external API access (OpenAI, Anthropic, web search)
+    # Falls back to Google DNS and Cloudflare DNS if host DNS fails
     dns:
       - 8.8.8.8
       - 8.8.4.4
+      - 1.1.1.1
     environment:
+      # Database
+      - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-10}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
       # Redis
       - REDIS_URL=redis://redis:6379/0
       - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
@@ -531,6 +551,8 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=${DEBUG:-false}
     depends_on:
+      postgres:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       kafka-init:

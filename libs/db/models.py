@@ -1069,6 +1069,11 @@ class FileUpload(Base):
         nullable=True,
         comment="Cached vision model analysis of the file content",
     )
+    extracted_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Raw extracted text content from document (PDF, DOCX, XLSX)",
+    )
     analyzed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

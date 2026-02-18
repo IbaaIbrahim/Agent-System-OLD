@@ -99,7 +99,8 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         behavior=ToolBehavior.USER_ENABLED,
         preferred_provider="anthropic",
         preferred_model="claude-3-5-haiku-20241022",  # Search summarization, use fast model
-        required_plan_feature="tools.web_search",
+        # required_plan_feature="tools.web_search",
+        required_plan_feature=None,
         toggle_label="Web Search",
         toggle_description="Allow agent to search the web for information",
     ),
@@ -124,7 +125,8 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         behavior=ToolBehavior.AUTO_EXECUTE,
         preferred_provider="anthropic",
         preferred_model="claude-3-5-sonnet-20241022",  # Code needs reasoning
-        required_plan_feature="tools.code_executor",
+        # required_plan_feature="tools.code_executor",
+        required_plan_feature=None,
     ),
     "generate_checklist": ToolMetadata(
         name="generate_checklist",
@@ -144,8 +146,8 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
             "required": ["title", "context"],
         },
         behavior=ToolBehavior.AUTO_EXECUTE,
-        preferred_provider="openai",
-        preferred_model="gpt-4o-mini",  # Complex generation needs strong model
+        preferred_provider="anthropic",
+        preferred_model="claude-haiku-4-5",  # Complex generation needs strong model
         # required_plan_feature="tools.checklist_generator",
         required_plan_feature=None,
         confirm_button_label="Generate Checklist",
@@ -154,11 +156,14 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
     "analyze_file": ToolMetadata(
         name="analyze_file",
         description=(
-            "Analyze uploaded files (images, PDFs, documents) using vision models. "
-            "Provides an exhaustive, highly detailed description of the file content — "
-            "every visible element, text, color, layout, structure, icon, and label is "
-            "described in full detail without summarization. The analysis result is cached "
-            "in the database for later retrieval via get_file_description."
+            "Analyze uploaded files (images, PDFs, Word documents, Excel spreadsheets) "
+            "using vision models and text extraction. Supports scanned/image-based PDFs "
+            "via native document analysis, .docx files with paragraph and table extraction, "
+            "and .xlsx files with multi-sheet data extraction. Provides an exhaustive, "
+            "highly detailed description of the file content — every visible element, text, "
+            "color, layout, structure, icon, and label is described in full detail without "
+            "summarization. The analysis result is cached in the database for later "
+            "retrieval via get_file_description."
         ),
         parameters={
             "type": "object",

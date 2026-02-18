@@ -78,6 +78,41 @@ class LLMService:
 
         return filtered if filtered else None
 
+    def _adjust_params_for_effort(
+        self,
+        effort_level: str | None,
+        base_temperature: float,
+        base_max_tokens: int,
+    ) -> tuple[float, int]:
+        """Adjust temperature and max_tokens based on effort level.
+
+        Args:
+            effort_level: Effort level string (low/medium/high)
+            base_temperature: Base temperature from state
+            base_max_tokens: Base max_tokens from state
+
+        Returns:
+            Tuple of (adjusted_temperature, adjusted_max_tokens)
+        """
+        if not effort_level:
+            return base_temperature, base_max_tokens
+
+        effort_level_lower = effort_level.lower()
+
+        if effort_level_lower == "high":
+            # High effort: increase creativity (temperature) and allow longer responses
+            adjusted_temp = min(base_temperature * 1.2, 0.95)  # Cap at 0.95 for stability
+            adjusted_max = max(base_max_tokens, 8192)  # Ensure at least 8k tokens for deep responses
+            return adjusted_temp, adjusted_max
+        elif effort_level_lower == "low":
+            # Low effort: slightly reduce temperature for more focused responses
+            adjusted_temp = max(base_temperature * 0.9, 0.3)  # Floor at 0.3
+            adjusted_max = min(base_max_tokens, 2048)  # Cap at 2k tokens for brevity
+            return adjusted_temp, adjusted_max
+        else:
+            # Medium effort: use defaults
+            return base_temperature, base_max_tokens
+
     def _build_system_prompt_with_tool_info(
         self,
         base_prompt: str | None,
@@ -85,6 +120,7 @@ class LLMService:
         plan_tools: list[str] | None,
         enabled_tools: list[str] | None,
         effort_level: str | None = None,
+        provider: str | None = None,
     ) -> str | None:
         """Build system prompt with information about disabled tools.
 
@@ -106,6 +142,21 @@ class LLMService:
 
         # Layer 1: Default orchestration prompt (always present)
         final_prompt = DEFAULT_SYSTEM_PROMPT
+
+
+        # Add critical instructions to use thinking tags
+        final_prompt += (
+            "\n\n## Critical: Thinking Tags (REQUIRED)\n\n"
+            "IMPORTANT: You MUST wrap ALL your internal reasoning and thinking process in <thinking></thinking> tags. "
+            "This is not optional. Every time you reason through a problem, show your thinking process by wrapping it in these tags. "
+            "Example:\n"
+            "<thinking>\n"
+            "The user is asking about X. Let me think about this step by step:\n"
+            "1. First, I need to understand Y\n"
+            "2. Then I should consider Z\n"
+            "</thinking>\n\n"
+            "Your final answer goes outside the tags. Always use these tags for your reasoning process."
+        )
 
         # Layer 1.5: Effort level behavioral directive
         if effort_level:
@@ -219,6 +270,7 @@ class LLMService:
         system_prompt = self._build_system_prompt_with_tool_info(
             state.system_prompt, state.tools, plan_tools, enabled_tools,
             effort_level=effort_level,
+            provider=state.provider,
         )
 
         logger.debug(
@@ -243,13 +295,28 @@ class LLMService:
         thinking_budget = state.metadata.get("thinking_budget_tokens")  # Anthropic
         reasoning_effort = state.metadata.get("reasoning_effort")  # OpenAI
 
+        # Adjust temperature and max_tokens based on effort level
+        adjusted_temperature, adjusted_max_tokens = self._adjust_params_for_effort(
+            effort_level, state.temperature, state.max_tokens
+        )
+
+        logger.info(
+            "Effort-based parameter adjustment",
+            job_id=str(state.job_id),
+            effort_level=effort_level,
+            original_temperature=state.temperature,
+            adjusted_temperature=adjusted_temperature,
+            original_max_tokens=state.max_tokens,
+            adjusted_max_tokens=adjusted_max_tokens,
+        )
+
         response = await provider.complete(
             messages=state.messages,
             model=state.model,
             system=system_prompt,
             tools=tools,
-            temperature=state.temperature,
-            max_tokens=state.max_tokens,
+            temperature=adjusted_temperature,
+            max_tokens=adjusted_max_tokens,
             thinking_budget_tokens=thinking_budget,
             reasoning_effort=reasoning_effort,
         )
@@ -310,6 +377,7 @@ class LLMService:
         system_prompt = self._build_system_prompt_with_tool_info(
             state.system_prompt, state.tools, plan_tools, enabled_tools,
             effort_level=effort_level,
+            provider=state.provider,
         )
 
         logger.debug(
@@ -333,13 +401,28 @@ class LLMService:
         thinking_budget = state.metadata.get("thinking_budget_tokens")  # Anthropic
         reasoning_effort = state.metadata.get("reasoning_effort")  # OpenAI
 
+        # Adjust temperature and max_tokens based on effort level
+        adjusted_temperature, adjusted_max_tokens = self._adjust_params_for_effort(
+            effort_level, state.temperature, state.max_tokens
+        )
+
+        logger.info(
+            "Effort-based parameter adjustment (streaming)",
+            job_id=str(state.job_id),
+            effort_level=effort_level,
+            original_temperature=state.temperature,
+            adjusted_temperature=adjusted_temperature,
+            original_max_tokens=state.max_tokens,
+            adjusted_max_tokens=adjusted_max_tokens,
+        )
+
         async for chunk in provider.stream(
             messages=state.messages,
             model=state.model,
             system=system_prompt,
             tools=tools,
-            temperature=state.temperature,
-            max_tokens=state.max_tokens,
+            temperature=adjusted_temperature,
+            max_tokens=adjusted_max_tokens,
             thinking_budget_tokens=thinking_budget,
             reasoning_effort=reasoning_effort,
         ):
