@@ -296,6 +296,8 @@ class AgentExecutor:
                         logger.debug(
                             "🔄 Stream chunk received",
                             job_id=str(state.job_id),
+                            content=chunk.content,
+                            reasoning_content=chunk.reasoning_content,
                             content_len=content_len,
                             reasoning_len=reasoning_len,
                             tool_calls_count=tool_calls_count,
