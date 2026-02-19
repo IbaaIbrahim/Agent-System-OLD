@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: agent_secret
       POSTGRES_DB: agent_db
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -29,7 +29,7 @@ services:
       dockerfile: services/auth-broker/Dockerfile
     container_name: agent-auth-broker
     ports:
-      - "11700:7003"
+      - "8003:7003"
     environment:
       # Database
       - GATEWAY_URL=${AUTH_BROKER_GATEWAY_URL:-http://api-gateway:8000}
@@ -595,20 +595,24 @@ services:
   # FRONTEND
   # ===================
 
-  # frontend:
-  #   build:
-  #     context: .
-  #     dockerfile: frontend/Dockerfile
-  #   container_name: agent-frontend
-  #   ports:
-  #     - "3000:80"
-  #   depends_on:
-  #     api-gateway:
-  #       condition: service_healthy
-  #     stream-edge:
-  #       condition: service_healthy
-  #   networks:
-  #     - agent-network
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        - VITE_AUTH_BROKER_URL=${VITE_AUTH_BROKER_URL:?VITE_AUTH_BROKER_URL is required}
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:?VITE_API_BASE_URL is required}
+        - VITE_WS_URL=${VITE_WS_URL:?VITE_WS_URL is required}
+    container_name: agent-frontend
+    ports:
+      - "8005:80"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      stream-edge:
+        condition: service_healthy
+    networks:
+      - agent-network
 
 volumes:
   postgres_data:

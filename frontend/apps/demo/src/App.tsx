@@ -6,6 +6,10 @@ import {
     ChatMode,
 } from '@chatbot-ui/core'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+const AUTH_BROKER_URL = import.meta.env.VITE_AUTH_BROKER_URL || "http://localhost:11700";
+const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8002/ws";
+
 function App() {
     const [mode, setMode] = useState<ChatMode>('sidebar');
     const [isOpen, setIsOpen] = useState(true);
@@ -15,16 +19,38 @@ function App() {
 
     // Initialize Auth & Client
     useEffect(() => {
+        AuthClient.configure(AUTH_BROKER_URL);
+
         const initAuth = async () => {
             try {
                 const token = await AuthClient.getInitialToken();
                 setAuthToken(token);
-                setClient(new RealChatClient(token));
+                setClient(new RealChatClient(token, API_BASE_URL));
             } catch (error) {
                 console.error('Failed to initialize auth:', error);
             }
         };
         initAuth();
+
+        // Refresh token every 45 minutes
+        const REFRESH_INTERVAL = 45 * 60 * 1000;
+        const intervalId = setInterval(async () => {
+            try {
+                const newToken = await AuthClient.refreshToken();
+                setAuthToken(newToken);
+                setClient((prev: any) => {
+                    if (prev instanceof RealChatClient) {
+                        prev.setToken(newToken);
+                        return prev;
+                    }
+                    return new RealChatClient(newToken, API_BASE_URL);
+                });
+            } catch (error) {
+                console.error('Failed to refresh token:', error);
+            }
+        }, REFRESH_INTERVAL);
+
+        return () => clearInterval(intervalId);
     }, []);
 
 
@@ -67,10 +93,10 @@ function App() {
                         userName="Ibaa"
                         quickActions={quickActions}
                         liveAssistantEnabled={!!authToken}
-                        wsUrl="ws://localhost:8002/ws"
+                        wsUrl={WS_URL}
                         wsToken={authToken ?? undefined}
                         accessToken={authToken}
-                        apiBaseUrl="http://localhost:8000/api"
+                        apiBaseUrl={API_BASE_URL}
                     />
                 </>
             ) : (
@@ -84,10 +110,10 @@ function App() {
                         userName="Ibaa"
                         quickActions={quickActions}
                         liveAssistantEnabled={!!authToken}
-                        wsUrl="ws://localhost:8002/ws"
+                        wsUrl={WS_URL}
                         wsToken={authToken ?? undefined}
                         accessToken={authToken}
-                        apiBaseUrl="http://localhost:8000/api"
+                        apiBaseUrl={API_BASE_URL}
                     />
                 </div>
             )}
