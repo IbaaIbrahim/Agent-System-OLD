@@ -25,7 +25,7 @@ else
 	CHECK_WATCHFILES = command -v watchfiles > /dev/null
 endif
 
-.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend postman openapi ws live-session
+.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend postman openapi ws live-session ps
 
 # Default target
 help:
@@ -40,6 +40,7 @@ help:
 	@echo "  make logs        - Tail logs from all services"
 	@echo "  make clean       - Remove containers, volumes, and images"
 	@echo "  make restart     - Restart all services"
+	@echo "  make restart-and-migrate - Restart all services and run migrations"
 	@echo ""
 	@echo "Development:"
 	@echo "  make install     - Install Python and Node dependencies"
@@ -81,6 +82,9 @@ help:
 	@echo "  make frontend    - Run Frontend locally"
 	@echo "  make postman      - Generate Postman Collection"
 	@echo "  make openapi      - Generate OpenAPI Schema"
+	@echo ""
+	@echo "Utilities:"
+	@echo "  make ps           - List local (non-Docker) running services"
 
 # ===================
 # INFRASTRUCTURE
@@ -88,7 +92,6 @@ help:
 
 up:
 	docker compose up -d
-	$(MAKE) migrate
 	@echo "Waiting for services to be healthy..."
 	@$(SLEEP) 10
 	@docker compose ps
@@ -115,6 +118,8 @@ clean: clean-volumes test-services-down
 	docker system prune -f
 
 restart: down up
+
+restart-and-migrate: down up migrate
 
 # Infrastructure only (for local development)
 infra:
@@ -234,22 +239,22 @@ endif
 # ===================
 
 migrate:
-	python -m alembic -c migrations/alembic.ini upgrade head
+	$(PYTHON) -m alembic -c migrations/alembic.ini upgrade head
 
 migrate-new:
 ifeq ($(IS_WINDOWS),1)
-	@set /p name="Migration name: " && python -m alembic -c migrations/alembic.ini revision --autogenerate -m "!name!"
+	@set /p name="Migration name: " && $(PYTHON) -m alembic -c migrations/alembic.ini revision --autogenerate -m "!name!"
 else
 	@read -p "Migration name: " name; \
-	python -m alembic -c migrations/alembic.ini revision --autogenerate -m "$$name"
+	$(PYTHON) -m alembic -c migrations/alembic.ini revision --autogenerate -m "$$name"
 endif
 
 migrate-down:
-	python -m alembic -c migrations/alembic.ini downgrade -1
+	$(PYTHON) -m alembic -c migrations/alembic.ini downgrade -1
 
 migrate-reset:
-	python -m alembic -c migrations/alembic.ini downgrade base
-	python -m alembic -c migrations/alembic.ini upgrade head
+	$(PYTHON) -m alembic -c migrations/alembic.ini downgrade base
+	$(PYTHON) -m alembic -c migrations/alembic.ini upgrade head
 
 # ===================
 # TESTING
@@ -383,6 +388,9 @@ check: lint typecheck test
 # ===================
 # UTILITIES
 # ===================
+
+ps:
+	@ps aux | grep "python -m services\." | grep -v grep || echo "No local services running."
 
 shell-db:
 	docker compose exec postgres psql -U agent -d agent_db
