@@ -62,26 +62,29 @@ class TestWebSearchToolInit:
         assert "num_results" in definition["parameters"]["properties"]
 
 
+def _make_ddgs_mock(results: list[dict]):
+    """Build a mock DDGS context manager that returns given results from .text()."""
+    mock_text = MagicMock(return_value=results)
+    mock_client = MagicMock()
+    mock_client.text = mock_text
+    mock_ddgs = MagicMock()
+    mock_ddgs.__enter__ = MagicMock(return_value=mock_client)
+    mock_ddgs.__exit__ = MagicMock(return_value=False)
+    return mock_ddgs, mock_text
+
+
 class TestDuckDuckGoSearch:
-    """Tests for DuckDuckGo search integration."""
+    """Tests for DuckDuckGo search integration (via ddgs library)."""
 
     @pytest.mark.asyncio
-    async def test_search_with_abstract(self):
-        """Test DuckDuckGo search with abstract result."""
+    async def test_search_with_results(self):
+        """Test DuckDuckGo search with results from ddgs."""
         tool = WebSearchTool(provider="duckduckgo")
+        mock_ddgs, mock_text = _make_ddgs_mock([
+            {"title": "Python", "href": "https://python.org", "body": "Python is a programming language"},
+        ])
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "Abstract": "Python is a programming language",
-            "AbstractURL": "https://python.org",
-            "Heading": "Python",
-            "RelatedTopics": [],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
+        with patch("ddgs.DDGS", return_value=mock_ddgs):
             result = await tool.execute(
                 {"query": "python programming", "num_results": 3},
                 {"job_id": "test-job-123"},
@@ -90,32 +93,18 @@ class TestDuckDuckGoSearch:
         assert "Python" in result
         assert "python.org" in result
         assert "programming language" in result
-        mock_get.assert_called_once()
+        mock_text.assert_called_once_with("python programming", max_results=3)
 
     @pytest.mark.asyncio
-    async def test_search_with_related_topics(self):
-        """Test DuckDuckGo search with related topics."""
+    async def test_search_multiple_results(self):
+        """Test DuckDuckGo search with multiple results."""
         tool = WebSearchTool(provider="duckduckgo")
+        mock_ddgs, mock_text = _make_ddgs_mock([
+            {"title": "Python tutorial for beginners", "href": "https://example.com/tutorial", "body": "Learn Python"},
+            {"title": "Python documentation", "href": "https://docs.python.org", "body": "Official docs"},
+        ])
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "Abstract": "",
-            "RelatedTopics": [
-                {
-                    "Text": "Python tutorial for beginners",
-                    "FirstURL": "https://example.com/tutorial",
-                },
-                {
-                    "Text": "Python documentation",
-                    "FirstURL": "https://docs.python.org",
-                },
-            ],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
+        with patch("ddgs.DDGS", return_value=mock_ddgs):
             result = await tool.execute(
                 {"query": "python", "num_results": 5},
                 {"job_id": "test-job-123"},
@@ -128,17 +117,9 @@ class TestDuckDuckGoSearch:
     async def test_search_no_results(self):
         """Test handling of empty results."""
         tool = WebSearchTool(provider="duckduckgo")
+        mock_ddgs, mock_text = _make_ddgs_mock([])
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "Abstract": "",
-            "RelatedTopics": [],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
+        with patch("ddgs.DDGS", return_value=mock_ddgs):
             result = await tool.execute(
                 {"query": "xyznonexistentquery123", "num_results": 5},
                 {"job_id": "test-job-123"},
@@ -147,40 +128,21 @@ class TestDuckDuckGoSearch:
         assert "No results found" in result
 
     @pytest.mark.asyncio
-    async def test_search_with_nested_topics(self):
-        """Test DuckDuckGo search with nested topic groups."""
+    async def test_search_respects_num_results(self):
+        """Test that ddgs is called with requested num_results."""
         tool = WebSearchTool(provider="duckduckgo")
+        mock_ddgs, mock_text = _make_ddgs_mock([
+            {"title": "A", "href": "https://a.com", "body": "First"},
+            {"title": "B", "href": "https://b.com", "body": "Second"},
+        ])
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "Abstract": "",
-            "RelatedTopics": [
-                {
-                    "Topics": [
-                        {
-                            "Text": "Nested topic 1",
-                            "FirstURL": "https://example.com/1",
-                        },
-                        {
-                            "Text": "Nested topic 2",
-                            "FirstURL": "https://example.com/2",
-                        },
-                    ],
-                },
-            ],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
-            result = await tool.execute(
-                {"query": "test", "num_results": 5},
+        with patch("ddgs.DDGS", return_value=mock_ddgs):
+            await tool.execute(
+                {"query": "test", "num_results": 2},
                 {"job_id": "test-job-123"},
             )
 
-        assert "Nested topic 1" in result
-        assert "Nested topic 2" in result
+        mock_text.assert_called_once_with("test", max_results=2)
 
 
 class TestBraveSearch:
@@ -228,31 +190,21 @@ class TestBraveSearch:
 
     @pytest.mark.asyncio
     async def test_brave_search_no_api_key(self):
-        """Test Brave Search falls back to DuckDuckGo without API key."""
+        """Test Brave Search falls back to DuckDuckGo (ddgs) without API key."""
         tool = WebSearchTool(provider="brave", api_key=None)
+        mock_ddgs, mock_text = _make_ddgs_mock([
+            {"title": "Fallback result", "href": "https://example.com", "body": "From DuckDuckGo"},
+        ])
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "Abstract": "Fallback result",
-            "AbstractURL": "https://example.com",
-            "Heading": "Test",
-            "RelatedTopics": [],
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-
+        with patch("ddgs.DDGS", return_value=mock_ddgs):
             result = await tool.execute(
                 {"query": "test", "num_results": 5},
                 {"job_id": "test-job-123"},
             )
 
-        # Should fall back to DuckDuckGo
+        # Should fall back to DuckDuckGo (ddgs), not call Brave API
         assert "Fallback result" in result
-        # Verify DuckDuckGo API was called (not Brave)
-        call_args = mock_get.call_args
-        assert "api.duckduckgo.com" in str(call_args)
+        mock_text.assert_called_once_with("test", max_results=5)
 
 
 class TestErrorHandling:
@@ -260,19 +212,15 @@ class TestErrorHandling:
 
     @pytest.mark.asyncio
     async def test_timeout_handling(self):
-        """Test timeout error handling."""
+        """Test timeout error handling (ddgs path)."""
         import httpx
 
         tool = WebSearchTool(provider="duckduckgo")
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = httpx.TimeoutException("Request timed out")
-
+        with patch("ddgs.DDGS", side_effect=httpx.TimeoutException("Request timed out")):
             result = await tool.execute(
                 {"query": "test", "num_results": 5},
                 {"job_id": "test-job-123"},
             )
-
         assert "timed out" in result.lower()
 
     @pytest.mark.asyncio
@@ -281,22 +229,20 @@ class TestErrorHandling:
         import httpx
 
         tool = WebSearchTool(provider="duckduckgo")
-
         mock_response = MagicMock()
         mock_response.status_code = 429
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = httpx.HTTPStatusError(
+        with patch(
+            "ddgs.DDGS",
+            side_effect=httpx.HTTPStatusError(
                 "Rate limited",
                 request=MagicMock(),
                 response=mock_response,
-            )
-
+            ),
+        ):
             result = await tool.execute(
                 {"query": "test", "num_results": 5},
                 {"job_id": "test-job-123"},
             )
-
         assert "rate limit" in result.lower()
 
     @pytest.mark.asyncio
@@ -305,22 +251,20 @@ class TestErrorHandling:
         import httpx
 
         tool = WebSearchTool(provider="duckduckgo")
-
         mock_response = MagicMock()
         mock_response.status_code = 500
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = httpx.HTTPStatusError(
+        with patch(
+            "ddgs.DDGS",
+            side_effect=httpx.HTTPStatusError(
                 "Server error",
                 request=MagicMock(),
                 response=mock_response,
-            )
-
+            ),
+        ):
             result = await tool.execute(
                 {"query": "test", "num_results": 5},
                 {"job_id": "test-job-123"},
             )
-
         assert "500" in result
         assert "error" in result.lower()
 
@@ -328,15 +272,11 @@ class TestErrorHandling:
     async def test_generic_exception_handling(self):
         """Test generic exception handling."""
         tool = WebSearchTool(provider="duckduckgo")
-
-        with patch.object(tool.client, "get", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = Exception("Unexpected error")
-
+        with patch("ddgs.DDGS", side_effect=Exception("Unexpected error")):
             result = await tool.execute(
                 {"query": "test", "num_results": 5},
                 {"job_id": "test-job-123"},
             )
-
         assert "failed" in result.lower()
         assert "Unexpected error" in result
 

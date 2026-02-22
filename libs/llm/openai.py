@@ -380,7 +380,7 @@ class OpenAIProvider(LLMProvider):
         )
 
         if is_reasoning_model:
-            request_kwargs["max_completion_tokens"] = max_tokens
+            # request_kwargs["max_completion_tokens"] = max_tokens
             # Only o3 supports temperature, o1, o4, and gpt-5-mini have fixed temperature
             if model.startswith("o3"):
                 request_kwargs["temperature"] = temperature
@@ -390,7 +390,7 @@ class OpenAIProvider(LLMProvider):
                 reasoning_effort = kwargs.get("reasoning_effort", "medium")
                 request_kwargs["reasoning_effort"] = reasoning_effort
         else:
-            request_kwargs["max_tokens"] = max_tokens
+            # request_kwargs["max_tokens"] = max_tokens
             request_kwargs["temperature"] = temperature
 
         if tools:

@@ -136,8 +136,29 @@ class JobHandler:
                 event_callback=self._publish_event,
             )
 
-            # Execute based on stream setting
-            if message.get("stream", True):
+            # Check if multi-phase execution should be used (HIGH effort only)
+            from ..prompts.effort_levels import get_effort_config
+
+            effort_level = message.get("metadata", {}).get("effort_level")
+            effort_config = get_effort_config(effort_level)
+
+            if self.config.enable_multi_phase and effort_config.enable_multi_phase:
+                from ..engine.phase_executor import PhaseExecutor
+
+                logger.info(
+                    "Using multi-phase execution",
+                    job_id=str(job_id),
+                    effort_level=effort_level,
+                )
+                phase_executor = PhaseExecutor(
+                    llm_service=self.llm_service,
+                    tool_handler=self.tool_handler,
+                    snapshot_service=self.snapshot_service,
+                    event_callback=self._publish_event,
+                    config=self.config,
+                )
+                state = await phase_executor.execute(state)
+            elif message.get("stream", True):
                 state = await executor.execute_streaming(state)
             else:
                 state = await executor.execute(state)

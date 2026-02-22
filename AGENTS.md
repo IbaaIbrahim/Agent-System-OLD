@@ -84,6 +84,11 @@ An **Internal Transaction Token v2** (signed JWT, HS256, 10-minute TTL) travels 
 
 ## Development Commands
 
+**Important:** Always activate the virtual environment before running any Python/pytest/make command:
+```bash
+source /root/Agent-System-Claude/.venv/bin/activate
+```
+
 ```bash
 # Infrastructure
 make infra              # Start postgres, redis, kafka only (for local dev)

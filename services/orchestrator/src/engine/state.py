@@ -15,6 +15,7 @@ class AgentStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     WAITING_TOOL = "waiting_tool"
+    WAITING_USER = "waiting_user"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -120,6 +121,10 @@ class AgentState:
         self.status = AgentStatus.CANCELLED
         self.completed_at = datetime.now(UTC)
         self.pending_tool_calls = []
+
+    def mark_waiting_user(self, question: str, context: str | None = None) -> None:
+        """Mark agent as waiting for user response (human-in-the-loop)."""
+        self.status = AgentStatus.WAITING_USER
 
     def increment_tokens(self, input_tokens: int, output_tokens: int) -> None:
         """Update token counts."""

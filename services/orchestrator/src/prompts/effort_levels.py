@@ -17,6 +17,9 @@ class EffortConfig(NamedTuple):
 
     max_iterations: int
     prompt_section: str
+    enable_multi_phase: bool = False
+    max_evaluations: int = 0
+    evaluation_pass_score: int = 6
 
 
 EFFORT_CONFIGS: dict[EffortLevel, EffortConfig] = {
@@ -26,6 +29,9 @@ EFFORT_CONFIGS: dict[EffortLevel, EffortConfig] = {
             "Answer directly. Only use tools when explicitly asked. "
             "Do not proactively search or research. Minimize iterations."
         ),
+        enable_multi_phase=False,
+        max_evaluations=0,
+        evaluation_pass_score=5,
     ),
     EffortLevel.MEDIUM: EffortConfig(
         max_iterations=10,
@@ -33,6 +39,9 @@ EFFORT_CONFIGS: dict[EffortLevel, EffortConfig] = {
             "Enrich responses with relevant context. Use tools proactively "
             "when they would clearly benefit the response."
         ),
+        enable_multi_phase=False,
+        max_evaluations=0,
+        evaluation_pass_score=6,
     ),
     EffortLevel.HIGH: EffortConfig(
         max_iterations=50,
@@ -76,6 +85,9 @@ EFFORT_CONFIGS: dict[EffortLevel, EffortConfig] = {
             "Remember: In DEEP RESEARCH MODE, your goal is to provide the MOST COMPREHENSIVE, THOROUGHLY RESEARCHED, and WELL-REASONED response possible. "
             "Take your time, use multiple tools, think deeply, and iterate until you're confident you've covered all important aspects."
         ),
+        enable_multi_phase=True,
+        max_evaluations=3,
+        evaluation_pass_score=7,
     ),
 }
 

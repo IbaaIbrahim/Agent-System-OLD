@@ -20,6 +20,9 @@ class APIGatewayConfig(Settings):
     # Resume topic (for client-side tool results)
     resume_topic: str = "agent.job-resume"
 
+    # User response topic (human-in-the-loop)
+    user_response_topic: str = "agent.user-response"
+
     # Request timeout (seconds)
     request_timeout: int = 30
 

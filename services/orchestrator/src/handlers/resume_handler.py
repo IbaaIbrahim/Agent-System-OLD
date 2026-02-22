@@ -94,39 +94,72 @@ class ResumeHandler:
                 return
 
             # Check if ALL pending tools are complete
+            total_pending = len(state.pending_tool_calls)
             tool_results = await self._fetch_tool_results(state.pending_tool_calls)
 
+            completed_ids = [
+                tc_id for tc_id, result in tool_results.items()
+                if result is not None
+            ]
             missing_tools = [
                 tc.id for tc in state.pending_tool_calls
                 if tc.id not in tool_results or tool_results[tc.id] is None
             ]
 
+            logger.info(
+                "Tool results check",
+                job_id=str(job_id),
+                trigger_tool_call_id=tool_call_id,
+                total_pending=total_pending,
+                completed=len(completed_ids),
+                missing=len(missing_tools),
+                missing_tool_ids=missing_tools[:5],  # Limit log size
+            )
+
             if missing_tools:
-                logger.debug(
-                    "Not all tools complete yet",
-                    job_id=str(job_id),
-                    pending_count=len(missing_tools),
-                    missing_tool_ids=missing_tools,
-                )
                 # Release lock and wait for other tools to complete
                 return
 
             logger.info(
                 "All tools complete, resuming execution",
                 job_id=str(job_id),
-                tool_count=len(state.pending_tool_calls),
+                tool_count=total_pending,
             )
 
-            # Create executor with event callback
-            executor = AgentExecutor(
-                llm_service=self.llm_service,
-                tool_handler=self.tool_handler,
-                snapshot_service=self.snapshot_service,
-                event_callback=self._publish_event,
+            # Check if this job is in multi-phase execution
+            phase_state_data = state.metadata.get("phase_state") if state.metadata else None
+            is_multi_phase = (
+                phase_state_data
+                and phase_state_data.get("current_phase") not in (None, "simple")
             )
 
-            # Resume execution from snapshot
-            state = await executor.resume_from_snapshot(state, tool_results)
+            if is_multi_phase:
+                from ..engine.phase_executor import PhaseExecutor
+
+                logger.info(
+                    "Resuming in multi-phase mode",
+                    job_id=str(job_id),
+                    phase=phase_state_data.get("current_phase"),
+                )
+                phase_executor = PhaseExecutor(
+                    llm_service=self.llm_service,
+                    tool_handler=self.tool_handler,
+                    snapshot_service=self.snapshot_service,
+                    event_callback=self._publish_event,
+                    config=self.config,
+                )
+                state = await phase_executor.resume_after_tools(state, tool_results)
+            else:
+                # Create executor with event callback
+                executor = AgentExecutor(
+                    llm_service=self.llm_service,
+                    tool_handler=self.tool_handler,
+                    snapshot_service=self.snapshot_service,
+                    event_callback=self._publish_event,
+                )
+
+                # Resume execution from snapshot
+                state = await executor.resume_from_snapshot(state, tool_results)
 
             # Save final state
             await self.snapshot_service.save_snapshot(state)
@@ -173,6 +206,13 @@ class ResumeHandler:
             result_key = f"tool_result:{tc.id}"
             result = await redis.get(result_key)
             results[tc.id] = result
+
+            if result is None:
+                logger.debug(
+                    "Tool result not yet available",
+                    tool_call_id=tc.id,
+                    tool_name=tc.name,
+                )
 
         return results
 
