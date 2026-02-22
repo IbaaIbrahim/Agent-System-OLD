@@ -118,6 +118,22 @@
     border-bottom: none;
 }
 
+.cb-pending-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+}
+
+.cb-pending-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .cb-pending-item:hover {
     background: rgba(255, 255, 255, 0.03);
 }

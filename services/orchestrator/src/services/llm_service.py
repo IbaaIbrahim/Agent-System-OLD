@@ -155,7 +155,13 @@ class LLMService:
             "1. First, I need to understand Y\n"
             "2. Then I should consider Z\n"
             "</thinking>\n\n"
-            "Your final answer goes outside the tags. Always use these tags for your reasoning process."
+            "Your final answer goes outside the tags. Always use these tags for your reasoning process.\n\n"
+            "STREAMING: You MUST output thinking tokens as you go. Do NOT buffer your reasoning. "
+            "Start your response by opening <thinking> immediately and writing at least one short sentence of initial reasoning "
+            "(e.g. 'Reading the request...', 'Breaking down the problem...', 'First I need to...') before any long internal pause. "
+            "Emit thinking content progressively so the user sees activity; avoid long stretches with no output.\n\n"
+            "After closing </thinking>, you MUST continue and stream your actual answer. Never stop at the end of the thinking block. "
+            "Always output the final response (outside the tags) immediately after </thinking>; do not leave the response incomplete or hanging."
         )
 
         # Layer 1.5: Effort level behavioral directive
@@ -232,6 +238,66 @@ class LLMService:
             )
             for t in tools
         ]
+
+    async def complete_structured(
+        self,
+        messages: list,
+        system_prompt: str,
+        provider_name: str,
+        model: str,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> LLMResponse:
+        """Generate a structured JSON completion without tools.
+
+        Used by PhaseExecutor for triage, decompose, evaluate, and reflect
+        calls that require JSON output.
+
+        Args:
+            messages: Conversation messages
+            system_prompt: System prompt (should instruct JSON output)
+            provider_name: LLM provider name
+            model: Model identifier
+            temperature: Sampling temperature (lower for structured output)
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            LLM response with JSON content in response.content
+        """
+        provider = self._get_provider(provider_name)
+
+        # Append JSON instruction to system prompt
+        json_system = (
+            system_prompt
+            + "\n\nIMPORTANT: Respond with valid JSON only. "
+            "No markdown code fences, no explanation outside the JSON object."
+        )
+
+        logger.info(
+            "Structured LLM call",
+            provider=provider_name,
+            model=model,
+            message_count=len(messages),
+        )
+
+        response = await provider.complete(
+            messages=messages,
+            model=model,
+            system=json_system,
+            tools=None,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        logger.info(
+            "Structured LLM response",
+            has_content=bool(response.content),
+            content_len=len(response.content) if response.content else 0,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+        )
+
+        return response
 
     async def complete(self, state: AgentState) -> LLMResponse:
         """Generate a completion for the current state.

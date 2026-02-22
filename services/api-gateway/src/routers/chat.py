@@ -536,3 +536,70 @@ async def confirm_response(
     )
 
     return ConfirmResponseResponse(status="received")
+
+
+class UserResponseRequest(BaseModel):
+    """Request body for user responses (human-in-the-loop)."""
+
+    job_id: str
+    response: str
+
+
+class UserResponseResponse(BaseModel):
+    """Response from user-response endpoint."""
+
+    status: str = "received"
+
+
+@router.post("/user-response", response_model=UserResponseResponse)
+async def user_response(
+    body: UserResponseRequest,
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+) -> UserResponseResponse:
+    """Handle user's text response to an agent question (human-in-the-loop).
+
+    When the agent asks the user a clarifying question during multi-phase
+    execution, the frontend sends the user's answer through this endpoint.
+
+    Flow:
+    1. Validate request
+    2. Publish response to Kafka (agent.user-response topic)
+    3. Return acknowledgment
+
+    Args:
+        body: User response payload
+        tenant_id: Authenticated tenant ID
+
+    Returns:
+        Acknowledgment that the response was received
+    """
+    config = get_config()
+
+    logger.info(
+        "User response received",
+        job_id=body.job_id,
+        tenant_id=str(tenant_id),
+    )
+
+    producer = await get_producer()
+
+    await producer.send(
+        topic=config.user_response_topic,
+        message={
+            "job_id": body.job_id,
+            "response": body.response,
+            "tenant_id": str(tenant_id),
+        },
+        key=body.job_id,
+        headers={
+            "job_id": body.job_id,
+        },
+    )
+
+    logger.info(
+        "User response published to Kafka",
+        job_id=body.job_id,
+        topic=config.user_response_topic,
+    )
+
+    return UserResponseResponse(status="received")

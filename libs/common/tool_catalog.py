@@ -122,7 +122,7 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
             },
             "required": ["code"],
         },
-        behavior=ToolBehavior.AUTO_EXECUTE,
+        behavior=ToolBehavior.USER_ENABLED,
         preferred_provider="anthropic",
         preferred_model="claude-3-5-sonnet-20241022",  # Code needs reasoning
         # required_plan_feature="tools.code_executor",

@@ -68,7 +68,7 @@ class TestMessageEvents:
 
     @pytest.mark.asyncio
     async def test_handle_delta_event(self):
-        """Test handling of delta (streaming) event."""
+        """Delta events are streaming-only and should NOT be persisted."""
         writer = PostgresWriter()
         job_id = uuid4()
 
@@ -94,7 +94,8 @@ class TestMessageEvents:
 
             await writer._write_events([event])
 
-        assert mock_session.add.called
+        # Delta events are skipped (real-time streaming only, not archived)
+        assert not mock_session.add.called
 
     @pytest.mark.asyncio
     async def test_handle_tool_result_event(self):

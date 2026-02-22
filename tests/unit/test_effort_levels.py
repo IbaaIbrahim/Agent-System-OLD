@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, "services/orchestrator")
 
-from src.prompts.effort_levels import (
+from services.orchestrator.src.prompts.effort_levels import (
     EFFORT_CONFIGS,
     EffortConfig,
     EffortLevel,
@@ -40,8 +40,8 @@ class TestEffortConfig:
 
     def test_high_config(self) -> None:
         config = EFFORT_CONFIGS[EffortLevel.HIGH]
-        assert config.max_iterations == 25
-        assert "exhaustive" in config.prompt_section.lower()
+        assert config.max_iterations == 50
+        assert "deep research" in config.prompt_section.lower()
 
 
 class TestGetEffortConfig:
@@ -57,7 +57,7 @@ class TestGetEffortConfig:
 
     def test_high(self) -> None:
         config = get_effort_config("high")
-        assert config.max_iterations == 25
+        assert config.max_iterations == 50
 
     def test_none_defaults_to_medium(self) -> None:
         config = get_effort_config(None)
@@ -73,7 +73,7 @@ class TestGetEffortConfig:
 
     def test_case_insensitive_upper(self) -> None:
         config = get_effort_config("HIGH")
-        assert config.max_iterations == 25
+        assert config.max_iterations == 50
 
     def test_case_insensitive_mixed(self) -> None:
         config = get_effort_config("Low")

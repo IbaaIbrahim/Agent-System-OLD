@@ -1,0 +1,4374 @@
+: connected
+
+event: open
+retry: 3000
+data: {"status": "connected", "job_id": "988d3ed5-ce11-4834-8b73-2403be63781c"}
+
+id: 1771625902645-0
+event: phase_start
+data: {"phase": "triage", "phase_label": "Analyzing request...", "phase_index": 0, "total_phases": 6}
+
+id: 1771625904381-0
+event: phase_complete
+data: {"phase": "triage"}
+
+id: 1771625904383-0
+event: start
+data: {"status": "running"}
+
+id: 1771625911349-0
+event: tool_call
+data: {"tool_calls": [{"id": "call_gQbW5mzb8E7QjC3VL1Vef8ST", "name": "web_search", "arguments": {"query": "2012 Daewoo Lacetti pre purchase inspection checklist", "num_results": 5}}], "content": null}
+
+id: 1771625911367-0
+event: suspended
+data: {"pending_tools": [{"id": "call_gQbW5mzb8E7QjC3VL1Vef8ST", "name": "web_search"}], "snapshot_sequence": 1}
+
+id: 1771625912868-0
+event: tool_result
+data: {"tool_call_id": "call_gQbW5mzb8E7QjC3VL1Vef8ST", "tool_name": "web_search", "result": "# Search Results for: 2012 Daewoo Lacetti pre purchase inspection checklist\n\nFound 5 results:\n\n## 1. 2012 DAEWOO Lacetti Recalls, Complaints and Investigations - The Center for Auto Safety\n**URL:** https://www.autosafety.org/vehicle-safety-check/2012-daewoo-lacetti/\nFebruary 8, 2021 - 2012 DAEWOO Lacetti is it safe? Read all complaints, recalls and other safety issues for 2012 DAEWOO Lacetti\n\n## 2. Car Inspection Checklist for Buyers: Complete Pre\u2011Purchase - The Rocky Mountain Collegian\n**URL:** https://collegian.com/sponsored/2026/01/car-inspection-checklist-for-buyers-a-complete-guide/\n3 weeks ago - Before checking tires or fluids, unlock the past. Use https://epicvin.com/license-plate-lookup/new-jersey to run a vehicle history report. It reveals accidents, salvage titles, and ownership changes. That\u2019s where a proper inspection checklist begins.\n\n## 3. How to Perform a Used-Car Inspection | Auto Care Plus\n**URL:** https://www.autocareplus.com/lp/vehicle-pre-purchase-inspection-checklist/\nAugust 12, 2025 - How to Perform a Used-Car Inspection Avoid the most common, costly mistakes before you purchase that vehicle. NOTE: This checklist is a courtesy to help people shopping for used vehicles. IT IS NOT A SUBSTITUTE FOR AN INSPECTION BY A QUALIFIED TECHNICIAN. There are many issues that are difficult to find without a trained eye ...\n\n## 4. Pre-Purchase Car Inspection Checklist By VLX\n**URL:** https://visualogyx.com/pre-purchase-inspection-checklist/\nAugust 16, 2025 - These could range from engine troubles and transmission wear to signs of previous accidents or flood damage that have been concealed . A comprehensive inspection can uncover these hidden defects, ensuring that the buyer is not misled by appearances ...\n\n## 5. Vehicle Pre-Purchase Inspection Checklist | 24 Auto Group\n**URL:** https://www.24autogroup.com/vehicle-pre-purchase-inspection-checklist.htm\nWhen you're buying a new-to-you car, you want to feel confident it's the right choice for you. Our team at 24 Auto Group wants to help you do exactly that! An inspection before buying is vital to confirm what you're getting, and we created this vehicle pre-purchase inspection checklist to help you.\n"}
+
+id: 1771625912869-0
+event: start
+data: {"status": "running"}
+
+id: 1771625922593-0
+event: reasoning_delta
+data: {"content": "\n"}
+
+id: 1771625922607-0
+event: reasoning_delta
+data: {"content": "I"}
+
+id: 1771625922608-0
+event: reasoning_delta
+data: {"content": " need"}
+
+id: 1771625922621-0
+event: reasoning_delta
+data: {"content": " to"}
+
+id: 1771625922622-0
+event: reasoning_delta
+data: {"content": " draft"}
+
+id: 1771625922636-0
+event: reasoning_delta
+data: {"content": " a"}
+
+id: 1771625922637-0
+event: reasoning_delta
+data: {"content": " comprehensive"}
+
+id: 1771625922660-0
+event: reasoning_delta
+data: {"content": " pre"}
+
+id: 1771625922661-0
+event: reasoning_delta
+data: {"content": "-"}
+
+id: 1771625922665-0
+event: reasoning_delta
+data: {"content": "purchase"}
+
+id: 1771625922666-0
+event: reasoning_delta
+data: {"content": " checklist"}
+
+id: 1771625922685-0
+event: reasoning_delta
+data: {"content": " for"}
+
+id: 1771625922687-0
+event: reasoning_delta
+data: {"content": " a"}
+
+id: 1771625922699-0
+event: reasoning_delta
+data: {"content": " "}
+
+id: 1771625922701-0
+event: reasoning_delta
+data: {"content": "201"}
+
+id: 1771625922715-0
+event: reasoning_delta
+data: {"content": "2"}
+
+id: 1771625922717-0
+event: reasoning_delta
+data: {"content": " Da"}
+
+id: 1771625922728-0
+event: reasoning_delta
+data: {"content": "ew"}
+
+id: 1771625922729-0
+event: reasoning_delta
+data: {"content": "oo"}
+
+id: 1771625922743-0
+event: reasoning_delta
+data: {"content": " Lac"}
+
+id: 1771625922744-0
+event: reasoning_delta
+data: {"content": "etti"}
+
+id: 1771625922758-0
+event: reasoning_delta
+data: {"content": "."}
+
+id: 1771625922759-0
+event: reasoning_delta
+data: {"content": " I"}
+
+id: 1771625922772-0
+event: reasoning_delta
+data: {"content": "\u2019ll"}
+
+id: 1771625922773-0
+event: reasoning_delta
+data: {"content": " cover"}
+
+id: 1771625922787-0
+event: reasoning_delta
+data: {"content": " every"}
+
+id: 1771625922788-0
+event: reasoning_delta
+data: {"content": " major"}
+
+id: 1771625922801-0
+event: reasoning_delta
+data: {"content": " system"}
+
+id: 1771625922802-0
+event: reasoning_delta
+data: {"content": "\u2014"}
+
+id: 1771625922816-0
+event: reasoning_delta
+data: {"content": "engine"}
+
+id: 1771625922817-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922830-0
+event: reasoning_delta
+data: {"content": " transmission"}
+
+id: 1771625922831-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922846-0
+event: reasoning_delta
+data: {"content": " brakes"}
+
+id: 1771625922847-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922861-0
+event: reasoning_delta
+data: {"content": " suspension"}
+
+id: 1771625922861-1
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922874-0
+event: reasoning_delta
+data: {"content": " body"}
+
+id: 1771625922875-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922889-0
+event: reasoning_delta
+data: {"content": " interior"}
+
+id: 1771625922890-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922905-0
+event: reasoning_delta
+data: {"content": " electrical"}
+
+id: 1771625922906-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922918-0
+event: reasoning_delta
+data: {"content": " tires"}
+
+id: 1771625922920-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922933-0
+event: reasoning_delta
+data: {"content": " under"}
+
+id: 1771625922934-0
+event: reasoning_delta
+data: {"content": "body"}
+
+id: 1771625922947-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922948-0
+event: reasoning_delta
+data: {"content": " safety"}
+
+id: 1771625922962-0
+event: reasoning_delta
+data: {"content": "."}
+
+id: 1771625922963-0
+event: reasoning_delta
+data: {"content": " For"}
+
+id: 1771625922977-0
+event: reasoning_delta
+data: {"content": " each"}
+
+id: 1771625922978-0
+event: reasoning_delta
+data: {"content": " item"}
+
+id: 1771625922991-0
+event: reasoning_delta
+data: {"content": ","}
+
+id: 1771625922992-0
+event: reasoning_delta
+data: {"content": " I"}
+
+id: 1771625923006-0
+event: reasoning_delta
+data: {"content": "\u2019ll"}
+
+id: 1771625923007-0
+event: reasoning_delta
+data: {"content": " assign"}
+
+id: 1771625923021-0
+event: reasoning_delta
+data: {"content": " appropriate"}
+
+id: 1771625923022-0
+event: reasoning_delta
+data: {"content": " input"}
+
+id: 1771625923035-0
+event: reasoning_delta
+data: {"content": " types"}
+
+id: 1771625923037-0
+event: reasoning_delta
+data: {"content": " (["}
+
+id: 1771625923054-0
+event: reasoning_delta
+data: {"content": "list"}
+
+id: 1771625923055-0
+event: reasoning_delta
+data: {"content": "],"}
+
+id: 1771625923064-0
+event: reasoning_delta
+data: {"content": " ["}
+
+id: 1771625923065-0
+event: reasoning_delta
+data: {"content": "number"}
+
+id: 1771625923079-0
+event: reasoning_delta
+data: {"content": "],"}
+
+id: 1771625923081-0
+event: reasoning_delta
+data: {"content": " ["}
+
+id: 1771625923095-0
+event: reasoning_delta
+data: {"content": "text"}
+
+id: 1771625923096-0
+event: reasoning_delta
+data: {"content": "Answer"}
+
+id: 1771625923108-0
+event: reasoning_delta
+data: {"content": "],"}
+
+id: 1771625923109-0
+event: reasoning_delta
+data: {"content": " ["}
+
+id: 1771625923123-0
+event: reasoning_delta
+data: {"content": "long"}
+
+id: 1771625923124-0
+event: reasoning_delta
+data: {"content": "Text"}
+
+id: 1771625923138-0
+event: reasoning_delta
+data: {"content": "],"}
+
+id: 1771625923139-0
+event: reasoning_delta
+data: {"content": " ["}
+
+id: 1771625923152-0
+event: reasoning_delta
+data: {"content": "slider"}
+
+id: 1771625923154-0
+event: reasoning_delta
+data: {"content": "])."}
+
+id: 1771625923167-0
+event: reasoning_delta
+data: {"content": " Then"}
+
+id: 1771625923167-1
+event: reasoning_delta
+data: {"content": " I"}
+
+id: 1771625923182-0
+event: reasoning_delta
+data: {"content": "\u2019ll"}
+
+id: 1771625923183-0
+event: reasoning_delta
+data: {"content": " present"}
+
+id: 1771625923196-0
+event: reasoning_delta
+data: {"content": " the"}
+
+id: 1771625923197-0
+event: reasoning_delta
+data: {"content": " full"}
+
+id: 1771625923210-0
+event: reasoning_delta
+data: {"content": " draft"}
+
+id: 1771625923211-0
+event: reasoning_delta
+data: {"content": " and"}
+
+id: 1771625923224-0
+event: reasoning_delta
+data: {"content": " ask"}
+
+id: 1771625923225-0
+event: reasoning_delta
+data: {"content": " the"}
+
+id: 1771625923240-0
+event: reasoning_delta
+data: {"content": " user"}
+
+id: 1771625923241-0
+event: reasoning_delta
+data: {"content": " to"}
+
+id: 1771625923254-0
+event: reasoning_delta
+data: {"content": " confirm"}
+
+id: 1771625923255-0
+event: reasoning_delta
+data: {"content": " before"}
+
+id: 1771625923269-0
+event: reasoning_delta
+data: {"content": " generating"}
+
+id: 1771625923271-0
+event: reasoning_delta
+data: {"content": ".\n"}
+
+id: 1771625923297-0
+event: delta
+data: {"content": "\n\n"}
+
+id: 1771625923298-0
+event: delta
+data: {"content": "Here"}
+
+id: 1771625923312-0
+event: delta
+data: {"content": " is"}
+
+id: 1771625923313-0
+event: delta
+data: {"content": " a"}
+
+id: 1771625923326-0
+event: delta
+data: {"content": " proposed"}
+
+id: 1771625923328-0
+event: delta
+data: {"content": " structure"}
+
+id: 1771625923341-0
+event: delta
+data: {"content": " for"}
+
+id: 1771625923342-0
+event: delta
+data: {"content": " your"}
+
+id: 1771625923356-0
+event: delta
+data: {"content": " one"}
+
+id: 1771625923359-0
+event: delta
+data: {"content": "-"}
+
+id: 1771625923372-0
+event: delta
+data: {"content": "time"}
+
+id: 1771625923373-0
+event: delta
+data: {"content": " pre"}
+
+id: 1771625923385-0
+event: delta
+data: {"content": "-"}
+
+id: 1771625923386-0
+event: delta
+data: {"content": "purchase"}
+
+id: 1771625923399-0
+event: delta
+data: {"content": " inspection"}
+
+id: 1771625923400-0
+event: delta
+data: {"content": " checklist"}
+
+id: 1771625923414-0
+event: delta
+data: {"content": " of"}
+
+id: 1771625923417-0
+event: delta
+data: {"content": " a"}
+
+id: 1771625923428-0
+event: delta
+data: {"content": " "}
+
+id: 1771625923430-0
+event: delta
+data: {"content": "201"}
+
+id: 1771625923450-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625923453-0
+event: delta
+data: {"content": " Da"}
+
+id: 1771625923460-0
+event: delta
+data: {"content": "ew"}
+
+id: 1771625923462-0
+event: delta
+data: {"content": "oo"}
+
+id: 1771625923472-0
+event: delta
+data: {"content": " Lac"}
+
+id: 1771625923474-0
+event: delta
+data: {"content": "etti"}
+
+id: 1771625923487-0
+event: delta
+data: {"content": "."}
+
+id: 1771625923489-0
+event: delta
+data: {"content": " Please"}
+
+id: 1771625923501-0
+event: delta
+data: {"content": " review"}
+
+id: 1771625923503-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625923515-0
+event: delta
+data: {"content": " let"}
+
+id: 1771625923517-0
+event: delta
+data: {"content": " me"}
+
+id: 1771625923531-0
+event: delta
+data: {"content": " know"}
+
+id: 1771625923533-0
+event: delta
+data: {"content": " if"}
+
+id: 1771625923550-0
+event: delta
+data: {"content": " you"}
+
+id: 1771625923552-0
+event: delta
+data: {"content": "\u2019d"}
+
+id: 1771625923565-0
+event: delta
+data: {"content": " like"}
+
+id: 1771625923567-0
+event: delta
+data: {"content": " any"}
+
+id: 1771625923579-0
+event: delta
+data: {"content": " changes"}
+
+id: 1771625923581-0
+event: delta
+data: {"content": "."}
+
+id: 1771625923594-0
+event: delta
+data: {"content": " Once"}
+
+id: 1771625923596-0
+event: delta
+data: {"content": " you"}
+
+id: 1771625923607-0
+event: delta
+data: {"content": " confirm"}
+
+id: 1771625923609-0
+event: delta
+data: {"content": ","}
+
+id: 1771625923623-0
+event: delta
+data: {"content": " I"}
+
+id: 1771625923624-0
+event: delta
+data: {"content": " will"}
+
+id: 1771625923636-0
+event: delta
+data: {"content": " generate"}
+
+id: 1771625923638-0
+event: delta
+data: {"content": " the"}
+
+id: 1771625923650-0
+event: delta
+data: {"content": " final"}
+
+id: 1771625923652-0
+event: delta
+data: {"content": " checklist"}
+
+id: 1771625923665-0
+event: delta
+data: {"content": ".\n\n"}
+
+id: 1771625923667-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625923679-0
+event: delta
+data: {"content": " Engine"}
+
+id: 1771625923681-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625923694-0
+event: delta
+data: {"content": " Cooling"}
+
+id: 1771625923695-0
+event: delta
+data: {"content": " System"}
+
+id: 1771625923708-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625923710-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625923722-0
+event: delta
+data: {"content": "."}
+
+id: 1771625923724-0
+event: delta
+data: {"content": " Check"}
+
+id: 1771625923737-0
+event: delta
+data: {"content": " engine"}
+
+id: 1771625923738-0
+event: delta
+data: {"content": " oil"}
+
+id: 1771625923751-0
+event: delta
+data: {"content": " level"}
+
+id: 1771625923752-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625923765-0
+event: delta
+data: {"content": " dip"}
+
+id: 1771625923766-0
+event: delta
+data: {"content": "stick"}
+
+id: 1771625923779-0
+event: delta
+data: {"content": " reading"}
+
+id: 1771625923780-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625923792-0
+event: delta
+data: {"content": "number"}
+
+id: 1771625923793-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625923806-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625923807-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625923820-0
+event: delta
+data: {"content": "."}
+
+id: 1771625923821-0
+event: delta
+data: {"content": " Assess"}
+
+id: 1771625923834-0
+event: delta
+data: {"content": " engine"}
+
+id: 1771625923835-0
+event: delta
+data: {"content": " oil"}
+
+id: 1771625923849-0
+event: delta
+data: {"content": " color"}
+
+id: 1771625923850-0
+event: delta
+data: {"content": "/"}
+
+id: 1771625923862-0
+event: delta
+data: {"content": "condition"}
+
+id: 1771625923863-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625923876-0
+event: delta
+data: {"content": "long"}
+
+id: 1771625923876-1
+event: delta
+data: {"content": "Text"}
+
+id: 1771625923890-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625923891-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625923904-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625923905-0
+event: delta
+data: {"content": "."}
+
+id: 1771625923918-0
+event: delta
+data: {"content": " Engine"}
+
+id: 1771625923919-0
+event: delta
+data: {"content": " oil"}
+
+id: 1771625923963-0
+event: delta
+data: {"content": " leaks"}
+
+id: 1771625923964-0
+event: delta
+data: {"content": " visible"}
+
+id: 1771625923970-0
+event: delta
+data: {"content": "?"}
+
+id: 1771625923970-1
+event: delta
+data: {"content": " ["}
+
+id: 1771625923984-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625923985-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625923999-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625924000-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625924007-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924008-0
+event: delta
+data: {"content": " Cool"}
+
+id: 1771625924016-0
+event: delta
+data: {"content": "ant"}
+
+id: 1771625924017-0
+event: delta
+data: {"content": " level"}
+
+id: 1771625924031-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625924032-0
+event: delta
+data: {"content": " fill"}
+
+id: 1771625924045-0
+event: delta
+data: {"content": " concentration"}
+
+id: 1771625924046-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625924060-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625924061-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625924074-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625924075-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625924088-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924089-0
+event: delta
+data: {"content": " Cool"}
+
+id: 1771625924103-0
+event: delta
+data: {"content": "ant"}
+
+id: 1771625924104-0
+event: delta
+data: {"content": " color"}
+
+id: 1771625924118-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625924119-0
+event: delta
+data: {"content": " contamination"}
+
+id: 1771625924134-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625924135-0
+event: delta
+data: {"content": "rust"}
+
+id: 1771625924155-0
+event: delta
+data: {"content": "/de"}
+
+id: 1771625924156-0
+event: delta
+data: {"content": "bris"}
+
+id: 1771625924162-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625924163-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625924175-0
+event: delta
+data: {"content": "long"}
+
+id: 1771625924176-0
+event: delta
+data: {"content": "Text"}
+
+id: 1771625924189-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625924190-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625924205-0
+event: delta
+data: {"content": "6"}
+
+id: 1771625924206-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924220-0
+event: delta
+data: {"content": " Cool"}
+
+id: 1771625924220-1
+event: delta
+data: {"content": "ant"}
+
+id: 1771625924233-0
+event: delta
+data: {"content": " hoses"}
+
+id: 1771625924234-0
+event: delta
+data: {"content": "/cr"}
+
+id: 1771625924248-0
+event: delta
+data: {"content": "im"}
+
+id: 1771625924249-0
+event: delta
+data: {"content": "ps"}
+
+id: 1771625924262-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625924263-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625924276-0
+event: delta
+data: {"content": "soft"}
+
+id: 1771625924276-1
+event: delta
+data: {"content": " spots"}
+
+id: 1771625924292-0
+event: delta
+data: {"content": ","}
+
+id: 1771625924292-1
+event: delta
+data: {"content": " cracks"}
+
+id: 1771625924325-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625924325-1
+event: delta
+data: {"content": " ["}
+
+id: 1771625924326-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625924327-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625924328-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625924341-0
+event: delta
+data: {"content": "7"}
+
+id: 1771625924342-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924354-0
+event: delta
+data: {"content": " Radi"}
+
+id: 1771625924355-0
+event: delta
+data: {"content": "ator"}
+
+id: 1771625924369-0
+event: delta
+data: {"content": " core"}
+
+id: 1771625924370-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625924383-0
+event: delta
+data: {"content": " cap"}
+
+id: 1771625924384-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625924396-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625924397-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625924410-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625924411-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625924424-0
+event: delta
+data: {"content": "8"}
+
+id: 1771625924425-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924438-0
+event: delta
+data: {"content": " Inspect"}
+
+id: 1771625924439-0
+event: delta
+data: {"content": " drive"}
+
+id: 1771625924451-0
+event: delta
+data: {"content": " belts"}
+
+id: 1771625924452-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625924466-0
+event: delta
+data: {"content": "ser"}
+
+id: 1771625924467-0
+event: delta
+data: {"content": "p"}
+
+id: 1771625924480-0
+event: delta
+data: {"content": "entine"}
+
+id: 1771625924481-0
+event: delta
+data: {"content": ","}
+
+id: 1771625924493-0
+event: delta
+data: {"content": " timing"}
+
+id: 1771625924494-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625924508-0
+event: delta
+data: {"content": " for"}
+
+id: 1771625924509-0
+event: delta
+data: {"content": " wear"}
+
+id: 1771625924521-0
+event: delta
+data: {"content": "/t"}
+
+id: 1771625924522-0
+event: delta
+data: {"content": "ension"}
+
+id: 1771625924534-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625924536-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625924548-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625924549-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625924564-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625924565-0
+event: delta
+data: {"content": " Transmission"}
+
+id: 1771625924576-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625924578-0
+event: delta
+data: {"content": " Dr"}
+
+id: 1771625924590-0
+event: delta
+data: {"content": "iv"}
+
+id: 1771625924591-0
+event: delta
+data: {"content": "etrain"}
+
+id: 1771625924604-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625924605-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625924619-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924621-0
+event: delta
+data: {"content": " Transmission"}
+
+id: 1771625924632-0
+event: delta
+data: {"content": " fluid"}
+
+id: 1771625924633-0
+event: delta
+data: {"content": " level"}
+
+id: 1771625924646-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625924648-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625924660-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625924661-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625924674-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625924675-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625924689-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625924690-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924702-0
+event: delta
+data: {"content": " Fluid"}
+
+id: 1771625924703-0
+event: delta
+data: {"content": " color"}
+
+id: 1771625924715-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625924717-0
+event: delta
+data: {"content": "clear"}
+
+id: 1771625924730-0
+event: delta
+data: {"content": "/red"}
+
+id: 1771625924731-0
+event: delta
+data: {"content": "/b"}
+
+id: 1771625924743-0
+event: delta
+data: {"content": "urn"}
+
+id: 1771625924744-0
+event: delta
+data: {"content": "t"}
+
+id: 1771625924758-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625924759-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625924771-0
+event: delta
+data: {"content": " odor"}
+
+id: 1771625924772-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625924785-0
+event: delta
+data: {"content": "long"}
+
+id: 1771625924786-0
+event: delta
+data: {"content": "Text"}
+
+id: 1771625924799-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625924800-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625924812-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625924813-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924827-0
+event: delta
+data: {"content": " Transmission"}
+
+id: 1771625924828-0
+event: delta
+data: {"content": " leaks"}
+
+id: 1771625924840-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625924841-0
+event: delta
+data: {"content": "seal"}
+
+id: 1771625924853-0
+event: delta
+data: {"content": "/p"}
+
+id: 1771625924854-0
+event: delta
+data: {"content": "an"}
+
+id: 1771625924867-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625924868-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625924880-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625924881-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625924894-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625924895-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625924908-0
+event: delta
+data: {"content": "."}
+
+id: 1771625924909-0
+event: delta
+data: {"content": " Cl"}
+
+id: 1771625924922-0
+event: delta
+data: {"content": "utch"}
+
+id: 1771625924923-0
+event: delta
+data: {"content": " engagement"}
+
+id: 1771625924936-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625924937-0
+event: delta
+data: {"content": "manual"}
+
+id: 1771625924950-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625924951-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625924963-0
+event: delta
+data: {"content": " shift"}
+
+id: 1771625924964-0
+event: delta
+data: {"content": " quality"}
+
+id: 1771625925020-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625925021-0
+event: delta
+data: {"content": "auto"}
+
+id: 1771625925084-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625925085-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925095-0
+event: delta
+data: {"content": "long"}
+
+id: 1771625925095-1
+event: delta
+data: {"content": "Text"}
+
+id: 1771625925108-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925109-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625925123-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625925124-0
+event: delta
+data: {"content": "."}
+
+id: 1771625925136-0
+event: delta
+data: {"content": " CV"}
+
+id: 1771625925137-0
+event: delta
+data: {"content": " joint"}
+
+id: 1771625925150-0
+event: delta
+data: {"content": " boots"}
+
+id: 1771625925151-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625925166-0
+event: delta
+data: {"content": " axle"}
+
+id: 1771625925167-0
+event: delta
+data: {"content": " shafts"}
+
+id: 1771625925178-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625925179-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925192-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625925193-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925206-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625925207-0
+event: delta
+data: {"content": "6"}
+
+id: 1771625925220-0
+event: delta
+data: {"content": "."}
+
+id: 1771625925221-0
+event: delta
+data: {"content": " Differential"}
+
+id: 1771625925233-0
+event: delta
+data: {"content": " fluid"}
+
+id: 1771625925234-0
+event: delta
+data: {"content": " level"}
+
+id: 1771625925248-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625925249-0
+event: delta
+data: {"content": " leaks"}
+
+id: 1771625925262-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925263-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625925282-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925284-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625925288-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625925289-0
+event: delta
+data: {"content": " Br"}
+
+id: 1771625925310-0
+event: delta
+data: {"content": "akes"}
+
+id: 1771625925311-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625925339-0
+event: delta
+data: {"content": " Parking"}
+
+id: 1771625925339-1
+event: delta
+data: {"content": " Brake"}
+
+id: 1771625925358-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625925359-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625925365-0
+event: delta
+data: {"content": "."}
+
+id: 1771625925366-0
+event: delta
+data: {"content": " Front"}
+
+id: 1771625925379-0
+event: delta
+data: {"content": " brake"}
+
+id: 1771625925380-0
+event: delta
+data: {"content": " pad"}
+
+id: 1771625925394-0
+event: delta
+data: {"content": " thickness"}
+
+id: 1771625925395-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625925409-0
+event: delta
+data: {"content": "mm"}
+
+id: 1771625925410-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625925429-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925430-0
+event: delta
+data: {"content": "number"}
+
+id: 1771625925440-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925441-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625925449-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625925450-0
+event: delta
+data: {"content": "."}
+
+id: 1771625925464-0
+event: delta
+data: {"content": " Rear"}
+
+id: 1771625925464-1
+event: delta
+data: {"content": " brake"}
+
+id: 1771625925495-0
+event: delta
+data: {"content": " pad"}
+
+id: 1771625925496-0
+event: delta
+data: {"content": " thickness"}
+
+id: 1771625925529-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625925530-0
+event: delta
+data: {"content": "mm"}
+
+id: 1771625925545-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625925546-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925560-0
+event: delta
+data: {"content": "number"}
+
+id: 1771625925561-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925572-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625925573-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625925585-0
+event: delta
+data: {"content": "."}
+
+id: 1771625925586-0
+event: delta
+data: {"content": " Brake"}
+
+id: 1771625925599-0
+event: delta
+data: {"content": " disc"}
+
+id: 1771625925600-0
+event: delta
+data: {"content": "/"}
+
+id: 1771625925616-0
+event: delta
+data: {"content": "rot"}
+
+id: 1771625925617-0
+event: delta
+data: {"content": "or"}
+
+id: 1771625925628-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625925629-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625925665-0
+event: delta
+data: {"content": "sc"}
+
+id: 1771625925666-0
+event: delta
+data: {"content": "oring"}
+
+id: 1771625925690-0
+event: delta
+data: {"content": ","}
+
+id: 1771625925691-0
+event: delta
+data: {"content": " thickness"}
+
+id: 1771625925704-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625925705-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925718-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625925719-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925732-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625925733-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625925746-0
+event: delta
+data: {"content": "."}
+
+id: 1771625925747-0
+event: delta
+data: {"content": " Brake"}
+
+id: 1771625925759-0
+event: delta
+data: {"content": " fluid"}
+
+id: 1771625925760-0
+event: delta
+data: {"content": " level"}
+
+id: 1771625925773-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625925774-0
+event: delta
+data: {"content": " clarity"}
+
+id: 1771625925788-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925789-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625925801-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925802-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625925815-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625925817-0
+event: delta
+data: {"content": "."}
+
+id: 1771625925828-0
+event: delta
+data: {"content": " Brake"}
+
+id: 1771625925829-0
+event: delta
+data: {"content": " fluid"}
+
+id: 1771625925844-0
+event: delta
+data: {"content": " age"}
+
+id: 1771625925845-0
+event: delta
+data: {"content": "/m"}
+
+id: 1771625925856-0
+event: delta
+data: {"content": "ileage"}
+
+id: 1771625925857-0
+event: delta
+data: {"content": " since"}
+
+id: 1771625925870-0
+event: delta
+data: {"content": " change"}
+
+id: 1771625925871-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925886-0
+event: delta
+data: {"content": "text"}
+
+id: 1771625925887-0
+event: delta
+data: {"content": "Answer"}
+
+id: 1771625925898-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925898-1
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625925911-0
+event: delta
+data: {"content": "6"}
+
+id: 1771625925912-0
+event: delta
+data: {"content": "."}
+
+id: 1771625925926-0
+event: delta
+data: {"content": " Brake"}
+
+id: 1771625925927-0
+event: delta
+data: {"content": " hoses"}
+
+id: 1771625925939-0
+event: delta
+data: {"content": "/"}
+
+id: 1771625925940-0
+event: delta
+data: {"content": "lines"}
+
+id: 1771625925953-0
+event: delta
+data: {"content": " for"}
+
+id: 1771625925954-0
+event: delta
+data: {"content": " cracks"}
+
+id: 1771625925969-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625925970-0
+event: delta
+data: {"content": " swelling"}
+
+id: 1771625925982-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625925983-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625925997-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625925999-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625926009-0
+event: delta
+data: {"content": "7"}
+
+id: 1771625926010-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926024-0
+event: delta
+data: {"content": " Parking"}
+
+id: 1771625926025-0
+event: delta
+data: {"content": " brake"}
+
+id: 1771625926038-0
+event: delta
+data: {"content": " operation"}
+
+id: 1771625926039-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625926057-0
+event: delta
+data: {"content": " tension"}
+
+id: 1771625926059-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926072-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625926073-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625926086-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625926087-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625926100-0
+event: delta
+data: {"content": " Suspension"}
+
+id: 1771625926101-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625926116-0
+event: delta
+data: {"content": " Steering"}
+
+id: 1771625926118-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625926127-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625926129-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926141-0
+event: delta
+data: {"content": " Shock"}
+
+id: 1771625926143-0
+event: delta
+data: {"content": " absorber"}
+
+id: 1771625926155-0
+event: delta
+data: {"content": "/"}
+
+id: 1771625926156-0
+event: delta
+data: {"content": "str"}
+
+id: 1771625926169-0
+event: delta
+data: {"content": "ut"}
+
+id: 1771625926170-0
+event: delta
+data: {"content": " leaks"}
+
+id: 1771625926182-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625926183-0
+event: delta
+data: {"content": " damage"}
+
+id: 1771625926196-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926197-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625926210-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625926212-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625926225-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625926226-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926261-0
+event: delta
+data: {"content": " Ball"}
+
+id: 1771625926262-0
+event: delta
+data: {"content": " joints"}
+
+id: 1771625926286-0
+event: delta
+data: {"content": ","}
+
+id: 1771625926287-0
+event: delta
+data: {"content": " tie"}
+
+id: 1771625926300-0
+event: delta
+data: {"content": " rods"}
+
+id: 1771625926301-0
+event: delta
+data: {"content": ","}
+
+id: 1771625926314-0
+event: delta
+data: {"content": " control"}
+
+id: 1771625926315-0
+event: delta
+data: {"content": " arms"}
+
+id: 1771625926328-0
+event: delta
+data: {"content": " play"}
+
+id: 1771625926329-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926342-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625926343-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625926356-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625926357-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625926370-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926371-0
+event: delta
+data: {"content": " Power"}
+
+id: 1771625926383-0
+event: delta
+data: {"content": " steering"}
+
+id: 1771625926385-0
+event: delta
+data: {"content": " fluid"}
+
+id: 1771625926397-0
+event: delta
+data: {"content": " level"}
+
+id: 1771625926398-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625926413-0
+event: delta
+data: {"content": " leaks"}
+
+id: 1771625926414-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926427-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625926428-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625926441-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625926442-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625926455-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926457-0
+event: delta
+data: {"content": " Steering"}
+
+id: 1771625926469-0
+event: delta
+data: {"content": " rack"}
+
+id: 1771625926470-0
+event: delta
+data: {"content": " boots"}
+
+id: 1771625926483-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625926485-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926497-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625926498-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625926511-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625926512-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625926555-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926557-0
+event: delta
+data: {"content": " Test"}
+
+id: 1771625926570-0
+event: delta
+data: {"content": " steering"}
+
+id: 1771625926571-0
+event: delta
+data: {"content": " effort"}
+
+id: 1771625926587-0
+event: delta
+data: {"content": ","}
+
+id: 1771625926588-0
+event: delta
+data: {"content": " play"}
+
+id: 1771625926599-0
+event: delta
+data: {"content": ","}
+
+id: 1771625926601-0
+event: delta
+data: {"content": " noise"}
+
+id: 1771625926613-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926614-0
+event: delta
+data: {"content": "long"}
+
+id: 1771625926637-0
+event: delta
+data: {"content": "Text"}
+
+id: 1771625926638-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625926651-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625926653-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625926671-0
+event: delta
+data: {"content": " Wheels"}
+
+id: 1771625926672-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625926686-0
+event: delta
+data: {"content": " Tires"}
+
+id: 1771625926688-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625926703-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625926705-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926720-0
+event: delta
+data: {"content": " Tire"}
+
+id: 1771625926721-0
+event: delta
+data: {"content": " tread"}
+
+id: 1771625926732-0
+event: delta
+data: {"content": " depth"}
+
+id: 1771625926734-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625926748-0
+event: delta
+data: {"content": "mm"}
+
+id: 1771625926750-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625926777-0
+event: delta
+data: {"content": " each"}
+
+id: 1771625926779-0
+event: delta
+data: {"content": " corner"}
+
+id: 1771625926793-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926794-0
+event: delta
+data: {"content": "number"}
+
+id: 1771625926806-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625926807-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625926822-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625926824-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926839-0
+event: delta
+data: {"content": " Tire"}
+
+id: 1771625926840-0
+event: delta
+data: {"content": " side"}
+
+id: 1771625926851-0
+event: delta
+data: {"content": "wall"}
+
+id: 1771625926852-0
+event: delta
+data: {"content": " damage"}
+
+id: 1771625926865-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625926866-0
+event: delta
+data: {"content": " bul"}
+
+id: 1771625926881-0
+event: delta
+data: {"content": "ges"}
+
+id: 1771625926882-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926895-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625926896-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625926909-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625926910-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625926924-0
+event: delta
+data: {"content": "."}
+
+id: 1771625926925-0
+event: delta
+data: {"content": " Tire"}
+
+id: 1771625926939-0
+event: delta
+data: {"content": " pressure"}
+
+id: 1771625926940-0
+event: delta
+data: {"content": " each"}
+
+id: 1771625926953-0
+event: delta
+data: {"content": " tire"}
+
+id: 1771625926954-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625926968-0
+event: delta
+data: {"content": "psi"}
+
+id: 1771625926969-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625926983-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625926984-0
+event: delta
+data: {"content": "number"}
+
+id: 1771625927001-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927002-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625927015-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625927016-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927030-0
+event: delta
+data: {"content": " Wheel"}
+
+id: 1771625927032-0
+event: delta
+data: {"content": " rim"}
+
+id: 1771625927046-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625927047-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625927059-0
+event: delta
+data: {"content": "b"}
+
+id: 1771625927060-0
+event: delta
+data: {"content": "ends"}
+
+id: 1771625927074-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927075-0
+event: delta
+data: {"content": " corrosion"}
+
+id: 1771625927089-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625927090-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927103-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625927104-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927118-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625927119-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625927134-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927135-0
+event: delta
+data: {"content": " Spare"}
+
+id: 1771625927151-0
+event: delta
+data: {"content": " tire"}
+
+id: 1771625927153-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625927168-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625927173-0
+event: delta
+data: {"content": " pressure"}
+
+id: 1771625927177-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927179-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625927191-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927193-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625927206-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625927208-0
+event: delta
+data: {"content": " Body"}
+
+id: 1771625927220-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625927221-0
+event: delta
+data: {"content": " Exterior"}
+
+id: 1771625927235-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625927236-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625927282-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927283-0
+event: delta
+data: {"content": " Inspect"}
+
+id: 1771625927286-0
+event: delta
+data: {"content": " body"}
+
+id: 1771625927287-0
+event: delta
+data: {"content": " panels"}
+
+id: 1771625927289-0
+event: delta
+data: {"content": " for"}
+
+id: 1771625927290-0
+event: delta
+data: {"content": " rust"}
+
+id: 1771625927293-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927294-0
+event: delta
+data: {"content": " dents"}
+
+id: 1771625927307-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927308-0
+event: delta
+data: {"content": " paint"}
+
+id: 1771625927321-0
+event: delta
+data: {"content": " mismatch"}
+
+id: 1771625927323-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927336-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625927338-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927352-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625927353-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625927365-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927367-0
+event: delta
+data: {"content": " Door"}
+
+id: 1771625927381-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927382-0
+event: delta
+data: {"content": " hood"}
+
+id: 1771625927397-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927399-0
+event: delta
+data: {"content": " trunk"}
+
+id: 1771625927410-0
+event: delta
+data: {"content": " alignment"}
+
+id: 1771625927411-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625927423-0
+event: delta
+data: {"content": " gaps"}
+
+id: 1771625927425-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927438-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625927439-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927454-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625927455-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625927467-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927468-0
+event: delta
+data: {"content": " Window"}
+
+id: 1771625927509-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625927510-0
+event: delta
+data: {"content": " windshield"}
+
+id: 1771625927511-0
+event: delta
+data: {"content": " chips"}
+
+id: 1771625927512-0
+event: delta
+data: {"content": "/cr"}
+
+id: 1771625927516-0
+event: delta
+data: {"content": "acks"}
+
+id: 1771625927517-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927525-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625927527-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927540-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625927541-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625927554-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927555-0
+event: delta
+data: {"content": " Head"}
+
+id: 1771625927569-0
+event: delta
+data: {"content": "lights"}
+
+id: 1771625927570-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927585-0
+event: delta
+data: {"content": " ta"}
+
+id: 1771625927586-0
+event: delta
+data: {"content": "ill"}
+
+id: 1771625927598-0
+event: delta
+data: {"content": "ights"}
+
+id: 1771625927599-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927612-0
+event: delta
+data: {"content": " indicators"}
+
+id: 1771625927613-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927626-0
+event: delta
+data: {"content": " brake"}
+
+id: 1771625927627-0
+event: delta
+data: {"content": " lights"}
+
+id: 1771625927640-0
+event: delta
+data: {"content": " operation"}
+
+id: 1771625927641-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927655-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625927656-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927670-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625927671-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625927687-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927688-0
+event: delta
+data: {"content": " Exterior"}
+
+id: 1771625927699-0
+event: delta
+data: {"content": " trim"}
+
+id: 1771625927700-0
+event: delta
+data: {"content": ","}
+
+id: 1771625927713-0
+event: delta
+data: {"content": " weather"}
+
+id: 1771625927714-0
+event: delta
+data: {"content": " stripping"}
+
+id: 1771625927727-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625927728-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927743-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625927744-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927757-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625927758-0
+event: delta
+data: {"content": "6"}
+
+id: 1771625927772-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927772-1
+event: delta
+data: {"content": " Under"}
+
+id: 1771625927786-0
+event: delta
+data: {"content": "body"}
+
+id: 1771625927787-0
+event: delta
+data: {"content": " sag"}
+
+id: 1771625927800-0
+event: delta
+data: {"content": "ging"}
+
+id: 1771625927801-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625927815-0
+event: delta
+data: {"content": " leaks"}
+
+id: 1771625927816-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927829-0
+event: delta
+data: {"content": "long"}
+
+id: 1771625927830-0
+event: delta
+data: {"content": "Text"}
+
+id: 1771625927843-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927847-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625927858-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625927859-0
+event: delta
+data: {"content": " Interior"}
+
+id: 1771625927872-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625927873-0
+event: delta
+data: {"content": " Comfort"}
+
+id: 1771625927886-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625927888-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625927901-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927902-0
+event: delta
+data: {"content": " Seat"}
+
+id: 1771625927914-0
+event: delta
+data: {"content": " upholstery"}
+
+id: 1771625927916-0
+event: delta
+data: {"content": " wear"}
+
+id: 1771625927928-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625927929-0
+event: delta
+data: {"content": " adjustment"}
+
+id: 1771625927943-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625927944-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625927956-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625927957-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625927970-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625927971-0
+event: delta
+data: {"content": "."}
+
+id: 1771625927984-0
+event: delta
+data: {"content": " Seat"}
+
+id: 1771625927985-0
+event: delta
+data: {"content": " belt"}
+
+id: 1771625927998-0
+event: delta
+data: {"content": " function"}
+
+id: 1771625927999-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625928012-0
+event: delta
+data: {"content": " pret"}
+
+id: 1771625928013-0
+event: delta
+data: {"content": "ension"}
+
+id: 1771625928025-0
+event: delta
+data: {"content": "ers"}
+
+id: 1771625928027-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625928040-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625928041-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625928065-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625928067-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625928079-0
+event: delta
+data: {"content": "."}
+
+id: 1771625928081-0
+event: delta
+data: {"content": " Dashboard"}
+
+id: 1771625928093-0
+event: delta
+data: {"content": " indicator"}
+
+id: 1771625928094-0
+event: delta
+data: {"content": " lights"}
+
+id: 1771625928107-0
+event: delta
+data: {"content": " operation"}
+
+id: 1771625928108-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625928130-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625928131-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625928144-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625928145-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625928157-0
+event: delta
+data: {"content": "."}
+
+id: 1771625928158-0
+event: delta
+data: {"content": " HVAC"}
+
+id: 1771625928212-0
+event: delta
+data: {"content": " performance"}
+
+id: 1771625928213-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625928276-0
+event: delta
+data: {"content": "heat"}
+
+id: 1771625928277-0
+event: delta
+data: {"content": ","}
+
+id: 1771625928343-0
+event: delta
+data: {"content": " A"}
+
+id: 1771625928344-0
+event: delta
+data: {"content": "/C"}
+
+id: 1771625928357-0
+event: delta
+data: {"content": ","}
+
+id: 1771625928358-0
+event: delta
+data: {"content": " blower"}
+
+id: 1771625928373-0
+event: delta
+data: {"content": " speeds"}
+
+id: 1771625928374-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625928388-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625928389-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625928401-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625928402-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625928416-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625928417-0
+event: delta
+data: {"content": "."}
+
+id: 1771625928430-0
+event: delta
+data: {"content": " Check"}
+
+id: 1771625928431-0
+event: delta
+data: {"content": " sun"}
+
+id: 1771625928444-0
+event: delta
+data: {"content": "roof"}
+
+id: 1771625928445-0
+event: delta
+data: {"content": "/mo"}
+
+id: 1771625928459-0
+event: delta
+data: {"content": "on"}
+
+id: 1771625928460-0
+event: delta
+data: {"content": "roof"}
+
+id: 1771625928473-0
+event: delta
+data: {"content": " operation"}
+
+id: 1771625928475-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625928488-0
+event: delta
+data: {"content": "if"}
+
+id: 1771625928488-1
+event: delta
+data: {"content": " equipped"}
+
+id: 1771625928503-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625928504-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625928517-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625928518-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625928531-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625928533-0
+event: delta
+data: {"content": "6"}
+
+id: 1771625928546-0
+event: delta
+data: {"content": "."}
+
+id: 1771625928547-0
+event: delta
+data: {"content": " Interior"}
+
+id: 1771625928560-0
+event: delta
+data: {"content": " lights"}
+
+id: 1771625928561-0
+event: delta
+data: {"content": ","}
+
+id: 1771625928577-0
+event: delta
+data: {"content": " courtesy"}
+
+id: 1771625928578-0
+event: delta
+data: {"content": " lamps"}
+
+id: 1771625928589-0
+event: delta
+data: {"content": ","}
+
+id: 1771625928590-0
+event: delta
+data: {"content": " mirror"}
+
+id: 1771625928604-0
+event: delta
+data: {"content": " operation"}
+
+id: 1771625928606-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625928625-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625928626-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625928634-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625928635-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625928648-0
+event: delta
+data: {"content": " Electrical"}
+
+id: 1771625928649-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625928662-0
+event: delta
+data: {"content": " Electronics"}
+
+id: 1771625928664-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625928677-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625928679-0
+event: delta
+data: {"content": "."}
+
+id: 1771625928693-0
+event: delta
+data: {"content": " Battery"}
+
+id: 1771625928694-0
+event: delta
+data: {"content": " health"}
+
+id: 1771625928707-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625928708-0
+event: delta
+data: {"content": "vol"}
+
+id: 1771625928722-0
+event: delta
+data: {"content": "tage"}
+
+id: 1771625928723-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625928736-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625928737-0
+event: delta
+data: {"content": " age"}
+
+id: 1771625928750-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625928751-0
+event: delta
+data: {"content": "number"}
+
+id: 1771625928764-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625928765-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625928778-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625928779-0
+event: delta
+data: {"content": "."}
+
+id: 1771625928792-0
+event: delta
+data: {"content": " Altern"}
+
+id: 1771625928793-0
+event: delta
+data: {"content": "ator"}
+
+id: 1771625928806-0
+event: delta
+data: {"content": " output"}
+
+id: 1771625928807-0
+event: delta
+data: {"content": " voltage"}
+
+id: 1771625928820-0
+event: delta
+data: {"content": " under"}
+
+id: 1771625928821-0
+event: delta
+data: {"content": " load"}
+
+id: 1771625928834-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625928835-0
+event: delta
+data: {"content": "number"}
+
+id: 1771625928848-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625928849-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625928863-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625928864-0
+event: delta
+data: {"content": "."}
+
+id: 1771625928877-0
+event: delta
+data: {"content": " Central"}
+
+id: 1771625928878-0
+event: delta
+data: {"content": " locking"}
+
+id: 1771625928891-0
+event: delta
+data: {"content": ","}
+
+id: 1771625928892-0
+event: delta
+data: {"content": " power"}
+
+id: 1771625928905-0
+event: delta
+data: {"content": " windows"}
+
+id: 1771625928907-0
+event: delta
+data: {"content": ","}
+
+id: 1771625928919-0
+event: delta
+data: {"content": " mirrors"}
+
+id: 1771625928921-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625928934-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625928935-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625928947-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625928949-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625928961-0
+event: delta
+data: {"content": "."}
+
+id: 1771625928963-0
+event: delta
+data: {"content": " Audio"}
+
+id: 1771625928976-0
+event: delta
+data: {"content": "/video"}
+
+id: 1771625928977-0
+event: delta
+data: {"content": " system"}
+
+id: 1771625928989-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625928991-0
+event: delta
+data: {"content": " speakers"}
+
+id: 1771625929003-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929004-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625929018-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929019-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625929031-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625929032-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929046-0
+event: delta
+data: {"content": " Instrument"}
+
+id: 1771625929047-0
+event: delta
+data: {"content": " cluster"}
+
+id: 1771625929061-0
+event: delta
+data: {"content": " gauges"}
+
+id: 1771625929062-0
+event: delta
+data: {"content": " accuracy"}
+
+id: 1771625929073-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929074-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625929087-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929088-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625929101-0
+event: delta
+data: {"content": "6"}
+
+id: 1771625929102-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929115-0
+event: delta
+data: {"content": " O"}
+
+id: 1771625929117-0
+event: delta
+data: {"content": "BD"}
+
+id: 1771625929130-0
+event: delta
+data: {"content": "-"}
+
+id: 1771625929131-0
+event: delta
+data: {"content": "II"}
+
+id: 1771625929143-0
+event: delta
+data: {"content": " scan"}
+
+id: 1771625929144-0
+event: delta
+data: {"content": ":"}
+
+id: 1771625929157-0
+event: delta
+data: {"content": " presence"}
+
+id: 1771625929158-0
+event: delta
+data: {"content": " of"}
+
+id: 1771625929171-0
+event: delta
+data: {"content": " D"}
+
+id: 1771625929172-0
+event: delta
+data: {"content": "TC"}
+
+id: 1771625929185-0
+event: delta
+data: {"content": " codes"}
+
+id: 1771625929186-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929199-0
+event: delta
+data: {"content": "text"}
+
+id: 1771625929199-1
+event: delta
+data: {"content": "Answer"}
+
+id: 1771625929212-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929213-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625929226-0
+event: delta
+data: {"content": "7"}
+
+id: 1771625929227-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929271-0
+event: delta
+data: {"content": " Fuse"}
+
+id: 1771625929272-0
+event: delta
+data: {"content": " box"}
+
+id: 1771625929283-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625929284-0
+event: delta
+data: {"content": " rel"}
+
+id: 1771625929298-0
+event: delta
+data: {"content": "ays"}
+
+id: 1771625929299-0
+event: delta
+data: {"content": " corrosion"}
+
+id: 1771625929312-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625929313-0
+event: delta
+data: {"content": " damage"}
+
+id: 1771625929326-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929327-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625929340-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929341-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625929354-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625929355-0
+event: delta
+data: {"content": " Under"}
+
+id: 1771625929374-0
+event: delta
+data: {"content": "body"}
+
+id: 1771625929375-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625929388-0
+event: delta
+data: {"content": " Exhaust"}
+
+id: 1771625929389-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625929403-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625929404-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929417-0
+event: delta
+data: {"content": " Exhaust"}
+
+id: 1771625929418-0
+event: delta
+data: {"content": " system"}
+
+id: 1771625929431-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625929432-0
+event: delta
+data: {"content": "m"}
+
+id: 1771625929445-0
+event: delta
+data: {"content": "uff"}
+
+id: 1771625929446-0
+event: delta
+data: {"content": "ler"}
+
+id: 1771625929459-0
+event: delta
+data: {"content": ","}
+
+id: 1771625929460-0
+event: delta
+data: {"content": " pipes"}
+
+id: 1771625929474-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625929475-0
+event: delta
+data: {"content": " rust"}
+
+id: 1771625929489-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625929490-0
+event: delta
+data: {"content": " leaks"}
+
+id: 1771625929504-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929505-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625929519-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929520-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625929533-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625929534-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929549-0
+event: delta
+data: {"content": " Catal"}
+
+id: 1771625929550-0
+event: delta
+data: {"content": "ytic"}
+
+id: 1771625929563-0
+event: delta
+data: {"content": " converter"}
+
+id: 1771625929564-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625929577-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929578-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625929592-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929593-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625929607-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625929608-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929622-0
+event: delta
+data: {"content": " Fuel"}
+
+id: 1771625929623-0
+event: delta
+data: {"content": " tank"}
+
+id: 1771625929637-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625929638-0
+event: delta
+data: {"content": " lines"}
+
+id: 1771625929675-0
+event: delta
+data: {"content": " corrosion"}
+
+id: 1771625929676-0
+event: delta
+data: {"content": "/le"}
+
+id: 1771625929689-0
+event: delta
+data: {"content": "aks"}
+
+id: 1771625929690-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929704-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625929705-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929719-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625929720-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625929733-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929734-0
+event: delta
+data: {"content": " Inspect"}
+
+id: 1771625929747-0
+event: delta
+data: {"content": " chassis"}
+
+id: 1771625929748-0
+event: delta
+data: {"content": " rails"}
+
+id: 1771625929771-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625929772-0
+event: delta
+data: {"content": " cross"}
+
+id: 1771625929787-0
+event: delta
+data: {"content": "members"}
+
+id: 1771625929787-1
+event: delta
+data: {"content": " for"}
+
+id: 1771625929801-0
+event: delta
+data: {"content": " rust"}
+
+id: 1771625929803-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929816-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625929817-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929831-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625929832-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625929847-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929848-0
+event: delta
+data: {"content": " Inspect"}
+
+id: 1771625929861-0
+event: delta
+data: {"content": " brake"}
+
+id: 1771625929861-1
+event: delta
+data: {"content": " and"}
+
+id: 1771625929876-0
+event: delta
+data: {"content": " fuel"}
+
+id: 1771625929877-0
+event: delta
+data: {"content": " line"}
+
+id: 1771625929891-0
+event: delta
+data: {"content": " routing"}
+
+id: 1771625929892-0
+event: delta
+data: {"content": "/cl"}
+
+id: 1771625929905-0
+event: delta
+data: {"content": "amps"}
+
+id: 1771625929906-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625929920-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625929921-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625929935-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625929936-0
+event: delta
+data: {"content": "##"}
+
+id: 1771625929949-0
+event: delta
+data: {"content": " Safety"}
+
+id: 1771625929950-0
+event: delta
+data: {"content": " &"}
+
+id: 1771625929963-0
+event: delta
+data: {"content": " Misc"}
+
+id: 1771625929964-0
+event: delta
+data: {"content": "ellaneous"}
+
+id: 1771625929979-0
+event: delta
+data: {"content": "\n"}
+
+id: 1771625929980-0
+event: delta
+data: {"content": "1"}
+
+id: 1771625929992-0
+event: delta
+data: {"content": "."}
+
+id: 1771625929993-0
+event: delta
+data: {"content": " Air"}
+
+id: 1771625930007-0
+event: delta
+data: {"content": "bag"}
+
+id: 1771625930008-0
+event: delta
+data: {"content": " warning"}
+
+id: 1771625930023-0
+event: delta
+data: {"content": " light"}
+
+id: 1771625930024-0
+event: delta
+data: {"content": " status"}
+
+id: 1771625930038-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625930039-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625930052-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625930053-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625930066-0
+event: delta
+data: {"content": "2"}
+
+id: 1771625930067-0
+event: delta
+data: {"content": "."}
+
+id: 1771625930082-0
+event: delta
+data: {"content": " Horn"}
+
+id: 1771625930082-1
+event: delta
+data: {"content": ","}
+
+id: 1771625930096-0
+event: delta
+data: {"content": " alarms"}
+
+id: 1771625930097-0
+event: delta
+data: {"content": ","}
+
+id: 1771625930110-0
+event: delta
+data: {"content": " immobil"}
+
+id: 1771625930111-0
+event: delta
+data: {"content": "izer"}
+
+id: 1771625930125-0
+event: delta
+data: {"content": " operation"}
+
+id: 1771625930126-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625930141-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625930141-1
+event: delta
+data: {"content": "]"}
+
+id: 1771625930154-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625930155-0
+event: delta
+data: {"content": "3"}
+
+id: 1771625930169-0
+event: delta
+data: {"content": "."}
+
+id: 1771625930170-0
+event: delta
+data: {"content": " Check"}
+
+id: 1771625930183-0
+event: delta
+data: {"content": " jack"}
+
+id: 1771625930184-0
+event: delta
+data: {"content": ","}
+
+id: 1771625930201-0
+event: delta
+data: {"content": " lug"}
+
+id: 1771625930202-0
+event: delta
+data: {"content": " wrench"}
+
+id: 1771625930212-0
+event: delta
+data: {"content": ","}
+
+id: 1771625930213-0
+event: delta
+data: {"content": " tool"}
+
+id: 1771625930226-0
+event: delta
+data: {"content": " kit"}
+
+id: 1771625930228-0
+event: delta
+data: {"content": " presence"}
+
+id: 1771625930240-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625930241-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625930254-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625930255-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625930268-0
+event: delta
+data: {"content": "4"}
+
+id: 1771625930269-0
+event: delta
+data: {"content": "."}
+
+id: 1771625930288-0
+event: delta
+data: {"content": " First"}
+
+id: 1771625930289-0
+event: delta
+data: {"content": " aid"}
+
+id: 1771625930303-0
+event: delta
+data: {"content": " kit"}
+
+id: 1771625930304-0
+event: delta
+data: {"content": ","}
+
+id: 1771625930317-0
+event: delta
+data: {"content": " fire"}
+
+id: 1771625930318-0
+event: delta
+data: {"content": " exting"}
+
+id: 1771625930330-0
+event: delta
+data: {"content": "uis"}
+
+id: 1771625930331-0
+event: delta
+data: {"content": "her"}
+
+id: 1771625930344-0
+event: delta
+data: {"content": " present"}
+
+id: 1771625930345-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625930359-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625930360-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625930372-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625930373-0
+event: delta
+data: {"content": "5"}
+
+id: 1771625930386-0
+event: delta
+data: {"content": "."}
+
+id: 1771625930387-0
+event: delta
+data: {"content": " Owner"}
+
+id: 1771625930400-0
+event: delta
+data: {"content": "\u2019s"}
+
+id: 1771625930401-0
+event: delta
+data: {"content": " manual"}
+
+id: 1771625930414-0
+event: delta
+data: {"content": ","}
+
+id: 1771625930415-0
+event: delta
+data: {"content": " service"}
+
+id: 1771625930428-0
+event: delta
+data: {"content": " records"}
+
+id: 1771625930429-0
+event: delta
+data: {"content": " availability"}
+
+id: 1771625930441-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625930442-0
+event: delta
+data: {"content": "list"}
+
+id: 1771625930455-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625930456-0
+event: delta
+data: {"content": "  \n"}
+
+id: 1771625930470-0
+event: delta
+data: {"content": "6"}
+
+id: 1771625930471-0
+event: delta
+data: {"content": "."}
+
+id: 1771625930486-0
+event: delta
+data: {"content": " Overall"}
+
+id: 1771625930487-0
+event: delta
+data: {"content": " vehicle"}
+
+id: 1771625930498-0
+event: delta
+data: {"content": " condition"}
+
+id: 1771625930499-0
+event: delta
+data: {"content": " rating"}
+
+id: 1771625930575-0
+event: delta
+data: {"content": " ["}
+
+id: 1771625930576-0
+event: delta
+data: {"content": "slider"}
+
+id: 1771625930598-0
+event: delta
+data: {"content": "]"}
+
+id: 1771625930600-0
+event: delta
+data: {"content": "  \n\n"}
+
+id: 1771625930613-0
+event: delta
+data: {"content": "Please"}
+
+id: 1771625930614-0
+event: delta
+data: {"content": " review"}
+
+id: 1771625930627-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625930628-0
+event: delta
+data: {"content": " let"}
+
+id: 1771625930641-0
+event: delta
+data: {"content": " me"}
+
+id: 1771625930642-0
+event: delta
+data: {"content": " know"}
+
+id: 1771625930655-0
+event: delta
+data: {"content": " if"}
+
+id: 1771625930656-0
+event: delta
+data: {"content": " this"}
+
+id: 1771625930669-0
+event: delta
+data: {"content": " covers"}
+
+id: 1771625930671-0
+event: delta
+data: {"content": " everything"}
+
+id: 1771625930683-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625930684-0
+event: delta
+data: {"content": " if"}
+
+id: 1771625930697-0
+event: delta
+data: {"content": " you"}
+
+id: 1771625930699-0
+event: delta
+data: {"content": "\u2019d"}
+
+id: 1771625930712-0
+event: delta
+data: {"content": " like"}
+
+id: 1771625930714-0
+event: delta
+data: {"content": " to"}
+
+id: 1771625930725-0
+event: delta
+data: {"content": " add"}
+
+id: 1771625930726-0
+event: delta
+data: {"content": ","}
+
+id: 1771625930760-0
+event: delta
+data: {"content": " remove"}
+
+id: 1771625930761-0
+event: delta
+data: {"content": ","}
+
+id: 1771625930777-0
+event: delta
+data: {"content": " or"}
+
+id: 1771625930778-0
+event: delta
+data: {"content": " adjust"}
+
+id: 1771625930799-0
+event: delta
+data: {"content": " any"}
+
+id: 1771625930801-0
+event: delta
+data: {"content": " items"}
+
+id: 1771625930814-0
+event: delta
+data: {"content": "."}
+
+id: 1771625930815-0
+event: delta
+data: {"content": " When"}
+
+id: 1771625930828-0
+event: delta
+data: {"content": " you"}
+
+id: 1771625930829-0
+event: delta
+data: {"content": "\u2019re"}
+
+id: 1771625930845-0
+event: delta
+data: {"content": " happy"}
+
+id: 1771625930846-0
+event: delta
+data: {"content": " with"}
+
+id: 1771625930859-0
+event: delta
+data: {"content": " it"}
+
+id: 1771625930860-0
+event: delta
+data: {"content": ","}
+
+id: 1771625930873-0
+event: delta
+data: {"content": " just"}
+
+id: 1771625930874-0
+event: delta
+data: {"content": " say"}
+
+id: 1771625930887-0
+event: delta
+data: {"content": " \u201c"}
+
+id: 1771625930888-0
+event: delta
+data: {"content": "generate"}
+
+id: 1771625930901-0
+event: delta
+data: {"content": "\u201d"}
+
+id: 1771625930903-0
+event: delta
+data: {"content": " ("}
+
+id: 1771625930916-0
+event: delta
+data: {"content": "or"}
+
+id: 1771625930917-0
+event: delta
+data: {"content": " similar"}
+
+id: 1771625931012-0
+event: delta
+data: {"content": ")"}
+
+id: 1771625931013-0
+event: delta
+data: {"content": " and"}
+
+id: 1771625931048-0
+event: delta
+data: {"content": " I"}
+
+id: 1771625931049-0
+event: delta
+data: {"content": "\u2019ll"}
+
+id: 1771625931063-0
+event: delta
+data: {"content": " create"}
+
+id: 1771625931064-0
+event: delta
+data: {"content": " the"}
+
+id: 1771625931149-0
+event: delta
+data: {"content": " final"}
+
+id: 1771625931150-0
+event: delta
+data: {"content": " checklist"}
+
+id: 1771625931177-0
+event: delta
+data: {"content": "."}
+
+id: 1771625931190-0
+event: message
+data: {"content": "\n\nHere is a proposed structure for your one-time pre-purchase inspection checklist of a 2012 Daewoo Lacetti. Please review and let me know if you\u2019d like any changes. Once you confirm, I will generate the final checklist.\n\n## Engine & Cooling System\n1. Check engine oil level and dipstick reading [number]  \n2. Assess engine oil color/condition [longText]  \n3. Engine oil leaks visible? [list]  \n4. Coolant level and fill concentration [list]  \n5. Coolant color and contamination (rust/debris) [longText]  \n6. Coolant hoses/crimps condition (soft spots, cracks) [list]  \n7. Radiator core and cap condition [list]  \n8. Inspect drive belts (serpentine, timing) for wear/tension [list]  \n\n## Transmission & Drivetrain\n1. Transmission fluid level and condition [list]  \n2. Fluid color (clear/red/burnt) and odor [longText]  \n3. Transmission leaks (seal/pan) [list]  \n4. Clutch engagement (manual) or shift quality (auto) [longText]  \n5. CV joint boots and axle shafts condition [list]  \n6. Differential fluid level and leaks [list]  \n\n## Brakes & Parking Brake\n1. Front brake pad thickness (mm) [number]  \n2. Rear brake pad thickness (mm) [number]  \n3. Brake disc/rotor condition (scoring, thickness) [list]  \n4. Brake fluid level and clarity [list]  \n5. Brake fluid age/mileage since change [textAnswer]  \n6. Brake hoses/lines for cracks or swelling [list]  \n7. Parking brake operation and tension [list]  \n\n## Suspension & Steering\n1. Shock absorber/strut leaks or damage [list]  \n2. Ball joints, tie rods, control arms play [list]  \n3. Power steering fluid level and leaks [list]  \n4. Steering rack boots condition [list]  \n5. Test steering effort, play, noise [longText]  \n\n## Wheels & Tires\n1. Tire tread depth (mm) each corner [number]  \n2. Tire sidewall damage or bulges [list]  \n3. Tire pressure each tire (psi) [number]  \n4. Wheel rim condition (bends, corrosion) [list]  \n5. Spare tire condition and pressure [list]  \n\n## Body & Exterior\n1. Inspect body panels for rust, dents, paint mismatch [list]  \n2. Door, hood, trunk alignment and gaps [list]  \n3. Window and windshield chips/cracks [list]  \n4. Headlights, taillights, indicators, brake lights operation [list]  \n5. Exterior trim, weather stripping condition [list]  \n6. Underbody sagging or leaks [longText]  \n\n## Interior & Comfort\n1. Seat upholstery wear and adjustment [list]  \n2. Seat belt function and pretensioners [list]  \n3. Dashboard indicator lights operation [list]  \n4. HVAC performance (heat, A/C, blower speeds) [list]  \n5. Check sunroof/moonroof operation (if equipped) [list]  \n6. Interior lights, courtesy lamps, mirror operation [list]  \n\n## Electrical & Electronics\n1. Battery health (voltage) and age [number]  \n2. Alternator output voltage under load [number]  \n3. Central locking, power windows, mirrors [list]  \n4. Audio/video system and speakers [list]  \n5. Instrument cluster gauges accuracy [list]  \n6. OBD-II scan: presence of DTC codes [textAnswer]  \n7. Fuse box and relays corrosion or damage [list]  \n\n## Underbody & Exhaust\n1. Exhaust system (muffler, pipes) rust or leaks [list]  \n2. Catalytic converter condition [list]  \n3. Fuel tank and lines corrosion/leaks [list]  \n4. Inspect chassis rails and crossmembers for rust [list]  \n5. Inspect brake and fuel line routing/clamps [list]  \n\n## Safety & Miscellaneous\n1. Airbag warning light status [list]  \n2. Horn, alarms, immobilizer operation [list]  \n3. Check jack, lug wrench, tool kit presence [list]  \n4. First aid kit, fire extinguisher present [list]  \n5. Owner\u2019s manual, service records availability [list]  \n6. Overall vehicle condition rating [slider]  \n\nPlease review and let me know if this covers everything or if you\u2019d like to add, remove, or adjust any items. When you\u2019re happy with it, just say \u201cgenerate\u201d (or similar) and I\u2019ll create the final checklist.", "reasoning_content": "\nI need to draft a comprehensive pre-purchase checklist for a 2012 Daewoo Lacetti. I\u2019ll cover every major system\u2014engine, transmission, brakes, suspension, body, interior, electrical, tires, underbody, safety. For each item, I\u2019ll assign appropriate input types ([list], [number], [textAnswer], [longText], [slider]). Then I\u2019ll present the full draft and ask the user to confirm before generating.\n"}
+
+id: 1771625931192-0
+event: complete
+data: {"total_input_tokens": 6411, "total_output_tokens": 2856, "reasoning_content": "\nI need to draft a comprehensive pre-purchase checklist for a 2012 Daewoo Lacetti. I\u2019ll cover every major system\u2014engine, transmission, brakes, suspension, body, interior, electrical, tires, underbody, safety. For each item, I\u2019ll assign appropriate input types ([list], [number], [textAnswer], [longText], [slider]). Then I\u2019ll present the full draft and ask the user to confirm before generating.\n", "finish_reason": "stop"}
+

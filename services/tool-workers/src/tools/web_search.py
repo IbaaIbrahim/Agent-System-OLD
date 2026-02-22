@@ -1,5 +1,7 @@
 """Web search tool implementation."""
 
+import asyncio
+import time
 from typing import Any, Literal
 
 import httpx
@@ -9,6 +11,11 @@ from libs.common import get_logger
 from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
+
+# Stagger delay between parallel DuckDuckGo requests to avoid rate limiting.
+# When multiple tool workers hit DDG simultaneously from the same IP,
+# requests get throttled or blocked. This adds a small random delay.
+_DDG_STAGGER_SECONDS = 1.5
 
 
 @catalog_tool("web_search")
@@ -52,14 +59,19 @@ class WebSearchTool(BaseTool):
         """
         query = arguments.get("query", "")
         num_results = min(arguments.get("num_results", 5), 10)
+        job_id = context.get("job_id")
+        tool_call_id = context.get("tool_call_id")
 
         logger.info(
             "Executing web search",
             query=query,
             num_results=num_results,
             provider=self.provider,
-            job_id=context.get("job_id"),
+            job_id=job_id,
+            tool_call_id=tool_call_id,
         )
+
+        start_time = time.monotonic()
 
         try:
             # Route to appropriate search provider
@@ -69,34 +81,59 @@ class WebSearchTool(BaseTool):
                 # Default to DuckDuckGo
                 results = await self._search_duckduckgo(query, num_results)
 
+            elapsed = time.monotonic() - start_time
+
             # Format results
             formatted = self._format_results(results, query)
+
+            logger.info(
+                "Web search completed",
+                query=query,
+                result_count=len(results),
+                elapsed_seconds=round(elapsed, 2),
+                job_id=job_id,
+                tool_call_id=tool_call_id,
+            )
+
             return formatted
 
         except httpx.TimeoutException:
+            elapsed = time.monotonic() - start_time
             logger.error(
                 "Web search timed out",
                 query=query,
                 timeout=self.timeout,
+                elapsed_seconds=round(elapsed, 2),
+                job_id=job_id,
+                tool_call_id=tool_call_id,
             )
             return f"Search timed out after {self.timeout} seconds. Please try again or rephrase your query."
 
         except httpx.HTTPStatusError as e:
+            elapsed = time.monotonic() - start_time
             logger.error(
                 "Web search HTTP error",
                 query=query,
                 status_code=e.response.status_code,
+                elapsed_seconds=round(elapsed, 2),
+                job_id=job_id,
+                tool_call_id=tool_call_id,
             )
             if e.response.status_code == 429:
                 return "Search rate limit exceeded. Please try again in a few moments."
             return f"Search service error (HTTP {e.response.status_code}). Please try again."
 
         except Exception as e:
+            elapsed = time.monotonic() - start_time
             logger.error(
                 "Web search failed",
                 query=query,
                 provider=self.provider,
                 error=str(e),
+                error_type=type(e).__name__,
+                elapsed_seconds=round(elapsed, 2),
+                job_id=job_id,
+                tool_call_id=tool_call_id,
             )
             return f"Search failed: {str(e)}"
 
@@ -105,9 +142,13 @@ class WebSearchTool(BaseTool):
         query: str,
         num_results: int,
     ) -> list[dict[str, Any]]:
-        """Search using DuckDuckGo Instant Answer API.
+        """Search using DuckDuckGo via ddgs (real web search).
 
-        Uses DuckDuckGo's free API (no authentication required).
+        Uses the ddgs library for actual web search results (not the Instant
+        Answer API, which returns no results for most queries).
+
+        Includes a stagger delay to avoid rate limiting when multiple
+        parallel searches hit DuckDuckGo from the same IP.
 
         Args:
             query: Search query
@@ -116,55 +157,57 @@ class WebSearchTool(BaseTool):
         Returns:
             List of search results with title, url, and snippet
         """
-        response = await self.client.get(
-            "https://api.duckduckgo.com/",
-            params={
-                "q": query,
-                "format": "json",
-                "no_html": 1,
-                "skip_disambig": 1,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
+        import random
 
-        results = []
+        from ddgs import DDGS
 
-        # Extract Abstract (main result)
-        if data.get("Abstract"):
-            results.append({
-                "title": data.get("Heading", query),
-                "url": data.get("AbstractURL", ""),
-                "snippet": data["Abstract"],
-            })
+        # Stagger parallel requests to avoid DuckDuckGo rate limiting
+        stagger = random.uniform(0, _DDG_STAGGER_SECONDS)
+        if stagger > 0:
+            logger.debug(
+                "Staggering DuckDuckGo request",
+                delay_seconds=round(stagger, 2),
+                query=query[:60],
+            )
+            await asyncio.sleep(stagger)
 
-        # Extract Related Topics
-        for topic in data.get("RelatedTopics", []):
-            if len(results) >= num_results:
-                break
+        def _run_text_search() -> list[dict[str, Any]]:
+            with DDGS() as ddgs_client:
+                # text() returns generator of dicts: title, href, body
+                raw = list(ddgs_client.text(query, max_results=num_results))
+            return [
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("href", ""),
+                    "snippet": r.get("body", ""),
+                }
+                for r in raw
+            ]
 
-            # Handle both direct topics and topic groups
-            if isinstance(topic, dict):
-                if "Text" in topic and "FirstURL" in topic:
-                    # Direct topic
-                    results.append({
-                        "title": topic.get("Text", "")[:100],  # Truncate title
-                        "url": topic.get("FirstURL", ""),
-                        "snippet": topic.get("Text", ""),
-                    })
-                elif "Topics" in topic:
-                    # Topic group - extract nested topics
-                    for nested in topic.get("Topics", []):
-                        if len(results) >= num_results:
-                            break
-                        if "Text" in nested and "FirstURL" in nested:
-                            results.append({
-                                "title": nested.get("Text", "")[:100],
-                                "url": nested.get("FirstURL", ""),
-                                "snippet": nested.get("Text", ""),
-                            })
+        # DDGS is sync; run in thread pool to avoid blocking.
+        # Retry once on failure (DuckDuckGo can be flaky under load).
+        max_retries = 2
+        last_error: Exception | None = None
 
-        return results[:num_results]
+        for attempt in range(max_retries):
+            try:
+                results = await asyncio.to_thread(_run_text_search)
+                return results[:num_results]
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "DuckDuckGo search attempt failed",
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    query=query[:60],
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                if attempt < max_retries - 1:
+                    # Wait before retry with exponential backoff
+                    await asyncio.sleep(2 ** attempt)
+
+        raise last_error  # type: ignore[misc]
 
     async def _search_brave(
         self,
