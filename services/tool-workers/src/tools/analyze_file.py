@@ -1,5 +1,10 @@
 """File analysis tool using vision models for image analysis."""
 
+from .base import BaseTool, catalog_tool
+from libs.messaging.redis import get_redis_client
+from libs.llm import LLMMessage, MessageRole, get_provider
+from libs.common.tool_catalog import get_tool_model_preference
+from libs.common import get_logger
 import sys
 from datetime import UTC, datetime
 from typing import Any
@@ -7,12 +12,6 @@ from typing import Any
 # Add parent directory to path for imports
 sys.path.insert(0, "services/tool-workers")
 
-from libs.common import get_logger
-from libs.common.tool_catalog import get_tool_model_preference
-from libs.llm import LLMMessage, MessageRole, get_provider
-from libs.messaging.redis import get_redis_client
-
-from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
@@ -49,7 +48,8 @@ class AnalyzeFileTool(BaseTool):
         import uuid as uuid_mod
 
         file_id = arguments["file_id"]
-        query = arguments["query"]
+        query = arguments.get(
+            "query", "Describe this file in full detail and don't miss any signle detail inside it")
 
         logger.info(
             "Analyzing file",
@@ -349,7 +349,8 @@ class AnalyzeFileTool(BaseTool):
             text_content = ""
             page_count = len(reader.pages)
 
-            logger.info("Extracting text from PDF", filename=filename, pages=page_count)
+            logger.info("Extracting text from PDF",
+                        filename=filename, pages=page_count)
 
             for i, page in enumerate(reader.pages):
                 page_text = page.extract_text()
@@ -558,7 +559,8 @@ class AnalyzeFileTool(BaseTool):
                     cells = [cell.text.strip() for cell in row.cells]
                     parts.append("| " + " | ".join(cells) + " |")
                     if row_idx == 0:
-                        parts.append("| " + " | ".join("---" for _ in cells) + " |")
+                        parts.append(
+                            "| " + " | ".join("---" for _ in cells) + " |")
 
             text_content = "\n".join(parts)
 

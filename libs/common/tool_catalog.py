@@ -181,7 +181,7 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
                     ),
                 },
             },
-            "required": ["file_id", "query"],
+            "required": ["file_id"],
         },
         behavior=ToolBehavior.AUTO_EXECUTE,
         preferred_provider="anthropic",
