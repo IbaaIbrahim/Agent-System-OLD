@@ -133,33 +133,101 @@ class ResumeHandler:
                 and phase_state_data.get("current_phase") not in (None, "simple")
             )
 
-            if is_multi_phase:
-                from ..engine.phase_executor import PhaseExecutor
+            # Loop to handle fast-completing tools whose resume signals
+            # arrive while we still hold the lock (race condition).
+            # After each resume, if state is WAITING_TOOL again, check
+            # Redis immediately for already-completed results.
+            max_resume_iterations = 10
+            iteration = 0
+
+            while True:
+                iteration += 1
+                if iteration > max_resume_iterations:
+                    logger.warning(
+                        "Max resume iterations reached, breaking",
+                        job_id=str(job_id),
+                        iteration=iteration,
+                    )
+                    break
+
+                if is_multi_phase:
+                    from ..engine.phase_executor import PhaseExecutor
+
+                    logger.info(
+                        "Resuming in multi-phase mode",
+                        job_id=str(job_id),
+                        phase=phase_state_data.get("current_phase"),
+                        iteration=iteration,
+                    )
+                    phase_executor = PhaseExecutor(
+                        llm_service=self.llm_service,
+                        tool_handler=self.tool_handler,
+                        snapshot_service=self.snapshot_service,
+                        event_callback=self._publish_event,
+                        config=self.config,
+                    )
+                    state = await phase_executor.resume_after_tools(state, tool_results)
+                else:
+                    # Create executor with event callback
+                    executor = AgentExecutor(
+                        llm_service=self.llm_service,
+                        tool_handler=self.tool_handler,
+                        snapshot_service=self.snapshot_service,
+                        event_callback=self._publish_event,
+                    )
+
+                    # Resume execution from snapshot
+                    state = await executor.resume_from_snapshot(state, tool_results)
+
+                # If not waiting for tools, we're done
+                if state.status != AgentStatus.WAITING_TOOL:
+                    break
+
+                # State is WAITING_TOOL again — new tools were dispatched.
+                # Save intermediate snapshot so state is persisted.
+                await self.snapshot_service.save_snapshot(state)
+
+                # Check if the new pending tools already completed
+                # (e.g., cache hit causing instant return).
+                tool_results = await self._fetch_tool_results(
+                    state.pending_tool_calls
+                )
+                missing = [
+                    tc.id for tc in state.pending_tool_calls
+                    if tool_results.get(tc.id) is None
+                ]
 
                 logger.info(
-                    "Resuming in multi-phase mode",
+                    "Re-checking tool results after new dispatch",
                     job_id=str(job_id),
-                    phase=phase_state_data.get("current_phase"),
-                )
-                phase_executor = PhaseExecutor(
-                    llm_service=self.llm_service,
-                    tool_handler=self.tool_handler,
-                    snapshot_service=self.snapshot_service,
-                    event_callback=self._publish_event,
-                    config=self.config,
-                )
-                state = await phase_executor.resume_after_tools(state, tool_results)
-            else:
-                # Create executor with event callback
-                executor = AgentExecutor(
-                    llm_service=self.llm_service,
-                    tool_handler=self.tool_handler,
-                    snapshot_service=self.snapshot_service,
-                    event_callback=self._publish_event,
+                    iteration=iteration,
+                    pending=len(state.pending_tool_calls),
+                    completed=len(state.pending_tool_calls) - len(missing),
+                    missing=len(missing),
                 )
 
-                # Resume execution from snapshot
-                state = await executor.resume_from_snapshot(state, tool_results)
+                if missing:
+                    # Some tools still running — a future resume signal
+                    # will pick this up. Break and release the lock.
+                    break
+
+                # All new tools already done — refresh phase state
+                # for next iteration's is_multi_phase check
+                phase_state_data = (
+                    state.metadata.get("phase_state")
+                    if state.metadata else None
+                )
+                is_multi_phase = (
+                    phase_state_data
+                    and phase_state_data.get("current_phase")
+                    not in (None, "simple")
+                )
+
+                logger.info(
+                    "Fast-completing tools detected, looping",
+                    job_id=str(job_id),
+                    iteration=iteration,
+                )
 
             # Save final state
             await self.snapshot_service.save_snapshot(state)
