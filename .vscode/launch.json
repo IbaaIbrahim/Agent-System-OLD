@@ -1,0 +1,225 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Orchestrator",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "services.orchestrator.src.main",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Orchestrator (Watch Mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "watchfiles",
+            "args": [
+                "--ignore-paths",
+                ".cursor",
+                "${command:python.interpreterPath} -m services.orchestrator.src.main"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "subProcess": true
+        },
+        {
+            "name": "API Gateway",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["services.api-gateway.src.main:app", "--reload", "--port", "8000", "--host", "localhost"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "API Gateway (Watch Mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["services.api-gateway.src.main:app", "--reload", "--port", "8000", "--host", "localhost"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Stream Edge",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["services.stream-edge.src.main:app", "--reload", "--port", "8001", "--host", "localhost"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Stream Edge (Watch Mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["services.stream-edge.src.main:app", "--reload", "--port", "8001", "--host", "localhost"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Tool Workers",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "services.tool-workers.src.main",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Tool Workers (Watch Mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "watchfiles",
+            "args": [
+                "--ignore-paths",
+                ".cursor",
+                "${command:python.interpreterPath} -m services.tool-workers.src.main"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "subProcess": true
+        },
+        {
+            "name": "Archiver",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "services.archiver.src.main",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Archiver (Watch Mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "watchfiles",
+            "args": [
+                "--ignore-paths",
+                ".cursor",
+                "${command:python.interpreterPath} -m services.archiver.src.main"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "subProcess": true
+        },
+        {
+            "name": "Live Session Manager",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "services.live-session-manager.src.main",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Live Session Manager (Watch Mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "watchfiles",
+            "args": [
+                "--ignore-paths",
+                ".cursor",
+                "${command:python.interpreterPath} -m services.live-session-manager.src.main"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "subProcess": true
+        },
+        {
+            "name": "WebSocket Gateway",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["services.websocket-gateway.src.main:app", "--reload", "--port", "8002", "--host", "localhost"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "WebSocket Gateway (Watch Mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["services.websocket-gateway.src.main:app", "--reload", "--port", "8002", "--host", "localhost"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Live Session Manager",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "services.live-session-manager.src.main",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        }
+    ]
+}
