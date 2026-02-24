@@ -8,7 +8,8 @@ ifeq ($(OS),Windows_NT)
 	SHELL = cmd.exe
 	SLEEP = timeout /t /nobreak
 	RM = del /Q
-	PYTHON = python
+	# Use project venv so dependencies (e.g. pymilvus) are found when running make workers/api/etc.
+	PYTHON = .venv\Scripts\python.exe
 	# Windows Python path setting
 	SET_PYTHONPATH = set PYTHONPATH=$(shell cd)
 	# Check if watchfiles exists (Windows)
@@ -155,21 +156,21 @@ dev: infra
 
 api:
 ifeq ($(IS_WINDOWS),1)
-	@set PYTHONPATH=$(shell cd) && uvicorn services.api-gateway.src.main:app --reload --port 8000 --host $(or $(API_HOST),localhost)
+	@set PYTHONPATH=$(shell cd) && $(PYTHON) -m uvicorn services.api-gateway.src.main:app --reload --port 8000 --host $(or $(API_HOST),localhost)
 else
 	PYTHONPATH=$(PWD) uvicorn services.api-gateway.src.main:app --reload --port 8000 --host $(or $(API_HOST),localhost)
 endif
 
 stream:
 ifeq ($(IS_WINDOWS),1)
-	@set PYTHONPATH=$(shell cd) && uvicorn services.stream-edge.src.main:app --reload --port 8001 --host $(or $(API_HOST),localhost)
+	@set PYTHONPATH=$(shell cd) && $(PYTHON) -m uvicorn services.stream-edge.src.main:app --reload --port 8001 --host $(or $(API_HOST),localhost)
 else
 	PYTHONPATH=$(PWD) uvicorn services.stream-edge.src.main:app --reload --port 8001 --host $(or $(API_HOST),localhost)
 endif
 
 orchestrator:
 ifeq ($(IS_WINDOWS),1)
-	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles --ignore-paths .cursor "python -m services.orchestrator.src.main") || (set PYTHONPATH=$(shell cd) && python -m services.orchestrator.src.main)
+	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles --ignore-paths .cursor "$(PYTHON) -m services.orchestrator.src.main") || (set PYTHONPATH=$(shell cd) && $(PYTHON) -m services.orchestrator.src.main)
 else
 	@$(CHECK_WATCHFILES) && \
 		PYTHONPATH=$(PWD) watchfiles --ignore-paths .cursor "$(PYTHON) -m services.orchestrator.src.main" || \
@@ -178,7 +179,7 @@ endif
 
 workers:
 ifeq ($(IS_WINDOWS),1)
-	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "python -m services.tool-workers.src.main") || (set PYTHONPATH=$(shell cd) && python -m services.tool-workers.src.main)
+	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "$(PYTHON) -m services.tool-workers.src.main") || (set PYTHONPATH=$(shell cd) && $(PYTHON) -m services.tool-workers.src.main)
 else
 	@$(CHECK_WATCHFILES) && \
 		PYTHONPATH=$(PWD) watchfiles "$(PYTHON) -m services.tool-workers.src.main" || \
@@ -187,7 +188,7 @@ endif
 
 archiver:
 ifeq ($(IS_WINDOWS),1)
-	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "python -m services.archiver.src.main") || (set PYTHONPATH=$(shell cd) && python -m services.archiver.src.main)
+	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "$(PYTHON) -m services.archiver.src.main") || (set PYTHONPATH=$(shell cd) && $(PYTHON) -m services.archiver.src.main)
 else
 	@$(CHECK_WATCHFILES) && \
 		PYTHONPATH=$(PWD) watchfiles "$(PYTHON) -m services.archiver.src.main" || \
@@ -196,14 +197,14 @@ endif
 
 ws:
 ifeq ($(IS_WINDOWS),1)
-	@set PYTHONPATH=$(shell cd) && uvicorn services.websocket-gateway.src.main:app --reload --port 8002 --host $(or $(API_HOST),localhost)
+	@set PYTHONPATH=$(shell cd) && $(PYTHON) -m uvicorn services.websocket-gateway.src.main:app --reload --port 8002 --host $(or $(API_HOST),localhost)
 else
 	PYTHONPATH=$(PWD) uvicorn services.websocket-gateway.src.main:app --reload --port 8002 --host $(or $(API_HOST),localhost)
 endif
 
 live-session:
 ifeq ($(IS_WINDOWS),1)
-	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "python -m services.live-session-manager.src.main") || (set PYTHONPATH=$(shell cd) && python -m services.live-session-manager.src.main)
+	@where watchfiles >nul 2>&1 && (set PYTHONPATH=$(shell cd) && watchfiles "$(PYTHON) -m services.live-session-manager.src.main") || (set PYTHONPATH=$(shell cd) && $(PYTHON) -m services.live-session-manager.src.main)
 else
 	@$(CHECK_WATCHFILES) && \
 		PYTHONPATH=$(PWD) watchfiles "$(PYTHON) -m services.live-session-manager.src.main" || \
@@ -212,7 +213,7 @@ endif
 
 auth-broker:
 ifeq ($(IS_WINDOWS),1)
-	cd services\auth-broker && python main.py
+	cd services\auth-broker && $(PYTHON) main.py
 else
 	cd services/auth-broker && python main.py
 endif
@@ -222,14 +223,14 @@ frontend:
 
 postman:
 ifeq ($(IS_WINDOWS),1)
-	@set PYTHONPATH=$(shell cd) && python services/api-gateway/scripts/generate_postman.py > postman_collection.json
+	@set PYTHONPATH=$(shell cd) && $(PYTHON) services/api-gateway/scripts/generate_postman.py > postman_collection.json
 else
 	PYTHONPATH=$(PWD) python3 services/api-gateway/scripts/generate_postman.py > postman_collection.json
 endif
 
 openapi:
 ifeq ($(IS_WINDOWS),1)
-	cd services/api-gateway && set PYTHONPATH=$(shell cd)\.. && python -c "from src.main import app; import json; print(json.dumps(app.openapi()))" > ..\openapi.json
+	cd services/api-gateway && set PYTHONPATH=$(shell cd)\.. && $(PYTHON) -c "from src.main import app; import json; print(json.dumps(app.openapi()))" > ..\openapi.json
 else
 	cd services/api-gateway && PYTHONPATH=../../ python3 -c "from src.main import app; import json; print(json.dumps(app.openapi()))" > ../../openapi.json
 endif
