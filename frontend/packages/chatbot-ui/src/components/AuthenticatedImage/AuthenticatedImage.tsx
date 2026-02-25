@@ -53,6 +53,7 @@ export const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
         const loadImage = async () => {
             setIsLoading(true);
             setHasError(false);
+            setImageSrc(null);
 
             // If no context, use direct URL (will likely fail for authenticated endpoints)
             if (!context) {

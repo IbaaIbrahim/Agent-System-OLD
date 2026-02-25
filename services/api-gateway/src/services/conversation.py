@@ -183,7 +183,7 @@ class ConversationService:
                     file_map[str(file_upload.id)] = {
                         "id": str(file_upload.id),
                         "type": "image" if file_upload.content_type.startswith("image/") else "file",
-                        "url": f"/api/v1/files/{file_upload.id}/download",
+                        "url": f"/v1/files/{file_upload.id}/download",
                         "name": file_upload.filename,
                         "size": file_upload.size_bytes,
                         "content_type": file_upload.content_type,

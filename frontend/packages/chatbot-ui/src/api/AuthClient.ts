@@ -3,7 +3,7 @@
  * Auth Client to communicate with the Auth Broker service.
  */
 
-const DEFAULT_BROKER_URL = import.meta.env.VITE_AUTH_BROKER_URL || "http://localhost:11700";
+const DEFAULT_BROKER_URL = import.meta.env.VITE_AUTH_BROKER_URL || "";
 
 export interface TokenResponse {
     access_token: string;
