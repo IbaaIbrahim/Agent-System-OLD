@@ -1210,20 +1210,61 @@ export class RealChatClient implements ChatClient {
 
                 msgs.push(userMsg);
             } else if (m.role === 'assistant') {
-                // Merge consecutive assistant messages from same job
+                // Build a steps-based message to reuse the same render path as live chat
+                const steps: MessageStep[] = [];
+
+                // Build tool_results lookup: tool_call_id -> result
+                const resultById: Record<string, { tool_name?: string; result?: string }> = {};
+                if (m.tool_results) {
+                    for (const tr of m.tool_results) {
+                        resultById[tr.tool_call_id] = { tool_name: tr.tool_name, result: tr.result };
+                    }
+                }
+
+                // Add tool-call steps first (they happened before the final text)
+                if (m.tool_calls && m.tool_calls.length > 0) {
+                    for (const tc of m.tool_calls) {
+                        const res = resultById[tc.id];
+                        steps.push({
+                            id: tc.id,
+                            type: 'tool-call',
+                            toolName: tc.name,
+                            toolArgs: tc.arguments,
+                            toolStatus: res !== undefined ? 'completed' : 'completed',
+                            toolResult: res?.result,
+                            isFinished: true,
+                        });
+                    }
+                }
+
+                // Add text step if there is content
+                if (m.content) {
+                    steps.push({
+                        id: `${m.id}-text`,
+                        type: 'text',
+                        content: m.content,
+                        isFinished: true,
+                    });
+                }
+
+                // Merge consecutive assistant messages from same job (backend already merges,
+                // but guard here in case duplicates slip through)
                 if (currentAssistantMsg && currentJobId === m.job_id) {
-                    // Append content to existing message
-                    currentAssistantMsg.content = (currentAssistantMsg.content || '') + (m.content || '');
+                    // Append steps to existing message
+                    if (currentAssistantMsg.steps) {
+                        currentAssistantMsg.steps.push(...steps);
+                    }
                 } else {
                     // Flush previous assistant message
                     if (currentAssistantMsg) {
                         msgs.push(currentAssistantMsg);
                     }
-                    // Start new assistant message
+                    // Start new assistant message — use steps path when we have steps, else plain content
                     currentAssistantMsg = {
                         id: m.id,
                         role: 'assistant',
-                        content: m.content || '',
+                        content: steps.length === 0 ? (m.content || '') : undefined,
+                        steps: steps.length > 0 ? steps : undefined,
                         shouldAnimate: false,
                     };
                     currentJobId = m.job_id;

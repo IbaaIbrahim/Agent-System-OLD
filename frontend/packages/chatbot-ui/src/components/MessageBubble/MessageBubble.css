@@ -201,209 +201,162 @@
     background: rgba(255, 255, 255, 0.02);
 }
 
-/* === Message Attachments === */
-.cb-msg-attachments {
+/* === Attachment List (row of chips above message) === */
+.cb-att-list {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 8px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
 
-.cb-msg-attachment-image {
-    border-radius: 8px;
+/* === Attachment Chip === */
+.cb-att-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px 6px 6px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    max-width: 260px;
+    min-width: 0;
+}
+
+.cb-att-chip:hover {
+    background: rgba(255, 255, 255, 0.13);
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Image thumbnail in chip */
+.cb-att-chip-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
     overflow: hidden;
-    max-width: 200px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.cb-att-chip-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* File icon in chip */
+.cb-att-chip-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+/* Chip text info */
+.cb-att-chip-info {
     display: flex;
     flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
 }
 
-.cb-msg-attachment-image img {
-    display: block;
-    width: 100%;
-    height: auto;
-    max-height: 150px;
-    object-fit: cover;
-}
-
-.cb-msg-attachment-image .cb-msg-att-name {
-    padding: 4px 8px;
-    font-size: 11px;
-    color: var(--cb-text-secondary);
-    background: rgba(255, 255, 255, 0.04);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.cb-msg-attachment-file {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+.cb-att-chip-name {
     font-size: 12px;
-}
-
-.cb-msg-att-icon {
-    font-size: 14px;
-    flex-shrink: 0;
-}
-
-.cb-msg-att-name {
-    color: var(--cb-text-primary);
     font-weight: 500;
-    max-width: 150px;
+    color: var(--cb-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.cb-msg-att-size {
-    color: var(--cb-text-tertiary);
+.cb-att-chip-size {
     font-size: 10px;
-    flex-shrink: 0;
-}
-
-/* === Show More Button for Attachments === */
-.cb-msg-attachment-more {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px dashed rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
-    font-size: 12px;
-    color: var(--cb-text-secondary);
-    cursor: pointer;
-    transition: all var(--cb-transition-fast);
-}
-
-.cb-msg-attachment-more:hover {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.3);
-    color: var(--cb-text-primary);
-}
-
-.cb-msg-attachment-more-count {
-    font-weight: 600;
-    color: var(--cb-accent-primary);
-}
-
-.cb-msg-attachment-more-text {
-    opacity: 0.8;
-}
-
-/* === Broken Image Placeholder === */
-.cb-msg-attachment-broken {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 60px;
-    background: rgba(255, 255, 255, 0.04);
-}
-
-.cb-msg-attachment-broken::before {
-    content: 'Image unavailable';
-    font-size: 11px;
     color: var(--cb-text-tertiary);
 }
 
-/* === Attachment Modal === */
-.cb-attachment-modal-overlay {
+/* Action icon (eye / external link) */
+.cb-att-chip-action {
+    color: var(--cb-text-tertiary);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+}
+
+.cb-att-chip:hover .cb-att-chip-action {
+    color: var(--cb-text-secondary);
+}
+
+/* === Image Lightbox === */
+.cb-lightbox-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 1100;
     animation: cb-fade-in 0.15s ease-out;
 }
 
-.cb-attachment-modal {
-    background: var(--cb-bg-secondary);
-    border: 1px solid var(--cb-border-subtle);
-    border-radius: 12px;
-    max-width: 500px;
-    max-height: 70vh;
-    width: 90%;
+.cb-lightbox-inner {
+    position: relative;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-    animation: cb-modal-slide-in 0.2s ease-out;
-}
-
-@keyframes cb-modal-slide-in {
-    from {
-        opacity: 0;
-        transform: scale(0.95) translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
-}
-
-.cb-attachment-modal-header {
-    display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--cb-border-subtle);
+    gap: 10px;
+    max-width: 90vw;
+    max-height: 90vh;
 }
 
-.cb-attachment-modal-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--cb-text-primary);
+.cb-lightbox-img {
+    max-width: 90vw;
+    max-height: 80vh;
+    border-radius: 10px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    object-fit: contain;
+    display: block;
 }
 
-.cb-attachment-modal-close {
+.cb-lightbox-close {
+    position: absolute;
+    top: -40px;
+    right: -8px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: transparent;
-    border-radius: 6px;
-    color: var(--cb-text-secondary);
-    cursor: pointer;
-    transition: all var(--cb-transition-fast);
+    transition: background 0.15s;
 }
 
-.cb-attachment-modal-close:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--cb-text-primary);
+.cb-lightbox-close:hover {
+    background: rgba(255, 255, 255, 0.28);
 }
 
-.cb-attachment-modal-content {
-    padding: 16px;
-    overflow-y: auto;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
+.cb-lightbox-filename {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.85);
 }
 
-.cb-attachment-modal-item {
-    flex: 0 0 auto;
-}
-
-.cb-attachment-modal-item .cb-msg-attachment-image {
-    max-width: 180px;
-}
-
-.cb-attachment-modal-item .cb-msg-attachment-image img {
-    max-height: 120px;
+.cb-lightbox-meta {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.45);
 }
 
 @keyframes cb-fade-in {

@@ -48,6 +48,14 @@ class AttachmentInfo(BaseModel):
     content_type: str
 
 
+class ToolResultInfo(BaseModel):
+    """A tool result linked to a tool call."""
+
+    tool_call_id: str
+    tool_name: str | None = None
+    result: str | None = None
+
+
 class ConversationMessage(BaseModel):
     """A message within a conversation."""
 
@@ -57,6 +65,8 @@ class ConversationMessage(BaseModel):
     job_id: str
     created_at: str | None
     attachments: list[AttachmentInfo] | None = None
+    tool_calls: list[dict] | None = None
+    tool_results: list[ToolResultInfo] | None = None
 
 
 class ConversationDetailResponse(BaseModel):

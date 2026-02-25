@@ -72,104 +72,103 @@ const getFileIcon = (contentType?: string): string => {
     return '\u{1F4CE}';
 };
 
-const MAX_VISIBLE_ATTACHMENTS = 2;
-
-const AttachmentItem: React.FC<{ att: Attachment; onClick?: () => void }> = ({ att, onClick }) => (
-    att.type === 'image' ? (
-        <div className="cb-msg-attachment-image" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
-            {att.localUrl ? (
-                <img
-                    src={att.localUrl}
-                    alt={att.name || 'Attached image'}
-                    onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        target.parentElement?.classList.add('cb-msg-attachment-broken');
-                    }}
-                />
-            ) : (
-                <AuthenticatedImage
-                    src={att.url}
-                    alt={att.name || 'Attached image'}
-                    onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        target.parentElement?.classList.add('cb-msg-attachment-broken');
-                    }}
-                />
-            )}
-            {att.name && <span className="cb-msg-att-name">{att.name}</span>}
-        </div>
-    ) : (
-        <div className="cb-msg-attachment-file" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
-            <span className="cb-msg-att-icon">{getFileIcon(att.contentType)}</span>
-            <span className="cb-msg-att-name">{att.name}</span>
-            {att.size != null && <span className="cb-msg-att-size">{formatFileSize(att.size)}</span>}
-        </div>
-    )
-);
-
-const AttachmentModal: React.FC<{
-    attachments: Attachment[];
-    isOpen: boolean;
+// --- Image Lightbox ---
+const ImageLightbox: React.FC<{
+    att: Attachment;
     onClose: () => void;
-}> = ({ attachments, isOpen, onClose }) => {
-    if (!isOpen) return null;
+}> = ({ att, onClose }) => {
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [onClose]);
 
     return (
-        <div className="cb-attachment-modal-overlay" onClick={onClose}>
-            <div className="cb-attachment-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="cb-attachment-modal-header">
-                    <span className="cb-attachment-modal-title">All Attachments ({attachments.length})</span>
-                    <button className="cb-attachment-modal-close" onClick={onClose}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
-                </div>
-                <div className="cb-attachment-modal-content">
-                    {attachments.map(att => (
-                        <div key={att.id} className="cb-attachment-modal-item">
-                            <AttachmentItem att={att} />
-                        </div>
-                    ))}
-                </div>
+        <div className="cb-lightbox-overlay" onClick={onClose}>
+            <div className="cb-lightbox-inner" onClick={(e) => e.stopPropagation()}>
+                <button className="cb-lightbox-close" onClick={onClose} title="Close (Esc)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+                {att.name && <div className="cb-lightbox-filename">{att.name}</div>}
+                {att.localUrl ? (
+                    <img className="cb-lightbox-img" src={att.localUrl} alt={att.name || 'Image'} />
+                ) : (
+                    <AuthenticatedImage className="cb-lightbox-img" src={att.url} alt={att.name || 'Image'} />
+                )}
+                {att.size != null && (
+                    <div className="cb-lightbox-meta">{formatFileSize(att.size)}</div>
+                )}
             </div>
         </div>
     );
 };
 
-const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }) => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const visibleAttachments = attachments.slice(0, MAX_VISIBLE_ATTACHMENTS);
-    const hiddenCount = attachments.length - MAX_VISIBLE_ATTACHMENTS;
+// --- Attachment Chip (Claude-style compact chip above message) ---
+const AttachmentChip: React.FC<{ att: Attachment }> = ({ att }) => {
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+
+    const handleClick = () => {
+        if (att.type === 'image') {
+            setLightboxOpen(true);
+        } else {
+            window.open(att.localUrl || att.url, '_blank', 'noopener,noreferrer');
+        }
+    };
 
     return (
         <>
-            <div className="cb-msg-attachments">
-                {visibleAttachments.map(att => (
-                    <AttachmentItem key={att.id} att={att} />
-                ))}
-                {hiddenCount > 0 && (
-                    <button
-                        className="cb-msg-attachment-more"
-                        onClick={() => setIsModalOpen(true)}
-                        title={`View all ${attachments.length} attachments`}
-                    >
-                        <span className="cb-msg-attachment-more-count">+{hiddenCount}</span>
-                        <span className="cb-msg-attachment-more-text">more</span>
-                    </button>
+            <div className="cb-att-chip" onClick={handleClick} title={att.name}>
+                {att.type === 'image' ? (
+                    <div className="cb-att-chip-thumb">
+                        {att.localUrl ? (
+                            <img src={att.localUrl} alt={att.name || ''} />
+                        ) : (
+                            <AuthenticatedImage src={att.url} alt={att.name || ''} />
+                        )}
+                    </div>
+                ) : (
+                    <div className="cb-att-chip-icon">{getFileIcon(att.contentType)}</div>
                 )}
+                <div className="cb-att-chip-info">
+                    <span className="cb-att-chip-name">{att.name || 'File'}</span>
+                    {att.size != null && (
+                        <span className="cb-att-chip-size">{formatFileSize(att.size)}</span>
+                    )}
+                </div>
+                <div className="cb-att-chip-action">
+                    {att.type === 'image' ? (
+                        // Eye icon for images
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                        </svg>
+                    ) : (
+                        // External link icon for files
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                    )}
+                </div>
             </div>
-            <AttachmentModal
-                attachments={attachments}
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-            />
+            {lightboxOpen && (
+                <ImageLightbox att={att} onClose={() => setLightboxOpen(false)} />
+            )}
         </>
     );
 };
+
+// --- Attachment List (row of chips above message content) ---
+const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }) => (
+    <div className="cb-att-list">
+        {attachments.map(att => (
+            <AttachmentChip key={att.id} att={att} />
+        ))}
+    </div>
+);
 
 export const MessageBubble: React.FC<MessageProps> = (props) => {
     const {
@@ -498,6 +497,9 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
 
             <div className="cb-message-content-wrapper">
                 {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
+                {attachments && attachments.length > 0 && (
+                    <AttachmentList attachments={attachments} />
+                )}
                 <div className={`cb-message-bubble ${role}`}>
                     <div className="cb-markdown-content">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -510,9 +512,6 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                             <BlinkingIndicator />
                         )}
                     </div>
-                    {attachments && attachments.length > 0 && (
-                        <AttachmentList attachments={attachments} />
-                    )}
                 </div>
             </div>
         </div>

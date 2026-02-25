@@ -30,6 +30,18 @@ export interface ConversationAttachment {
     content_type: string;
 }
 
+export interface ConversationToolResult {
+    tool_call_id: string;
+    tool_name?: string;
+    result?: string;
+}
+
+export interface ConversationToolCall {
+    id: string;
+    name: string;
+    arguments: any;
+}
+
 export interface ConversationMessage {
     id: string;
     role: string;
@@ -37,6 +49,8 @@ export interface ConversationMessage {
     job_id: string;
     created_at: string | null;
     attachments?: ConversationAttachment[];
+    tool_calls?: ConversationToolCall[];
+    tool_results?: ConversationToolResult[];
 }
 
 export interface ConversationDetail {
