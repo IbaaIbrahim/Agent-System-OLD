@@ -1,0 +1,54 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/.bin/vite", "--host"],
+      "port": 5173,
+      "cwd": "frontend/apps/demo"
+    },
+    {
+      "name": "api-gateway",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "services.api-gateway.src.main:app", "--reload", "--port", "8000", "--host", "localhost"],
+      "port": 8000
+    },
+    {
+      "name": "stream-edge",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "services.stream-edge.src.main:app", "--reload", "--port", "8001", "--host", "localhost"],
+      "port": 8001
+    },
+    {
+      "name": "websocket-gateway",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "services.websocket-gateway.src.main:app", "--reload", "--port", "8002", "--host", "localhost"],
+      "port": 8002
+    },
+    {
+      "name": "orchestrator",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "services.orchestrator.src.main"],
+      "port": 0
+    },
+    {
+      "name": "workers",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "services.tool-workers.src.main"],
+      "port": 0
+    },
+    {
+      "name": "archiver",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "services.archiver.src.main"],
+      "port": 0
+    },
+    {
+      "name": "live-session-manager",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "services.live-session-manager.src.main"],
+      "port": 8003
+    }
+  ]
+}
