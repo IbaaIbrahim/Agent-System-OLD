@@ -206,6 +206,13 @@ class ConversationService:
                 if msg.tool_calls:
                     message_dict["tool_calls"] = msg.tool_calls
 
+                # Include tool_call_id and tool_name for role=tool messages
+                if role == "tool":
+                    if msg.tool_call_id:
+                        message_dict["tool_call_id"] = msg.tool_call_id
+                    if msg.metadata_ and msg.metadata_.get("tool_name"):
+                        message_dict["tool_name"] = msg.metadata_["tool_name"]
+
                 # Add attachments for user messages
                 if role == "user" and str(msg.job_id) in job_file_ids:
                     attachments = []
@@ -228,14 +235,28 @@ class ConversationService:
 
         When tools are used, multiple ChatMessage records are created per job:
         - tool_call event: role=assistant, content=NULL, tool_calls=[...]
-        - tool_result event: role=tool, content="result"
+        - tool_result event: role=tool, content="result", tool_call_id="..."
         - message event: role=assistant, content="final response"
 
         This method merges these into coherent messages for the frontend,
-        combining tool_calls and content from the same job.
+        combining tool_calls, tool_results, and content from the same job.
         """
         if not messages:
             return []
+
+        # First pass: build a lookup of tool results keyed by job_id
+        # Each job may have multiple tool results (one per tool call)
+        tool_results_by_job: dict[str, list[dict]] = {}
+        for msg in messages:
+            if msg["role"] == "tool":
+                job_id = msg["job_id"]
+                if job_id not in tool_results_by_job:
+                    tool_results_by_job[job_id] = []
+                tool_results_by_job[job_id].append({
+                    "tool_call_id": msg.get("tool_call_id", ""),
+                    "tool_name": msg.get("tool_name"),
+                    "result": msg.get("content"),
+                })
 
         merged: list[dict] = []
         current_assistant: dict | None = None
@@ -245,7 +266,7 @@ class ConversationService:
             role = msg["role"]
             job_id = msg["job_id"]
 
-            # Skip tool messages - they're intermediate results
+            # Skip tool messages - captured in tool_results_by_job above
             if role == "tool":
                 continue
 
@@ -256,7 +277,6 @@ class ConversationService:
                     # Combine content (prefer non-null)
                     if msg.get("content"):
                         if current_assistant.get("content"):
-                            # Both have content - append
                             current_assistant["content"] += "\n\n" + msg["content"]
                         else:
                             current_assistant["content"] = msg["content"]
@@ -281,6 +301,10 @@ class ConversationService:
                     # Start tracking new assistant message
                     current_assistant = msg.copy()
                     current_job_id = job_id
+
+                    # Attach tool_results for this job if any
+                    if job_id in tool_results_by_job:
+                        current_assistant["tool_results"] = tool_results_by_job[job_id]
             else:
                 # Non-assistant message (user, system)
                 # Flush current assistant message if any

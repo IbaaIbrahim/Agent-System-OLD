@@ -141,7 +141,7 @@ install:
 dev: infra
 	@echo "Starting services in development mode..."
 	@echo "Run 'make migrate' first"
-	@echo "Infrastructure (Postgres, Redis, Kafka, pgAdmin) is running."
+	@echo "Infrastructure (Postgres, Redis, Kafka, Zookeeper, pgAdmin) is running."
 	@echo "  pgAdmin: http://localhost:5050 (admin@admin.com / admin)"
 	@echo "Run each service in separate terminals:"
 	@echo "  make api"
@@ -213,13 +213,16 @@ endif
 
 auth-broker:
 ifeq ($(IS_WINDOWS),1)
-	cd services\auth-broker && $(PYTHON) main.py
+	$(PYTHON) services/auth-broker/main.py
 else
-	cd services/auth-broker && python main.py
+	$(PYTHON) services/auth-broker/main.py
 endif
 
 frontend:
 	cd frontend/apps/demo && npm run dev
+
+frontend-chatbot-ui:
+	cd frontend/packages/chatbot-ui && yarn install && yarn link && yarn dev
 
 postman:
 ifeq ($(IS_WINDOWS),1)
