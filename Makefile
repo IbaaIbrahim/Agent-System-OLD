@@ -25,7 +25,7 @@ else
 	CHECK_WATCHFILES = command -v watchfiles > /dev/null
 endif
 
-.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend postman openapi ws live-session ps
+.PHONY: help install dev up down logs clean test migrate lint format api stream orchestrator auth-broker workers archiver frontend frontend-chatbot-ui postman openapi ws live-session ps
 
 # Default target
 help:
@@ -80,6 +80,7 @@ help:
 	@echo "  make ws          - Run WebSocket Gateway locally"
 	@echo "  make live-session - Run Live Session Manager locally"
 	@echo "  make frontend    - Run Frontend locally"
+	@echo "  make frontend-chatbot-ui - Run Frontend Chatbot UI locally"
 	@echo "  make postman      - Generate Postman Collection"
 	@echo "  make openapi      - Generate OpenAPI Schema"
 	@echo ""
@@ -219,6 +220,9 @@ endif
 
 frontend:
 	cd frontend/apps/demo && npm run dev
+
+frontend-chatbot-ui:
+	cd frontend/packages/chatbot-ui && yarn install && yarn link && yarn dev
 
 postman:
 ifeq ($(IS_WINDOWS),1)
