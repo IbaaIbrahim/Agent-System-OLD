@@ -2,6 +2,7 @@
 
 import asyncio
 import signal
+import sys
 
 from libs.common import get_logger, setup_logging
 from libs.db import close_db, init_db
@@ -42,16 +43,17 @@ async def main() -> None:
         consumer_name=config.consumer_name,
     )
 
-    # Setup signal handlers
-    loop = asyncio.get_event_loop()
+    # Setup signal handlers (add_signal_handler not supported on Windows)
     shutdown_event = asyncio.Event()
 
-    def signal_handler():
+    def signal_handler() -> None:
         shutdown_event.set()
         logger.info("Shutdown signal received")
 
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, signal_handler)
+    if sys.platform != "win32":
+        loop = asyncio.get_event_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, signal_handler)
 
     # Periodic cleanup task
     async def periodic_cleanup():
