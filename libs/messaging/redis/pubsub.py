@@ -1,7 +1,7 @@
 """Redis Pub/Sub for real-time event streaming."""
 
 import asyncio
-import json
+import json as json_module
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any
 from uuid import UUID
@@ -14,7 +14,7 @@ from libs.messaging.redis.client import get_redis_client
 logger = get_logger(__name__)
 
 
-class UUIDEncoder(json.JSONEncoder):
+class UUIDEncoder(json_module.JSONEncoder):
     """JSON encoder that handles UUID objects."""
 
     def default(self, obj: Any) -> Any:
@@ -115,7 +115,8 @@ class RedisPubSub:
             Number of subscribers that received the message
         """
         client = await get_redis_client()
-        json_message = json.dumps(message, cls=UUIDEncoder)
+        # Use module-level json import - reference it explicitly to avoid any shadowing issues
+        json_message = json_module.dumps(message, cls=UUIDEncoder)
         count = await client.client.publish(channel, json_message)
         logger.debug(
             "Message published",
@@ -157,8 +158,8 @@ class RedisPubSub:
                     data = data.decode("utf-8")
 
                 try:
-                    parsed_data = json.loads(data)
-                except json.JSONDecodeError:
+                    parsed_data = json_module.loads(data)
+                except json_module.JSONDecodeError:
                     parsed_data = {"raw": data}
 
                 yield channel, parsed_data

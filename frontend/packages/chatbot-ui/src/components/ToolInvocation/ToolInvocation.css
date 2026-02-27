@@ -61,6 +61,35 @@
     animation: cb-spin 1s linear infinite;
 }
 
+.cb-tool-action-row {
+    padding: 0 var(--cb-space-3) var(--cb-space-3);
+    display: flex;
+}
+
+.cb-tool-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--cb-accent-primary);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--cb-border-subtle);
+    border-radius: var(--cb-radius-md);
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.cb-tool-action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--cb-accent-primary);
+}
+
+.cb-tool-action-btn:active {
+    background: rgba(255, 255, 255, 0.15);
+}
+
 .cb-tool-details {
     background-color: rgba(0, 0, 0, 0.2);
     /* Darker background for code */

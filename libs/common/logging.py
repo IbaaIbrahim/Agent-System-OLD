@@ -1,12 +1,26 @@
 """Structured logging configuration."""
 
 import logging
+import os
 import sys
 from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 from structlog.types import EventDict, Processor
+
+
+def _set_console_title(title: str) -> None:
+    """Set the terminal/console window title (for VS Code debug terminals)."""
+    try:
+        if sys.platform == "win32":
+            os.system(f'title {title}')
+        else:
+            # ANSI escape: set icon name and window title
+            sys.stdout.write(f"\033]0;{title}\007")
+            sys.stdout.flush()
+    except Exception:
+        pass
 
 
 def add_timestamp(
@@ -41,6 +55,11 @@ def setup_logging(
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_format: Output format ('json' or 'text')
     """
+    # Set terminal tab title when launched from VS Code with TERMINAL_TITLE env
+    terminal_title = os.environ.get("TERMINAL_TITLE")
+    if terminal_title:
+        _set_console_title(terminal_title)
+
     # Shared processors
     shared_processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,

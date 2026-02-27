@@ -1,0 +1,32 @@
+.cb-blinking-indicator {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.cb-blinking-circle {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.4);
+    animation: cb-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes cb-blink {
+    0%, 100% {
+        opacity: 0.4;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .cb-blinking-circle {
+        background-color: rgba(255, 255, 255, 0.6);
+    }
+}

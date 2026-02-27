@@ -9,13 +9,17 @@ export interface ToolInvocationProps {
     args?: Record<string, any>;
     status: ToolStatus;
     result?: any;
+    onAction?: (data: any) => void;
+    actionLabel?: string;
 }
 
 export const ToolInvocation: React.FC<ToolInvocationProps> = ({
     toolName,
     status,
     args,
-    result
+    result,
+    onAction,
+    actionLabel = 'Open Result'
 }) => {
     const [expanded, setExpanded] = useState(false);
 
@@ -50,6 +54,27 @@ export const ToolInvocation: React.FC<ToolInvocationProps> = ({
                     </svg>
                 </span>
             </div>
+            {onAction && status === 'completed' && result != null && (
+                <div className="cb-tool-action-row">
+                    <button
+                        className="cb-tool-action-btn"
+                        onClick={() => {
+                            let parsed = result;
+                            if (typeof result === 'string') {
+                                try { parsed = JSON.parse(result); } catch {}
+                            }
+                            onAction(parsed);
+                        }}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                        {actionLabel}
+                    </button>
+                </div>
+            )}
             {expanded && (
                 <div className="cb-tool-details">
                     {isWebSearch && result ? (

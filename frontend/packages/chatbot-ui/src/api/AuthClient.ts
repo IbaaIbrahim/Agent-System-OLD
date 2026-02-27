@@ -3,7 +3,7 @@
  * Auth Client to communicate with the Auth Broker service.
  */
 
-const BROKER_URL = 'http://localhost:11700';
+const DEFAULT_BROKER_URL = import.meta.env.VITE_AUTH_BROKER_URL || "";
 
 export interface TokenResponse {
     access_token: string;
@@ -11,12 +11,21 @@ export interface TokenResponse {
 }
 
 export class AuthClient {
+    private static brokerUrl: string = DEFAULT_BROKER_URL;
+
+    /**
+     * Configure the broker URL. Call before getInitialToken/refreshToken.
+     */
+    static configure(brokerUrl: string) {
+        this.brokerUrl = brokerUrl;
+    }
+
     /**
      * Fetches a new access token from the auth broker.
      */
     static async getInitialToken(): Promise<string> {
         try {
-            const response = await fetch(`${BROKER_URL}/request-token`, {
+            const response = await fetch(`${this.brokerUrl}/request-token`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -41,7 +50,6 @@ export class AuthClient {
      * Refreshes the token (in this demo, it just requests a new one from broker).
      */
     static async refreshToken(): Promise<string> {
-        console.log('Refreshing token via broker...');
         return this.getInitialToken();
     }
 }

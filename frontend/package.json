@@ -10,5 +10,8 @@
         "build": "npm run build --workspaces",
         "dev:demo": "npm run dev --workspace=@frontend/demo-app",
         "dev:client": "npm run dev --workspace=frontend"
+    },
+    "dependencies": {
+        "onnxruntime-web": "1.22.0"
     }
 }

@@ -89,15 +89,17 @@ class OpenAIProvider(LLMProvider):
         }
 
         # Handle params for different models
+        # Reasoning models (o1, o3, o4, gpt-5-mini) require max_completion_tokens and may have temperature restrictions
         is_reasoning_model = (
             model.startswith("o1") or
             model.startswith("o3") or
+            model.startswith("o4") or
             model.startswith("gpt-5-mini")
         )
 
         if is_reasoning_model:
             request_kwargs["max_completion_tokens"] = max_tokens
-            # Only o3 supports temperature, o1 and gpt-5-mini have fixed temperature
+            # Only o3 supports temperature, o1, o4, and gpt-5-mini have fixed temperature
             if model.startswith("o3"):
                 request_kwargs["temperature"] = temperature
 
@@ -112,8 +114,6 @@ class OpenAIProvider(LLMProvider):
         if tools:
             request_kwargs["tools"] = [t.to_openai() for t in tools]
 
-        logger.info(f"DEBUG: OpenAI complete final kwargs keys: {list(request_kwargs.keys())}")
-
         try:
             response = await self.client.chat.completions.create(**request_kwargs)
         except TypeError as e:
@@ -123,20 +123,172 @@ class OpenAIProvider(LLMProvider):
             except Exception:
                 msg = ""
             if "reasoning_effort" in msg and "unexpected" in msg.lower():
-                logger.warning("OpenAI SDK rejected 'reasoning_effort' kwarg, retrying without it", error=msg)
+                logger.warning("💀 OpenAI SDK rejected 'reasoning_effort' kwarg, retrying without it", error=msg)
                 request_kwargs.pop("reasoning_effort", None)
                 response = await self.client.chat.completions.create(**request_kwargs)
             else:
                 raise
+        except openai.BadRequestError as e:
+            # Handle models that require max_completion_tokens instead of max_tokens
+            # or models that don't support custom temperature
+            # Extract error message from exception - try multiple sources
+            error_msg = str(e)
+            error_message_attr = getattr(e, "message", None)
+            error_body = getattr(e, "body", None)
+            
+            # Try to extract the actual error message from the body
+            if error_body:
+                try:
+                    if isinstance(error_body, dict):
+                        error_detail = error_body.get("error", {})
+                        if isinstance(error_detail, dict):
+                            extracted_msg = error_detail.get("message", None)
+                            if extracted_msg:
+                                error_msg = extracted_msg
+                    elif isinstance(error_body, str):
+                        # Try to parse JSON string
+                        try:
+                            parsed = json.loads(error_body)
+                            if isinstance(parsed, dict):
+                                error_detail = parsed.get("error", {})
+                                if isinstance(error_detail, dict):
+                                    extracted_msg = error_detail.get("message", None)
+                                    if extracted_msg:
+                                        error_msg = extracted_msg
+                        except (json.JSONDecodeError, TypeError):
+                            error_msg = error_body
+                except Exception:
+                    pass
+            
+            # Also try to extract from str(e) if it contains JSON-like structure
+            # Format: "Error code: 400 - {'error': {'message': '...'}}"
+            if error_msg == str(e) and ("'error'" in error_msg or '"error"' in error_msg):
+                import re
+                try:
+                    # Try to extract JSON part after "Error code: 400 - "
+                    match = re.search(r'-\s*({.*})', error_msg, re.DOTALL)
+                    if match:
+                        json_str = match.group(1)
+                        # Replace single quotes with double quotes for JSON parsing
+                        json_str = json_str.replace("'", '"')
+                        parsed = json.loads(json_str)
+                        if isinstance(parsed, dict):
+                            error_detail = parsed.get("error", {})
+                            if isinstance(error_detail, dict):
+                                extracted_msg = error_detail.get("message", None)
+                                if extracted_msg:
+                                    error_msg = extracted_msg
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    pass
+            
+            # Fallback to message attribute if body extraction didn't work
+            if error_message_attr and error_msg == str(e):
+                error_msg = str(error_message_attr)
+            retry_needed = False
+            
+            if "max_tokens" in error_msg and "max_completion_tokens" in error_msg.lower():
+                logger.warning(
+                    "Model requires 'max_completion_tokens' instead of 'max_tokens', retrying",
+                    model=model,
+                    error=error_msg,
+                )
+                # Remove max_tokens and use max_completion_tokens instead
+                request_kwargs.pop("max_tokens", None)
+                request_kwargs["max_completion_tokens"] = max_tokens
+                retry_needed = True
+            
+            # Check for temperature errors - handle various error message formats
+            error_lower = error_msg.lower()
+            is_temperature_error = (
+                "temperature" in error_lower and 
+                ("unsupported" in error_lower or "does not support" in error_lower or "only the default" in error_lower)
+            )
+            if is_temperature_error:
+                logger.warning(
+                    "Model does not support custom temperature, removing temperature parameter and retrying",
+                    model=model,
+                    error=error_msg,
+                )
+                # Remove temperature parameter - model will use default
+                request_kwargs.pop("temperature", None)
+                retry_needed = True
+            
+            if retry_needed:
+                try:
+                    response = await self.client.chat.completions.create(**request_kwargs)
+                except openai.BadRequestError as retry_error:
+                    # Handle nested BadRequestError - might be another parameter issue
+                    # Extract error message from retry error
+                    retry_error_msg = str(retry_error)
+                    retry_error_body = getattr(retry_error, "body", None)
+                    if retry_error_body:
+                        try:
+                            if isinstance(retry_error_body, dict):
+                                error_detail = retry_error_body.get("error", {})
+                                if isinstance(error_detail, dict):
+                                    extracted_msg = error_detail.get("message", None)
+                                    if extracted_msg:
+                                        retry_error_msg = extracted_msg
+                        except Exception:
+                            pass
+                    
+                    # Check if this is a temperature error we can fix
+                    retry_error_lower = retry_error_msg.lower()
+                    is_retry_temperature_error = (
+                        "temperature" in retry_error_lower and 
+                        ("unsupported" in retry_error_lower or "does not support" in retry_error_lower or "only the default" in retry_error_lower)
+                    )
+                    
+                    if is_retry_temperature_error:
+                        logger.warning(
+                            "Nested temperature error detected in retry, removing temperature and retrying again",
+                            model=model,
+                            error=retry_error_msg,
+                        )
+                        request_kwargs.pop("temperature", None)
+                        # Retry once more without temperature
+                        response = await self.client.chat.completions.create(**request_kwargs)
+                    else:
+                        # If it's a different error, raise the retry error
+                        raise retry_error
+                except Exception as retry_error:
+                    # If retry fails with a different error, raise it
+                    raise retry_error
+            else:
+                raise
+        except openai.APIConnectionError as e:
+            logger.error(
+                "💀 OpenAI API connection error (network/DNS issue)",
+                error=str(e),
+                model=model,
+                error_type=type(e).__name__,
+            )
+            raise LLMError(
+                provider="openai",
+                message=f"OpenAI API connection error: {e}. Check network connectivity and DNS configuration.",
+                details={"error_type": type(e).__name__, "is_network_error": True},
+            )
+        except openai.APITimeoutError as e:
+            logger.error(
+                "💀 OpenAI API timeout error",
+                error=str(e),
+                model=model,
+                error_type=type(e).__name__,
+            )
+            raise LLMError(
+                provider="openai",
+                message=f"OpenAI API timeout: {e}. Check network connectivity.",
+                details={"error_type": type(e).__name__, "is_network_error": True},
+            )
         except openai.APIError as e:
             logger.error(
-                "OpenAI API error",
+                "💀 OpenAI API error",
                 error=str(e),
                 model=model,
             )
             raise LLMError(
                 provider="openai",
-                message=f"OpenAI API error: {e}",
+                message=f"💀 OpenAI API error: {e}",
                 details={"error_type": type(e).__name__},
             )
 
@@ -219,15 +371,17 @@ class OpenAIProvider(LLMProvider):
 
 
         # Handle params for different models
+        # Reasoning models (o1, o3, o4, gpt-5-mini) require max_completion_tokens and may have temperature restrictions
         is_reasoning_model = (
             model.startswith("o1") or
             model.startswith("o3") or
+            model.startswith("o4") or
             model.startswith("gpt-5-mini")
         )
 
         if is_reasoning_model:
-            request_kwargs["max_completion_tokens"] = max_tokens
-            # Only o3 supports temperature, o1 and gpt-5-mini have fixed temperature
+            # request_kwargs["max_completion_tokens"] = max_tokens
+            # Only o3 supports temperature, o1, o4, and gpt-5-mini have fixed temperature
             if model.startswith("o3"):
                 request_kwargs["temperature"] = temperature
 
@@ -236,7 +390,7 @@ class OpenAIProvider(LLMProvider):
                 reasoning_effort = kwargs.get("reasoning_effort", "medium")
                 request_kwargs["reasoning_effort"] = reasoning_effort
         else:
-            request_kwargs["max_tokens"] = max_tokens
+            # request_kwargs["max_tokens"] = max_tokens
             request_kwargs["temperature"] = temperature
 
         if tools:
@@ -256,6 +410,134 @@ class OpenAIProvider(LLMProvider):
                 logger.warning("OpenAI SDK rejected 'reasoning_effort' kwarg for stream, retrying without it", error=msg)
                 request_kwargs.pop("reasoning", None)
                 stream = await self.client.chat.completions.create(**request_kwargs)
+            else:
+                raise
+        except openai.BadRequestError as e:
+            # Handle models that require max_completion_tokens instead of max_tokens
+            # or models that don't support custom temperature
+            # Extract error message from exception - try multiple sources
+            error_msg = str(e)
+            error_message_attr = getattr(e, "message", None)
+            error_body = getattr(e, "body", None)
+            
+            # Try to extract the actual error message from the body
+            if error_body:
+                try:
+                    if isinstance(error_body, dict):
+                        error_detail = error_body.get("error", {})
+                        if isinstance(error_detail, dict):
+                            extracted_msg = error_detail.get("message", None)
+                            if extracted_msg:
+                                error_msg = extracted_msg
+                    elif isinstance(error_body, str):
+                        # Try to parse JSON string
+                        try:
+                            parsed = json.loads(error_body)
+                            if isinstance(parsed, dict):
+                                error_detail = parsed.get("error", {})
+                                if isinstance(error_detail, dict):
+                                    extracted_msg = error_detail.get("message", None)
+                                    if extracted_msg:
+                                        error_msg = extracted_msg
+                        except (json.JSONDecodeError, TypeError):
+                            error_msg = error_body
+                except Exception:
+                    pass
+            
+            # Also try to extract from str(e) if it contains JSON-like structure
+            # Format: "Error code: 400 - {'error': {'message': '...'}}"
+            if error_msg == str(e) and ("'error'" in error_msg or '"error"' in error_msg):
+                import re
+                try:
+                    # Try to extract JSON part after "Error code: 400 - "
+                    match = re.search(r'-\s*({.*})', error_msg, re.DOTALL)
+                    if match:
+                        json_str = match.group(1)
+                        # Replace single quotes with double quotes for JSON parsing
+                        json_str = json_str.replace("'", '"')
+                        parsed = json.loads(json_str)
+                        if isinstance(parsed, dict):
+                            error_detail = parsed.get("error", {})
+                            if isinstance(error_detail, dict):
+                                extracted_msg = error_detail.get("message", None)
+                                if extracted_msg:
+                                    error_msg = extracted_msg
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    pass
+            
+            # Fallback to message attribute if body extraction didn't work
+            if error_message_attr and error_msg == str(e):
+                error_msg = str(error_message_attr)
+            retry_needed = False
+            
+            if "max_tokens" in error_msg and "max_completion_tokens" in error_msg.lower():
+                logger.warning(
+                    "Model requires 'max_completion_tokens' instead of 'max_tokens' for stream, retrying",
+                    model=model,
+                    error=error_msg,
+                )
+                # Remove max_tokens and use max_completion_tokens instead
+                request_kwargs.pop("max_tokens", None)
+                request_kwargs["max_completion_tokens"] = max_tokens
+                retry_needed = True
+            
+            # Check for temperature errors - handle various error message formats
+            error_lower = error_msg.lower()
+            is_temperature_error = (
+                "temperature" in error_lower and 
+                ("unsupported" in error_lower or "does not support" in error_lower or "only the default" in error_lower)
+            )
+            if is_temperature_error:
+                logger.warning(
+                    "Model does not support custom temperature for stream, removing temperature parameter and retrying",
+                    model=model,
+                    error=error_msg,
+                )
+                # Remove temperature parameter - model will use default
+                request_kwargs.pop("temperature", None)
+                retry_needed = True
+            
+            if retry_needed:
+                try:
+                    stream = await self.client.chat.completions.create(**request_kwargs)
+                except openai.BadRequestError as retry_error:
+                    # Handle nested BadRequestError - might be another parameter issue
+                    # Extract error message from retry error
+                    retry_error_msg = str(retry_error)
+                    retry_error_body = getattr(retry_error, "body", None)
+                    if retry_error_body:
+                        try:
+                            if isinstance(retry_error_body, dict):
+                                error_detail = retry_error_body.get("error", {})
+                                if isinstance(error_detail, dict):
+                                    extracted_msg = error_detail.get("message", None)
+                                    if extracted_msg:
+                                        retry_error_msg = extracted_msg
+                        except Exception:
+                            pass
+                    
+                    # Check if this is a temperature error we can fix
+                    retry_error_lower = retry_error_msg.lower()
+                    is_retry_temperature_error = (
+                        "temperature" in retry_error_lower and 
+                        ("unsupported" in retry_error_lower or "does not support" in retry_error_lower or "only the default" in retry_error_lower)
+                    )
+                    
+                    if is_retry_temperature_error:
+                        logger.warning(
+                            "Nested temperature error detected in retry, removing temperature and retrying again",
+                            model=model,
+                            error=retry_error_msg,
+                        )
+                        request_kwargs.pop("temperature", None)
+                        # Retry once more without temperature
+                        stream = await self.client.chat.completions.create(**request_kwargs)
+                    else:
+                        # If it's a different error, raise the retry error
+                        raise retry_error
+                except Exception as retry_error:
+                    # If retry fails with a different error, raise it
+                    raise retry_error
             else:
                 raise
 
@@ -356,12 +638,36 @@ class OpenAIProvider(LLMProvider):
                 output_tokens=output_tokens,
             )
 
+        except openai.APIConnectionError as e:
+            logger.error(
+                "💀 OpenAI API connection error during streaming (network/DNS issue)",
+                error=str(e),
+                model=model,
+                error_type=type(e).__name__,
+            )
+            raise LLMError(
+                provider="openai",
+                message=f"OpenAI API connection error: {e}. Check network connectivity and DNS configuration.",
+                details={"error_type": type(e).__name__, "is_network_error": True},
+            )
+        except openai.APITimeoutError as e:
+            logger.error(
+                "💀 OpenAI API timeout error during streaming",
+                error=str(e),
+                model=model,
+                error_type=type(e).__name__,
+            )
+            raise LLMError(
+                provider="openai",
+                message=f"OpenAI API timeout: {e}. Check network connectivity.",
+                details={"error_type": type(e).__name__, "is_network_error": True},
+            )
         except Exception as e:
             # Also log exception via structured logger so it appears in container logs
             logger.exception("Exception while calling OpenAI stream create", error=str(e), model=model)
             if isinstance(e, openai.APIError):
                 logger.error(
-                    "OpenAI streaming error",
+                    "💀 OpenAI streaming error",
                     error=str(e),
                     model=model,
                 )
@@ -379,10 +685,17 @@ class OpenAIProvider(LLMProvider):
         json_schema: dict[str, Any],
         schema_name: str = "StructuredOutput",
         model: str | None = None,
+        max_retries: int = 3,
+        base_delay: float = 2.0,
+        timeout: float | None = None,
+        max_output_tokens: int | None = None,
     ) -> dict[str, Any]:
         """Generate structured output following a JSON schema.
 
         Uses OpenAI's Responses API with strict JSON schema validation.
+        Includes retry logic with exponential backoff for transient failures.
+        SDK-level retries are disabled to prevent cascading with our custom
+        retry loop.
 
         Args:
             system: System prompt
@@ -390,90 +703,196 @@ class OpenAIProvider(LLMProvider):
             json_schema: JSON schema to validate output against
             schema_name: Name for the schema (default: "StructuredOutput")
             model: Model to use (default: gpt-4o-mini)
+            max_retries: Maximum number of retry attempts (default: 3)
+            base_delay: Base delay in seconds for exponential backoff (default: 2.0)
+            timeout: Per-request timeout in seconds (default: self.timeout * 2.5)
+            max_output_tokens: Maximum output tokens (default: None = model default)
 
         Returns:
             Parsed JSON object matching the schema
 
         Raises:
-            LLMError: If generation or parsing fails
+            LLMError: If generation or parsing fails after all retries
         """
+        import asyncio
+        import random
+
         model = model or "gpt-4o-mini"
+        request_timeout = timeout if timeout is not None else self.timeout * 2.5
+        last_error: Exception | None = None
 
-        logger.info(
-            "OpenAI structured output request",
-            model=model,
-            schema_name=schema_name,
+        # Disable SDK-level retries — our custom retry loop handles retries
+        # with exponential backoff. Keeping SDK retries causes cascading:
+        # (SDK retries × custom retries) API calls per generation attempt.
+        client = self.client.with_options(max_retries=0)
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(
+                    "OpenAI structured output request",
+                    model=model,
+                    schema_name=schema_name,
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    request_timeout_seconds=request_timeout,
+                )
+
+                create_kwargs: dict[str, Any] = {
+                    "model": model,
+                    "input": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user_message},
+                    ],
+                    "text": {
+                        "format": {
+                            "type": "json_schema",
+                            "name": schema_name,
+                            "schema": json_schema,
+                            "strict": True,
+                        }
+                    },
+                    "timeout": request_timeout,
+                }
+                if max_output_tokens is not None:
+                    create_kwargs["max_output_tokens"] = max_output_tokens
+
+                response = await client.responses.create(**create_kwargs)
+
+                # Check for truncation via response.status
+                response_status = getattr(response, "status", None)
+                incomplete_details = getattr(response, "incomplete_details", None)
+
+                logger.info(
+                    "OpenAI structured output received",
+                    output_count=len(response.output or []),
+                    status=response_status,
+                    attempt=attempt + 1,
+                )
+
+                if response_status == "incomplete":
+                    reason = (
+                        getattr(incomplete_details, "reason", "unknown")
+                        if incomplete_details
+                        else "unknown"
+                    )
+                    logger.warning(
+                        "OpenAI response incomplete (truncated), retrying",
+                        reason=reason,
+                        model=model,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                    )
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        raise LLMError(
+                            provider="openai",
+                            message=f"Response incomplete (reason: {reason}) after {max_retries} attempts",
+                            details={"reason": reason, "attempts": max_retries},
+                        )
+
+                # Extract JSON from response
+                if not response.output:
+                    raise LLMError(
+                        provider="openai",
+                        message="Empty response from OpenAI Responses API",
+                        details={"model": model},
+                    )
+
+                first_block = response.output[0]
+                payload = None
+
+                # Try different ways to extract text content
+                if getattr(first_block, "type", None) == "output_text":
+                    payload = first_block.text
+                else:
+                    content = getattr(first_block, "content", None)
+                    if content and len(content) > 0 and hasattr(content[0], "text"):
+                        payload = content[0].text
+
+                if payload is None:
+                    raise LLMError(
+                        provider="openai",
+                        message="Unexpected response format from OpenAI Responses API",
+                        details={"model": model, "first_block_type": type(first_block).__name__},
+                    )
+
+                return json.loads(payload)
+
+            except json.JSONDecodeError as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        "Truncated/malformed structured output, retrying",
+                        error=str(e),
+                        model=model,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        retry_delay_seconds=round(delay, 2),
+                        payload_length=len(payload) if payload else 0,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    logger.error(
+                        "Failed to parse structured output JSON after all retries",
+                        error=str(e),
+                        model=model,
+                        attempt=attempt + 1,
+                    )
+                    raise LLMError(
+                        provider="openai",
+                        message=f"Failed to parse structured output: {e}",
+                        details={"error_type": "JSONDecodeError", "attempts": attempt + 1},
+                    )
+            except openai.APIError as e:
+                last_error = e
+                error_type = type(e).__name__
+
+                # Check if this is a retryable error (timeout, rate limit, server error)
+                is_retryable = isinstance(e, (
+                    openai.APITimeoutError,
+                    openai.RateLimitError,
+                    openai.InternalServerError,
+                    openai.APIConnectionError,
+                ))
+
+                if is_retryable and attempt < max_retries - 1:
+                    # Exponential backoff with jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(
+                        "OpenAI API error, retrying",
+                        error=str(e),
+                        error_type=error_type,
+                        model=model,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        retry_delay_seconds=round(delay, 2),
+                        request_timeout_seconds=request_timeout,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    logger.error(
+                        "OpenAI API error during structured output (no more retries)",
+                        error=str(e),
+                        error_type=error_type,
+                        model=model,
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                    )
+                    raise LLMError(
+                        provider="openai",
+                        message=f"OpenAI API error: {e}",
+                        details={"error_type": error_type, "attempts": attempt + 1},
+                    )
+
+        # Should not reach here, but just in case
+        raise LLMError(
+            provider="openai",
+            message=f"OpenAI API error after {max_retries} attempts: {last_error}",
+            details={"error_type": type(last_error).__name__ if last_error else "Unknown"},
         )
-
-        try:
-            response = await self.client.responses.create(
-                model=model,
-                input=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_message},
-                ],
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": schema_name,
-                        "schema": json_schema,
-                        "strict": True,
-                    }
-                },
-            )
-
-            logger.info(
-                "OpenAI structured output received",
-                output_count=len(response.output or []),
-            )
-
-            # Extract JSON from response
-            if not response.output:
-                raise LLMError(
-                    provider="openai",
-                    message="Empty response from OpenAI Responses API",
-                    details={"model": model},
-                )
-
-            first_block = response.output[0]
-            payload = None
-
-            # Try different ways to extract text content
-            if getattr(first_block, "type", None) == "output_text":
-                payload = first_block.text
-            else:
-                content = getattr(first_block, "content", None)
-                if content and len(content) > 0 and hasattr(content[0], "text"):
-                    payload = content[0].text
-
-            if payload is None:
-                raise LLMError(
-                    provider="openai",
-                    message="Unexpected response format from OpenAI Responses API",
-                    details={"model": model, "first_block_type": type(first_block).__name__},
-                )
-
-            return json.loads(payload)
-
-        except json.JSONDecodeError as e:
-            logger.error(
-                "Failed to parse structured output JSON",
-                error=str(e),
-                model=model,
-            )
-            raise LLMError(
-                provider="openai",
-                message=f"Failed to parse structured output: {e}",
-                details={"error_type": "JSONDecodeError"},
-            )
-        except openai.APIError as e:
-            logger.error(
-                "OpenAI API error during structured output",
-                error=str(e),
-                model=model,
-            )
-            raise LLMError(
-                provider="openai",
-                message=f"OpenAI API error: {e}",
-                details={"error_type": type(e).__name__},
-            )

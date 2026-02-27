@@ -102,3 +102,11 @@ def get_tenant_id(request: Request) -> UUID:
     if not tenant_id:
         raise AuthorizationError("Tenant context not available")
     return tenant_id
+
+
+def get_user_id(request: Request) -> UUID | None:
+    """Get user ID from request state.
+
+    Returns None if user is not authenticated (e.g. API key access).
+    """
+    return getattr(request.state, "user_id", None)

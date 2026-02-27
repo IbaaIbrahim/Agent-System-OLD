@@ -201,6 +201,164 @@
     background: rgba(255, 255, 255, 0.02);
 }
 
+/* === Attachment List (row of chips above message) === */
+.cb-att-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+/* === Attachment Chip === */
+.cb-att-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px 6px 6px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    max-width: 260px;
+    min-width: 0;
+}
+
+.cb-att-chip:hover {
+    background: rgba(255, 255, 255, 0.13);
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Image thumbnail in chip */
+.cb-att-chip-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.cb-att-chip-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* File icon in chip */
+.cb-att-chip-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+/* Chip text info */
+.cb-att-chip-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.cb-att-chip-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--cb-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cb-att-chip-size {
+    font-size: 10px;
+    color: var(--cb-text-tertiary);
+}
+
+/* Action icon (eye / external link) */
+.cb-att-chip-action {
+    color: var(--cb-text-tertiary);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+}
+
+.cb-att-chip:hover .cb-att-chip-action {
+    color: var(--cb-text-secondary);
+}
+
+/* === Image Lightbox === */
+.cb-lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+    animation: cb-fade-in 0.15s ease-out;
+}
+
+.cb-lightbox-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    max-width: 90vw;
+    max-height: 90vh;
+}
+
+.cb-lightbox-img {
+    max-width: 90vw;
+    max-height: 80vh;
+    border-radius: 10px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    object-fit: contain;
+    display: block;
+}
+
+.cb-lightbox-close {
+    position: absolute;
+    top: -40px;
+    right: -8px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.cb-lightbox-close:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+
+.cb-lightbox-filename {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.cb-lightbox-meta {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.45);
+}
+
 @keyframes cb-fade-in {
     from {
         opacity: 0;

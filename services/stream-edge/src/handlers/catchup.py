@@ -13,6 +13,10 @@ import json
 
 logger = get_logger(__name__)
 
+# Event types to skip during catch-up - these are ephemeral streaming events
+# that should not be replayed on reconnection
+SKIP_CATCHUP_EVENT_TYPES = {"delta", "reasoning_delta"}
+
 
 class CatchupHandler:
     """Handles catch-up logic for reconnecting SSE clients.
@@ -99,6 +103,13 @@ class CatchupHandler:
 
             for entry in entries:
                 event_type = entry.data.get("type", "message")
+
+                # Skip ephemeral streaming events during catch-up
+                # These events are for real-time display only and would cause
+                # fragmented message display if replayed
+                if event_type in SKIP_CATCHUP_EVENT_TYPES:
+                    continue
+
                 event_data = entry.data.get("data", {})
 
                 yield {

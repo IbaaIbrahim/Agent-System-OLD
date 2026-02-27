@@ -211,6 +211,7 @@ class ConfirmHandler:
 
         event_data = {
             "type": "client_tool_call",
+            "job_id": str(state.job_id),
             "tool_call_id": tool_call.id,
             "tool_name": tool_call.name,
             "arguments": tool_call.arguments,

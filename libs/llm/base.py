@@ -57,10 +57,14 @@ class ToolCall:
 
 @dataclass
 class LLMMessage:
-    """A message in the conversation."""
+    """A message in the conversation.
+
+    Content can be either a string (text-only) or a list of content blocks
+    (multimodal with text and images). This supports vision models.
+    """
 
     role: MessageRole
-    content: str | None = None
+    content: list[dict[str, Any]] | str | None = None
     tool_calls: list[ToolCall] | None = None
     tool_call_id: str | None = None
     name: str | None = None
@@ -74,7 +78,7 @@ class LLMMessage:
                     {
                         "type": "tool_result",
                         "tool_use_id": self.tool_call_id,
-                        "content": self.content,
+                        "content": self.content if isinstance(self.content, str) else "",
                     }
                 ],
             }
@@ -82,7 +86,11 @@ class LLMMessage:
         if self.role == MessageRole.ASSISTANT and self.tool_calls:
             content = []
             if self.content:
-                content.append({"type": "text", "text": self.content})
+                if isinstance(self.content, str):
+                    content.append({"type": "text", "text": self.content})
+                else:
+                    # Content is already a list of blocks
+                    content.extend(self.content)
             for tc in self.tool_calls:
                 content.append({
                     "type": "tool_use",
@@ -92,6 +100,14 @@ class LLMMessage:
                 })
             return {"role": "assistant", "content": content}
 
+        # Handle multimodal content (list of blocks)
+        if isinstance(self.content, list):
+            return {
+                "role": self.role.value,
+                "content": self.content,
+            }
+
+        # Handle simple string content
         return {
             "role": self.role.value,
             "content": self.content or "",
@@ -102,7 +118,47 @@ class LLMMessage:
         msg: dict[str, Any] = {"role": self.role.value}
 
         if self.content is not None:
-            msg["content"] = self.content
+            # Handle multimodal content for OpenAI vision models
+            if isinstance(self.content, list):
+                # Convert content blocks to OpenAI format
+                openai_content = []
+                for block in self.content:
+                    if block.get("type") == "text":
+                        openai_content.append({
+                            "type": "text",
+                            "text": block.get("text", "")
+                        })
+                    elif block.get("type") == "image":
+                        # Anthropic format: {"type": "image", "source": {"type": "base64", ...}}
+                        # OpenAI format: {"type": "image_url", "image_url": {"url": "data:..."}}
+                        source = block.get("source", {})
+                        if source.get("type") == "base64":
+                            media_type = source.get("media_type", "image/jpeg")
+                            data = source.get("data", "")
+                            openai_content.append({
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{media_type};base64,{data}"
+                                }
+                            })
+                    elif block.get("type") == "image_url":
+                        # Already in OpenAI format
+                        openai_content.append(block)
+                    elif block.get("type") == "document":
+                        # Anthropic-only document block (native PDF) — not
+                        # supported by OpenAI.  Convert to a text note so
+                        # callers get a clear signal rather than silent drop.
+                        openai_content.append({
+                            "type": "text",
+                            "text": (
+                                "[Unsupported: native PDF document block. "
+                                "This content requires the Anthropic provider.]"
+                            ),
+                        })
+                msg["content"] = openai_content
+            else:
+                # Simple string content
+                msg["content"] = self.content
 
         # tool_calls only allowed/valid for assistant role
         if self.role == MessageRole.ASSISTANT and self.tool_calls:
