@@ -236,3 +236,35 @@ class MyTool(BaseTool):
 | Project plan | `docs/plan.md` |
 | Tool management plan | `docs/tools-plan.md` |
 | Environment template | `.env.example` |
+
+## Cursor Cloud specific instructions
+
+### Environment overview
+
+This is a Docker Compose-based multi-service platform. All services (17 containers) run via `make up` / `sudo docker compose up -d`. See `CLAUDE.md` for full architecture, dev commands, and code conventions.
+
+### Starting services
+
+- **All services via Docker**: `sudo docker compose up -d` (equivalent to `make up` but requires `sudo` in Cloud Agent VMs where Docker runs as root).
+- **Infrastructure only** (for local Python dev): `sudo docker compose up -d postgres redis zookeeper kafka kafka-init pgadmin`
+- After infrastructure is up, run `make migrate` to apply Alembic migrations.
+- Individual Python services can be run locally with `make api`, `make stream`, etc. (see Makefile).
+
+### Key gotchas
+
+- **`docker compose` requires `sudo`** in the Cloud Agent VM because Docker runs as root.
+- **`.env` must exist** before running `docker compose`. Copy from `.env.example`. The following vars must be non-empty for `docker compose` to parse: `DEEPGRAM_API_KEY`, `TENANT_API_KEY`, `USER_ID`. Set placeholder values if you don't have real keys.
+- **Frontend `npm run lint`** does not exist in the workspace root `package.json`. The `make lint` target's frontend portion will fail; Python lint (`ruff check libs/ services/`) works fine.
+- **`PYTHONPATH`**: all `make` targets set `PYTHONPATH=$(PWD)`. When running pytest or Python directly, ensure `PYTHONPATH` points to the repo root.
+- **`$HOME/.local/bin`** must be on PATH for pip-installed CLI tools (ruff, mypy, alembic, pytest, uvicorn).
+- **Unit tests** run without infrastructure: `PYTHONPATH=$(pwd) pytest tests/unit/ -v` (231 tests).
+- **Integration tests** require running infrastructure (`make infra` or `make up`) plus migrations, and `RUN_INTEGRATION_TESTS=true`.
+
+### Hello world API flow
+
+1. Create tenant: `POST /api/admin/tenants` with `Authorization: Bearer $MASTER_ADMIN_KEY` (body needs `name`, `slug`).
+2. Generate API key: `POST /api/admin/tenants/{id}/api-keys`.
+3. Create user: `POST /api/v1/users` with tenant API key (body needs `external_id`, `email`, `name`).
+4. Get JWT: `POST /api/v1/auth/token` with tenant API key and `user_id`.
+5. Chat: `POST /api/v1/chat/completions` with JWT (body: `{"messages": [{"role":"user","content":"..."}]}`).
+6. Stream response: connect SSE to the `stream_url` returned by the chat endpoint.
