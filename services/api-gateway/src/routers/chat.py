@@ -306,17 +306,36 @@ async def create_chat_completion(
         )
         session.add(job)
 
-        # Create ChatMessage records for initial messages
-        for idx, msg in enumerate(body.messages):
-            chat_msg = ChatMessageModel(
-                job_id=job_id,
-                sequence_num=idx,
-                role=MessageRole(msg.role),
-                content=msg.content,
-                tool_calls=msg.tool_calls,
-                tool_call_id=msg.tool_call_id,
-            )
-            session.add(chat_msg)
+        # Create ChatMessage records for this job's NEW messages only.
+        # When continuing an existing conversation, previous messages are
+        # already stored in earlier jobs — only persist the latest user message
+        # to avoid duplicates on conversation reload.
+        if body.conversation_id:
+            # Continuing conversation: find and save only the last user message
+            for msg in reversed(body.messages):
+                if msg.role == "user":
+                    chat_msg = ChatMessageModel(
+                        job_id=job_id,
+                        sequence_num=0,
+                        role=MessageRole(msg.role),
+                        content=msg.content,
+                        tool_calls=msg.tool_calls,
+                        tool_call_id=msg.tool_call_id,
+                    )
+                    session.add(chat_msg)
+                    break
+        else:
+            # New conversation: save all messages (typically just the first user message)
+            for idx, msg in enumerate(body.messages):
+                chat_msg = ChatMessageModel(
+                    job_id=job_id,
+                    sequence_num=idx,
+                    role=MessageRole(msg.role),
+                    content=msg.content,
+                    tool_calls=msg.tool_calls,
+                    tool_call_id=msg.tool_call_id,
+                )
+                session.add(chat_msg)
 
         await session.flush()  # Ensure IDs are generated
 
