@@ -11,13 +11,39 @@ services:
       POSTGRES_PASSWORD: agent_secret
       POSTGRES_DB: agent_db
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U agent -d agent_db" ]
       interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-network
+
+  auth-broker:
+    build:
+      context: .
+      dockerfile: services/auth-broker/Dockerfile
+    container_name: agent-auth-broker
+    ports:
+      - "8003:7003"
+    environment:
+      # Database
+      - GATEWAY_URL=${AUTH_BROKER_GATEWAY_URL:-http://api-gateway:8000}
+      - TENANT_API_KEY=${TENANT_API_KEY:?TENANT_API_KEY is required}
+      - USER_ID=${USER_ID:?USER_ID is required}
+      - PORT=7003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:7003/health', timeout=2)" ]
+      interval: 10s
       timeout: 5s
       retries: 5
     networks:
@@ -123,6 +149,75 @@ services:
       - agent-network
 
   # ===================
+  # VECTOR DATABASE
+  # ===================
+
+  # etcd for Milvus metadata storage
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: agent-milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - milvus_etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - agent-network
+
+  # MinIO for Milvus data storage (internal to Milvus)
+  milvus-minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: agent-milvus-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - milvus_minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - agent-network
+
+  # Milvus standalone vector database
+  milvus:
+    image: milvusdb/milvus:v2.3.3
+    container_name: agent-milvus
+    command: ["milvus", "run", "standalone"]
+    depends_on:
+      milvus-etcd:
+        condition: service_healthy
+      milvus-minio:
+        condition: service_healthy
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    ports:
+      - "19530:19530"   # Milvus gRPC
+      - "9091:9091"     # Milvus metrics
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    networks:
+      - agent-network
+
+  # ===================
   # CONTROL PLANE
   # ===================
 
@@ -133,17 +228,55 @@ services:
     container_name: agent-api-gateway
     ports:
       - "8000:8000"
+    # DNS configuration to ensure external API access (OpenAI, Anthropic)
+    # Falls back to Google DNS and Cloudflare DNS if host DNS fails
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
     environment:
+      # Database
       - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      # Redis
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Kafka
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP:-agent-system}
+      # Authentication
       - JWT_SECRET=${JWT_SECRET:-change_in_production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_EXPIRATION=${JWT_EXPIRATION:-3600}
       - MASTER_ADMIN_KEY=${MASTER_ADMIN_KEY:-change_in_production_use_long_random_string_min_32_chars}
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
+      - OTT_TTL_SECONDS=${OTT_TTL_SECONDS:-60}
+      # LLM
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_DEFAULT_MODEL=${ANTHROPIC_DEFAULT_MODEL:-claude-sonnet-4-20250514}
       - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-4o-mini}
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
-      - STREAM_EDGE_URL=${STREAM_EDGE_URL:-http://localhost:8001}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
+      # Rate Limiting & Billing
+      - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}
+      - RATE_LIMIT_TPM=${RATE_LIMIT_TPM:-100000}
+      - ENABLE_BILLING_CHECKS=${ENABLE_BILLING_CHECKS:-false}
+      - DEFAULT_CREDIT_BALANCE_MICROS=${DEFAULT_CREDIT_BALANCE_MICROS:-100000000}
+      # File Storage
+      - FILE_STORAGE_PERSIST=${FILE_STORAGE_PERSIST:-false}
+      - FILE_STORAGE_PATH=${FILE_STORAGE_PATH:-./file_uploads}
+      # Service Configuration
+      - API_GATEWAY_PORT=${API_GATEWAY_PORT:-8000}
+      - STREAM_EDGE_URL=${STREAM_EDGE_URL:-http://stream-edge:8001}
+      - API_HOST=${API_HOST:-localhost}
+      # Logging & Environment
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,9 +304,26 @@ services:
     ports:
       - "8001:8001"
     environment:
+      # Database
       - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      # Redis
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Authentication
       - JWT_SECRET=${JWT_SECRET:-change_in_production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
+      - OTT_TTL_SECONDS=${OTT_TTL_SECONDS:-60}
+      # Service Configuration
+      - STREAM_EDGE_PORT=${STREAM_EDGE_PORT:-8001}
+      # Logging & Environment
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -187,6 +337,115 @@ services:
     networks:
       - agent-network
 
+  websocket-gateway:
+    build:
+      context: .
+      dockerfile: services/websocket-gateway/Dockerfile
+    container_name: agent-websocket-gateway
+    ports:
+      - "8002:8002"
+    environment:
+      # Database (required for auth — tenant/key lookups)
+      - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-10}
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Authentication
+      - JWT_SECRET=${JWT_SECRET:-change_in_production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - MASTER_ADMIN_KEY=${MASTER_ADMIN_KEY:-change_in_production_use_long_random_string_min_32_chars}
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
+      # Service Configuration
+      - WEBSOCKET_GATEWAY_PORT=${WEBSOCKET_GATEWAY_PORT:-8002}
+      - WS_MAX_CONNECTIONS_PER_TENANT=${WS_MAX_CONNECTIONS_PER_TENANT:-100}
+      - WS_MAX_MESSAGE_SIZE=${WS_MAX_MESSAGE_SIZE:-5242880}
+      # Logging & Environment
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8002/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agent-network
+
+  live-session-manager:
+    build:
+      context: .
+      dockerfile: services/live-session-manager/Dockerfile
+    container_name: agent-live-session-manager
+    # DNS configuration to ensure external API access (OpenAI, Anthropic, Deepgram, ElevenLabs)
+    # Falls back to Google DNS and Cloudflare DNS if host DNS fails
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    environment:
+      # Database
+      - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Kafka
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP:-agent-system}
+      # Authentication
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
+      # LLM
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_DEFAULT_MODEL=${ANTHROPIC_DEFAULT_MODEL:-claude-sonnet-4-5}
+      - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-4o-mini}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
+      # Deepgram STT
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY:?}
+      - DEEPGRAM_MODEL=${DEEPGRAM_MODEL:-nova-3}
+      - DEEPGRAM_LANGUAGE=${DEEPGRAM_LANGUAGE:-en-US}
+      - DEEPGRAM_SAMPLE_RATE=${DEEPGRAM_SAMPLE_RATE:-16000}
+      - DEEPGRAM_ENDPOINTING=${DEEPGRAM_ENDPOINTING:-500}
+      # ElevenLabs TTS
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ELEVENLABS_DEFAULT_VOICE_ID=${ELEVENLABS_DEFAULT_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}
+      - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-eleven_turbo_v2_5}
+      # Live Session Settings
+      - LIVE_SESSION_TIMEOUT_SECONDS=${LIVE_SESSION_TIMEOUT_SECONDS:-3600}
+      - LIVE_SESSION_MAX_PER_TENANT=${LIVE_SESSION_MAX_PER_TENANT:-10}
+      - SCREEN_FRAME_MAX_WIDTH=${SCREEN_FRAME_MAX_WIDTH:-720}
+      - SCREEN_FRAME_MAX_HEIGHT=${SCREEN_FRAME_MAX_HEIGHT:-512}
+      # File Storage
+      - FILE_STORAGE_PERSIST=${FILE_STORAGE_PERSIST:-false}
+      - FILE_STORAGE_PATH=${FILE_STORAGE_PATH:-./file_uploads}
+      # Logging & Environment
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - agent-network
+
   # ===================
   # PROCESSING
   # ===================
@@ -196,13 +455,45 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     container_name: agent-orchestrator
+    # DNS configuration to ensure external API access (OpenAI, Anthropic)
+    # Falls back to Google DNS and Cloudflare DNS if host DNS fails
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
     environment:
+      # Database
       - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      # Redis
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Kafka
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP:-agent-system}
+      # Authentication
+      - JWT_SECRET=${JWT_SECRET:-change_in_production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
+      # LLM
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_DEFAULT_MODEL=${ANTHROPIC_DEFAULT_MODEL:-claude-sonnet-4-20250514}
+      - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-4o-mini}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
+      # Orchestrator
+      - ENABLE_SUSPEND_RESUME=${ENABLE_SUSPEND_RESUME:-true}
+      # File Storage
+      - FILE_STORAGE_PERSIST=${FILE_STORAGE_PERSIST:-false}
+      - FILE_STORAGE_PATH=${FILE_STORAGE_PATH:-./file_uploads}
+      # Logging & Environment
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -220,14 +511,48 @@ services:
       context: .
       dockerfile: services/tool-workers/Dockerfile
     container_name: agent-tool-workers
+    # DNS configuration to ensure external API access (OpenAI, Anthropic, web search)
+    # Falls back to Google DNS and Cloudflare DNS if host DNS fails
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
     environment:
+      # Database
+      - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-10}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      # Redis
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Kafka
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - BRAVE_API_KEY=${BRAVE_API_KEY:?BRAVE_API_KEY is not configured}
-      - WEB_SEARCH_PROVIDER=${WEB_SEARCH_PROVIDER:-brave}
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP:-agent-system}
+      # Authentication
+      - INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET:-change_in_production_internal_secret_different_from_jwt_min_32_chars}
+      # LLM
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_DEFAULT_MODEL=${ANTHROPIC_DEFAULT_MODEL:-claude-sonnet-4-20250514}
+      - OPENAI_DEFAULT_MODEL=${OPENAI_DEFAULT_MODEL:-gpt-4o-mini}
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-120}
+      # Web Search
+      - WEB_SEARCH_PROVIDER=${WEB_SEARCH_PROVIDER:-duckduckgo}
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      # Code Execution
+      - CODE_EXECUTOR_ENABLED=${CODE_EXECUTOR_ENABLED:-true}
+      - CODE_EXECUTOR_TIMEOUT=${CODE_EXECUTOR_TIMEOUT:-30}
+      - CODE_EXECUTOR_MEMORY_LIMIT_MB=${CODE_EXECUTOR_MEMORY_LIMIT_MB:-256}
+      # Logging & Environment
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
     depends_on:
+      postgres:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       kafka-init:
@@ -241,8 +566,24 @@ services:
       dockerfile: services/archiver/Dockerfile
     container_name: agent-archiver
     environment:
+      # Database
       - DATABASE_URL=postgresql+asyncpg://agent:agent_secret@postgres:5432/agent_db
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      # Redis
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-10}
+      # Archiver Settings
+      - STREAM_RETENTION_HOURS=${STREAM_RETENTION_HOURS:-24}
+      - ARCHIVER_CLEANUP_INTERVAL=${ARCHIVER_CLEANUP_INTERVAL:-3600}
+      - ARCHIVER_BATCH_SIZE=${ARCHIVER_BATCH_SIZE:-100}
+      - ARCHIVER_FLUSH_INTERVAL=${ARCHIVER_FLUSH_INTERVAL:-5}
+      # Logging & Environment
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -250,7 +591,6 @@ services:
         condition: service_healthy
     networks:
       - agent-network
-
   # ===================
   # FRONTEND
   # ===================
@@ -259,9 +599,13 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        - VITE_AUTH_BROKER_URL=${VITE_AUTH_BROKER_URL:?VITE_AUTH_BROKER_URL is required}
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:?VITE_API_BASE_URL is required}
+        - VITE_WS_URL=${VITE_WS_URL:?VITE_WS_URL is required}
     container_name: agent-frontend
     ports:
-      - "3000:80"
+      - "8005:80"
     depends_on:
       api-gateway:
         condition: service_healthy
@@ -277,6 +621,9 @@ volumes:
   zookeeper_log:
   kafka_data:
   pgadmin_data:
+  milvus_etcd_data:
+  milvus_minio_data:
+  milvus_data:
 
 
 networks:

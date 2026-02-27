@@ -20,8 +20,15 @@ class APIGatewayConfig(Settings):
     # Resume topic (for client-side tool results)
     resume_topic: str = "agent.job-resume"
 
+    # User response topic (human-in-the-loop)
+    user_response_topic: str = "agent.user-response"
+
     # Request timeout (seconds)
     request_timeout: int = 30
+
+    # File storage persistence
+    file_storage_persist: bool = False  # Write uploaded files to disk
+    file_storage_path: str = "./file_uploads"  # Directory for persistent files
 
     # Billing feature flag (disabled by default)
     enable_billing_checks: bool = False

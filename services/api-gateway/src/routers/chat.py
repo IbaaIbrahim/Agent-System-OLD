@@ -12,12 +12,12 @@ from libs.common.auth import create_internal_transaction_token, create_stream_ot
 from libs.common.exceptions import ValidationError
 from libs.common.tool_catalog import TOOL_CATALOG, ToolBehavior
 from libs.db.models import ChatMessage as ChatMessageModel
-from libs.db.models import Job, JobStatus, MessageRole
+from libs.db.models import Conversation, Job, JobStatus, MessageRole
 from libs.db.session import get_session_context
 from libs.messaging.kafka import get_producer
 
 from ..config import get_config
-from ..middleware.tenant import get_tenant_id
+from ..middleware.tenant import get_tenant_id, get_user_id
 from ..services.billing import (
     BillingError,
     BillingService,
@@ -61,6 +61,7 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int = Field(default=4096, ge=1, le=200000)
     stream: bool = True
     metadata: dict[str, Any] | None = None
+    conversation_id: str | None = None
 
 
 class ChatCompletionResponse(BaseModel):
@@ -71,6 +72,7 @@ class ChatCompletionResponse(BaseModel):
     stream_token: str
     status: str = "pending"
     created_at: str | None = None
+    conversation_id: str | None = None
 
 
 @router.post("/chat/completions", response_model=ChatCompletionResponse)
@@ -138,6 +140,17 @@ async def create_chat_completion(
 
     # Get enabled_tools from metadata for USER_ENABLED tools
     enabled_tools = (body.metadata or {}).get("enabled_tools", [])
+
+    # Validate effort_level if present
+    effort_level = (body.metadata or {}).get("effort_level")
+    if effort_level is not None and effort_level not in ("low", "medium", "high"):
+        raise ValidationError(
+            message="Invalid effort_level",
+            errors=[{
+                "field": "metadata.effort_level",
+                "message": "Must be one of: low, medium, high",
+            }],
+        )
 
     # Inject tools from catalog based on behavior
     for tool_name, tool_metadata in TOOL_CATALOG.items():
@@ -225,15 +238,63 @@ async def create_chat_completion(
             tenant_id, estimated_cost_micros
         )
 
-    # --- Step 2: DB transaction — persist Job + ChatMessages ---
+    # --- Step 2: DB transaction — persist Conversation + Job + ChatMessages ---
     now = datetime.now(UTC)
+    conversation_id_val: uuid.UUID | None = None
 
     async with get_session_context() as session:
+        # Handle conversation: reuse existing or create new
+        if body.conversation_id:
+            conversation_id_val = uuid.UUID(body.conversation_id)
+            # Validate conversation belongs to this tenant
+            from sqlalchemy import func, select, update as sa_update
+
+            conv_stmt = select(Conversation).where(
+                Conversation.id == conversation_id_val,
+                Conversation.tenant_id == tenant_id,
+            )
+            conv = (await session.execute(conv_stmt)).scalar_one_or_none()
+            if not conv:
+                raise ValidationError(
+                    message="Conversation not found",
+                    errors=[{
+                        "field": "conversation_id",
+                        "message": "Conversation does not exist or access denied",
+                    }],
+                )
+            # Touch updated_at
+            conv_update = (
+                sa_update(Conversation)
+                .where(Conversation.id == conversation_id_val)
+                .values(updated_at=func.now())
+            )
+            await session.execute(conv_update)
+        else:
+            # Auto-create conversation from last user message
+            last_user_msg = next(
+                (m for m in reversed(body.messages) if m.role == "user"), None
+            )
+            title_text = (last_user_msg.content or "New chat") if last_user_msg else "New chat"
+            # Truncate at word boundary ~80 chars
+            if len(title_text) > 80:
+                title_text = title_text[:80].rsplit(" ", 1)[0] + "..."
+            title_text = title_text.strip()
+
+            conv = Conversation(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                title=title_text,
+            )
+            session.add(conv)
+            await session.flush()
+            conversation_id_val = conv.id
+
         # Create Job record
         job = Job(
             id=job_id,
             tenant_id=tenant_id,
             user_id=user_id,
+            conversation_id=conversation_id_val,
             status=JobStatus.PENDING,
             provider=provider,
             model_id=model,
@@ -399,6 +460,7 @@ async def create_chat_completion(
         stream_token=stream_ott,
         status="pending",
         created_at=now.isoformat(),
+        conversation_id=str(conversation_id_val) if conversation_id_val else None,
     )
 
 
@@ -474,3 +536,70 @@ async def confirm_response(
     )
 
     return ConfirmResponseResponse(status="received")
+
+
+class UserResponseRequest(BaseModel):
+    """Request body for user responses (human-in-the-loop)."""
+
+    job_id: str
+    response: str
+
+
+class UserResponseResponse(BaseModel):
+    """Response from user-response endpoint."""
+
+    status: str = "received"
+
+
+@router.post("/user-response", response_model=UserResponseResponse)
+async def user_response(
+    body: UserResponseRequest,
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+) -> UserResponseResponse:
+    """Handle user's text response to an agent question (human-in-the-loop).
+
+    When the agent asks the user a clarifying question during multi-phase
+    execution, the frontend sends the user's answer through this endpoint.
+
+    Flow:
+    1. Validate request
+    2. Publish response to Kafka (agent.user-response topic)
+    3. Return acknowledgment
+
+    Args:
+        body: User response payload
+        tenant_id: Authenticated tenant ID
+
+    Returns:
+        Acknowledgment that the response was received
+    """
+    config = get_config()
+
+    logger.info(
+        "User response received",
+        job_id=body.job_id,
+        tenant_id=str(tenant_id),
+    )
+
+    producer = await get_producer()
+
+    await producer.send(
+        topic=config.user_response_topic,
+        message={
+            "job_id": body.job_id,
+            "response": body.response,
+            "tenant_id": str(tenant_id),
+        },
+        key=body.job_id,
+        headers={
+            "job_id": body.job_id,
+        },
+    )
+
+    logger.info(
+        "User response published to Kafka",
+        job_id=body.job_id,
+        topic=config.user_response_topic,
+    )
+
+    return UserResponseResponse(status="received")

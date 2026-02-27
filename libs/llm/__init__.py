@@ -13,6 +13,40 @@ from libs.llm.base import (
 from libs.llm.factory import create_provider, get_provider
 from libs.llm.openai import OpenAIProvider
 
+# Vision-capable models by provider
+VISION_MODELS = {
+    "anthropic": [
+        "claude-3-5-sonnet-20241022",
+        "claude-3-opus-20240229",
+        "claude-3-sonnet-20240229",
+        "claude-3-haiku-20240307",
+    ],
+    "openai": [
+        "gpt-4-vision-preview",
+        "gpt-4-turbo",
+        "gpt-4-turbo-2024-04-09",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4o-2024-05-13",
+        "gpt-4o-2024-08-06",
+    ],
+}
+
+
+def supports_vision(provider: str, model: str) -> bool:
+    """Check if a provider/model combination supports vision (image inputs).
+
+    Args:
+        provider: Provider name ("anthropic" or "openai")
+        model: Model name
+
+    Returns:
+        True if the model supports vision/multimodal inputs
+    """
+    provider_models = VISION_MODELS.get(provider, [])
+    return model in provider_models
+
+
 __all__ = [
     # Base classes
     "LLMProvider",
@@ -28,4 +62,7 @@ __all__ = [
     # Factory
     "create_provider",
     "get_provider",
+    # Vision utilities
+    "VISION_MODELS",
+    "supports_vision",
 ]

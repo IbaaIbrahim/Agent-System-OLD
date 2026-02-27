@@ -3,6 +3,8 @@ const { useState, useEffect, useRef } = React;
 import './MessageBubble.css';
 import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
+import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
+import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -11,6 +13,9 @@ export interface Attachment {
     type: 'image' | 'file';
     url: string;
     name?: string;
+    size?: number;
+    contentType?: string;
+    localUrl?: string;
 }
 
 export type MessageStepType = 'text' | 'thinking' | 'tool-call' | 'confirm-request';
@@ -49,7 +54,121 @@ export interface MessageProps {
     shouldAnimate?: boolean;
     onConfirm?: (toolCallId: string) => void;
     onReject?: (toolCallId: string) => void;
+    onToolCall?: Record<string, (data: any) => Promise<any> | void>;
+    isWaitingForDeltas?: boolean; // Show blinking indicator when waiting for deltas
 }
+
+const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getFileIcon = (contentType?: string): string => {
+    if (!contentType) return '\u{1F4CE}';
+    if (contentType.startsWith('image/')) return '\u{1F5BC}\u{FE0F}';
+    if (contentType === 'application/pdf') return '\u{1F4C4}';
+    if (contentType.startsWith('text/')) return '\u{1F4DD}';
+    return '\u{1F4CE}';
+};
+
+// --- Image Lightbox ---
+const ImageLightbox: React.FC<{
+    att: Attachment;
+    onClose: () => void;
+}> = ({ att, onClose }) => {
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
+    return (
+        <div className="cb-lightbox-overlay" onClick={onClose}>
+            <div className="cb-lightbox-inner" onClick={(e) => e.stopPropagation()}>
+                <button className="cb-lightbox-close" onClick={onClose} title="Close (Esc)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+                {att.name && <div className="cb-lightbox-filename">{att.name}</div>}
+                {att.localUrl ? (
+                    <img className="cb-lightbox-img" src={att.localUrl} alt={att.name || 'Image'} />
+                ) : (
+                    <AuthenticatedImage className="cb-lightbox-img" src={att.url} alt={att.name || 'Image'} />
+                )}
+                {att.size != null && (
+                    <div className="cb-lightbox-meta">{formatFileSize(att.size)}</div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// --- Attachment Chip (Claude-style compact chip above message) ---
+const AttachmentChip: React.FC<{ att: Attachment }> = ({ att }) => {
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+
+    const handleClick = () => {
+        if (att.type === 'image') {
+            setLightboxOpen(true);
+        } else {
+            window.open(att.localUrl || att.url, '_blank', 'noopener,noreferrer');
+        }
+    };
+
+    return (
+        <>
+            <div className="cb-att-chip" onClick={handleClick} title={att.name}>
+                {att.type === 'image' ? (
+                    <div className="cb-att-chip-thumb">
+                        {att.localUrl ? (
+                            <img src={att.localUrl} alt={att.name || ''} />
+                        ) : (
+                            <AuthenticatedImage src={att.url} alt={att.name || ''} />
+                        )}
+                    </div>
+                ) : (
+                    <div className="cb-att-chip-icon">{getFileIcon(att.contentType)}</div>
+                )}
+                <div className="cb-att-chip-info">
+                    <span className="cb-att-chip-name">{att.name || 'File'}</span>
+                    {att.size != null && (
+                        <span className="cb-att-chip-size">{formatFileSize(att.size)}</span>
+                    )}
+                </div>
+                <div className="cb-att-chip-action">
+                    {att.type === 'image' ? (
+                        // Eye icon for images
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                        </svg>
+                    ) : (
+                        // External link icon for files
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                    )}
+                </div>
+            </div>
+            {lightboxOpen && (
+                <ImageLightbox att={att} onClose={() => setLightboxOpen(false)} />
+            )}
+        </>
+    );
+};
+
+// --- Attachment List (row of chips above message content) ---
+const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }) => (
+    <div className="cb-att-list">
+        {attachments.map(att => (
+            <AttachmentChip key={att.id} att={att} />
+        ))}
+    </div>
+);
 
 export const MessageBubble: React.FC<MessageProps> = (props) => {
     const {
@@ -73,6 +192,10 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                 <div className="cb-message-content-wrapper" style={{ width: '100%' }}>
                     {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
 
+                    {role === 'user' && props.attachments && props.attachments.length > 0 && (
+                        <AttachmentList attachments={props.attachments} />
+                    )}
+
                     <div className="cb-steps-container">
                         {steps.map((step, index) => {
                             const isLast = index === steps.length - 1;
@@ -87,6 +210,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                             }
 
                             if (step.type === 'tool-call') {
+                                const toolHandler = step.toolName ? props.onToolCall?.[step.toolName] : undefined;
                                 return (
                                     <div key={step.id} className="cb-step-tool" style={{ marginBottom: 8 }}>
                                         <ToolInvocation
@@ -94,6 +218,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                             args={step.toolArgs}
                                             status={step.toolStatus as any}
                                             result={step.toolResult}
+                                            onAction={toolHandler}
                                         />
                                     </div>
                                 );
@@ -123,6 +248,9 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                                             shouldAnimate={shouldAnimate && isLast}
                                             onComplete={isLast ? props.onAnimationComplete : undefined}
                                         />
+                                        {isLast && props.isWaitingForDeltas && (!step.content || step.content.trim().length === 0) && (
+                                            <BlinkingIndicator />
+                                        )}
                                     </div>
                                 );
                             }
@@ -142,6 +270,7 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
 const ThinkingBlock = ({ step }: { step: MessageStep }) => {
     const [isOpen, setIsOpen] = useState(false);
     const isFinished = step.isFinished;
+    const hasContent = step.content && step.content.trim().length > 0;
 
     return (
         <div className="cb-step-thinking-block" style={{ marginBottom: 8, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, overflow: 'hidden' }}>
@@ -165,10 +294,12 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
                     <div className="cb-thinking-spinner" style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
                 )}
 
-                <span style={{ flex: 1 }}>{step.content || 'Thinking Process'}</span>
+                <span style={{ flex: 1 }}>Thinking</span>
 
-                {step.thoughts && step.thoughts.length > 0 && (
-                    <span style={{ fontSize: '11px', opacity: 0.5 }}>{step.thoughts.length} logs</span>
+                {hasContent && (
+                    <span style={{ fontSize: '11px', opacity: 0.5 }}>
+                        {isOpen ? 'Hide' : 'Show'} content
+                    </span>
                 )}
 
                 <svg
@@ -179,13 +310,17 @@ const ThinkingBlock = ({ step }: { step: MessageStep }) => {
                 </svg>
             </div>
 
-            {isOpen && step.thoughts && step.thoughts.length > 0 && (
-                <div className="cb-thinking-logs" style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                    {step.thoughts.map((log, idx) => (
-                        <div key={idx} style={{ fontSize: '12px', fontFamily: 'monospace', color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>
-                            {log}
-                        </div>
-                    ))}
+            {isOpen && hasContent && (
+                <div className="cb-thinking-content" style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ 
+                        fontSize: '13px', 
+                        fontFamily: 'monospace', 
+                        color: 'rgba(255,255,255,0.8)', 
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: '1.5'
+                    }}>
+                        {step.content}
+                    </div>
                 </div>
             )}
             <style>{`
@@ -362,6 +497,9 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
 
             <div className="cb-message-content-wrapper">
                 {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
+                {attachments && attachments.length > 0 && (
+                    <AttachmentList attachments={attachments} />
+                )}
                 <div className={`cb-message-bubble ${role}`}>
                     <div className="cb-markdown-content">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -370,12 +508,10 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                         {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
                             <span className="cb-cursor">|</span>
                         )}
+                        {role === 'assistant' && props.isWaitingForDeltas && (!content || content.trim().length === 0) && (
+                            <BlinkingIndicator />
+                        )}
                     </div>
-                    {attachments && attachments.length > 0 && (
-                        <div className="cb-attachments-grid">
-                            {/* Attachment rendering logic here */}
-                        </div>
-                    )}
                 </div>
             </div>
         </div>

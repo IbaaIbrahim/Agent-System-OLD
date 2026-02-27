@@ -122,7 +122,11 @@ class PostgresWriter:
                     data = event["data"]
 
                     # CONVERSATIONAL EVENTS → ChatMessage table
-                    if event_type in ("message", "delta"):
+                    # "delta" events are for real-time streaming only, not persisted
+                    if event_type == "delta":
+                        continue
+
+                    if event_type == "message":
                         max_seq += 1
                         message = ChatMessage(
                             job_id=job_id,
@@ -157,12 +161,13 @@ class PostgresWriter:
 
                     elif event_type == "tool_call":
                         # Tool calls are part of conversation history
+                        # Content may include text like "I'll search for that" before tool use
                         max_seq += 1
                         message = ChatMessage(
                             job_id=job_id,
                             sequence_num=max_seq,
                             role=MessageRole.ASSISTANT,
-                            content=None,  # Tool calls have no content
+                            content=data.get("content"),  # Preserve pre-tool content
                             tool_calls=data.get("tool_calls"),  # LLM's tool requests
                             metadata_={
                                 "event_id": event["event_id"],
@@ -208,6 +213,29 @@ class PostgresWriter:
                             job.metadata_["suspended"] = True
                             job.metadata_["pending_tools"] = data.get("pending_tools", [])
                             job.metadata_["snapshot_sequence"] = data.get("snapshot_sequence")
+
+                    # MULTI-PHASE EVENTS → Job metadata
+                    elif event_type in (
+                        "phase_start",
+                        "phase_complete",
+                        "task_plan_update",
+                        "subtask_start",
+                        "subtask_complete",
+                        "user_question",
+                        "progress",
+                    ):
+                        if job:
+                            if job.metadata_ is None:
+                                job.metadata_ = {}
+                            # Store latest phase info
+                            if event_type == "phase_start":
+                                job.metadata_["current_phase"] = data.get("phase")
+                            elif event_type == "phase_complete":
+                                job.metadata_["last_completed_phase"] = data.get("phase")
+                            elif event_type == "task_plan_update":
+                                job.metadata_["task_plan"] = data.get("tasks", [])
+                            elif event_type == "user_question":
+                                job.metadata_["pending_question"] = data.get("question")
 
                     else:
                         # Unknown event type - log warning but don't fail

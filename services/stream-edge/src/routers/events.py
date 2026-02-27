@@ -24,6 +24,91 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _compare_event_ids(event_id1: str, event_id2: str) -> int:
+    """Compare two Redis stream event IDs.
+
+    Returns:
+        -1 if event_id1 < event_id2, 0 if equal, 1 if event_id1 > event_id2
+    """
+    try:
+        # Parse timestamp-sequence format: "timestamp-sequence"
+        parts1 = event_id1.split("-")
+        parts2 = event_id2.split("-")
+        
+        if len(parts1) >= 2 and len(parts2) >= 2:
+            ts1, seq1 = int(parts1[0]), int(parts1[1])
+            ts2, seq2 = int(parts2[0]), int(parts2[1])
+            
+            if ts1 < ts2:
+                return -1
+            elif ts1 > ts2:
+                return 1
+            else:
+                # Same timestamp, compare sequence
+                if seq1 < seq2:
+                    return -1
+                elif seq1 > seq2:
+                    return 1
+                else:
+                    return 0
+        else:
+            # Fallback to string comparison
+            if event_id1 < event_id2:
+                return -1
+            elif event_id1 > event_id2:
+                return 1
+            else:
+                return 0
+    except (ValueError, IndexError):
+        # Fallback to string comparison on parse error
+        if event_id1 < event_id2:
+            return -1
+        elif event_id1 > event_id2:
+            return 1
+        else:
+            return 0
+
+
+async def _check_missed_events(
+    catchup_handler: CatchupHandler,
+    job_id: uuid.UUID,
+    last_event_id: str | None,
+) -> list[dict[str, Any]]:
+    """Check for missed events in Redis streams.
+
+    Args:
+        catchup_handler: Catchup handler instance
+        job_id: Job ID
+        last_event_id: Last event ID we've seen
+
+    Returns:
+        List of missed events
+    """
+    missed = []
+    try:
+        from libs.messaging.redis import RedisStreams
+        streams = RedisStreams()
+        entries = await streams.read_after(
+            stream=f"events:{job_id}",
+            after_id=last_event_id or "0",
+            count=100,  # Check up to 100 missed events
+        )
+        for entry in entries:
+            # Include delta events in catchup check (they were missed)
+            missed.append({
+                "type": entry.data.get("type", "message"),
+                "data": entry.data.get("data", {}),
+                "id": entry.id,
+            })
+    except Exception as e:
+        logger.warning(
+            "Error checking for missed events",
+            job_id=str(job_id),
+            error=str(e),
+        )
+    return missed
+
+
 def format_sse_event(
     data: dict[str, Any],
     event_type: str | None = None,
@@ -129,6 +214,10 @@ async def event_generator(
             keepalive_generator(connection, config.sse_keepalive_interval)
         )
 
+        # Periodic catchup task to catch any missed events (every 2 seconds)
+        catchup_interval = 2.0
+        last_catchup_check = time.time()
+
         try:
             async for _event_channel, event_data in pubsub.listen():
                 if not connection.is_active:
@@ -144,27 +233,83 @@ async def event_generator(
                 payload = event_data.get("data", event_data)
 
                 # De-duplicate: skip if already yielded via catch-up
+                # Use proper comparison: parse timestamp-sequence for accurate comparison
                 if event_id and last_yielded_id:
-                    # Redis Stream IDs are timestamp-seq, so simple string comparison works
-                    # for most cases, but we should be careful.
-                    # If event_id <= last_yielded_id, skip it.
-                    if event_id <= last_yielded_id:
+                    # Compare event IDs properly
+                    if _compare_event_ids(event_id, last_yielded_id) <= 0:
+                        logger.debug(
+                            "Skipping duplicate event",
+                            event_id=event_id,
+                            last_yielded_id=last_yielded_id,
+                        )
                         continue
 
-                yield format_sse_event(
-                    data=payload,
-                    event_type=event_type,
-                    event_id=event_id,
-                )
+                try:
+                    yield format_sse_event(
+                        data=payload,
+                        event_type=event_type,
+                        event_id=event_id,
+                    )
 
-                # Update last event ID
-                if event_id:
-                    last_yielded_id = event_id
-                    connection.last_event_id = event_id
+                    # Update last event ID
+                    if event_id:
+                        last_yielded_id = event_id
+                        connection.last_event_id = event_id
+                except Exception as yield_error:
+                    logger.error(
+                        "Failed to yield SSE event",
+                        event_type=event_type,
+                        event_id=event_id,
+                        error=str(yield_error),
+                    )
+                    # Don't break on yield errors - continue processing
+                    # The client might have disconnected, but we'll detect that on next iteration
 
                 # Check for completion events
                 if event_type in ("complete", "error", "cancelled"):
                     break
+
+                # Periodic catchup check to catch missed events
+                now = time.time()
+                if now - last_catchup_check >= catchup_interval:
+                    last_catchup_check = now
+                    try:
+                        # Check for missed events in Redis streams
+                        missed_events = await _check_missed_events(
+                            catchup_handler, job_id, last_yielded_id
+                        )
+                        for event in missed_events:
+                            if not connection.is_active:
+                                break
+                            if await request.is_disconnected():
+                                break
+
+                            event_id = event.get("id")
+                            # Skip if already processed
+                            if event_id and last_yielded_id:
+                                if _compare_event_ids(event_id, last_yielded_id) <= 0:
+                                    continue
+
+                            try:
+                                yield format_sse_event(
+                                    data=event["data"],
+                                    event_type=event["type"],
+                                    event_id=event_id,
+                                )
+                                if event_id:
+                                    last_yielded_id = event_id
+                                    connection.last_event_id = event_id
+                            except Exception as e:
+                                logger.error(
+                                    "Failed to yield catchup event",
+                                    event_id=event_id,
+                                    error=str(e),
+                                )
+                    except Exception as catchup_error:
+                        logger.warning(
+                            "Error during periodic catchup check",
+                            error=str(catchup_error),
+                        )
 
         finally:
             keepalive_task.cancel()

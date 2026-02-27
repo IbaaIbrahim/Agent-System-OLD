@@ -4,11 +4,11 @@ import json
 from typing import Any
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior
+from libs.common.tool_catalog import get_tool_model_preference
 from libs.llm import get_provider
 
 from .assets import load_json_asset, load_text_asset
-from .base import BaseTool, ToolCategory
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 _TOOL_NAME = "checklist_generator"
 
 
+@catalog_tool("generate_checklist")
 class ChecklistGeneratorTool(BaseTool):
     """Tool for generating structured Flowdit checklists.
 
@@ -23,43 +24,6 @@ class ChecklistGeneratorTool(BaseTool):
     checklists that conform to the Flowdit schema. The agent calls this
     when the user wants to create a checklist, inspection form, or audit template.
     """
-
-    name = "generate_checklist"
-    description = (
-        "Generate a structured Flowdit checklist based on conversation context. "
-        "Use this when the user wants to create a checklist, inspection form, "
-        "audit template, or any structured data collection workflow. "
-        "The tool will generate a complete checklist with sections and items."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "title": {
-                "type": "string",
-                "description": "Title for the checklist",
-            },
-            "description": {
-                "type": "string",
-                "description": "Brief description of the checklist purpose",
-            },
-            "context": {
-                "type": "string",
-                "description": (
-                    "Full conversation context and user requirements. "
-                    "Include all details about what items, sections, and structure the user wants."
-                ),
-            },
-            "language": {
-                "type": "string",
-                "description": "Language code for the checklist content (default: en)",
-                "default": "en",
-            },
-        },
-        "required": ["title", "context"],
-    }
-    category = ToolCategory.CONFIGURABLE
-    behavior = ToolBehavior.CONFIRM_REQUIRED
-    required_plan_feature = "tools.checklist_generator"
 
     def __init__(self) -> None:
         """Initialize the checklist generator tool.
@@ -111,6 +75,7 @@ class ChecklistGeneratorTool(BaseTool):
             language=language,
             job_id=job_id,
             tenant_id=tenant_id,
+            context_length=len(user_context),
         )
 
         try:
@@ -118,26 +83,52 @@ class ChecklistGeneratorTool(BaseTool):
             schema = self._load_schema()
             system_prompt = self._load_system_prompt()
 
+            logger.debug(
+                "Loaded checklist assets",
+                schema_keys=len(schema.get("properties", {})),
+                schema_definitions=len(schema.get("definitions", {})),
+                prompt_length=len(system_prompt),
+            )
+
             # Build user prompt with requirements
             user_prompt = f"""
-Title: {title}
-Description: {description}
-Language: {language}
+                Title: {title}
+                Description: {description}
+                Language: {language}
 
-User Requirements:
-{user_context}
-"""
+                User Requirements:
+                {user_context}
+            """
 
-            # Get OpenAI provider for structured output
-            provider = get_provider("openai")
+            # Get provider and model from tool catalog
+            provider_name, model_name = get_tool_model_preference(
+                self.name,
+                default_provider="openai",
+                default_model="gpt-4o-mini",
+            )
 
-            # Generate checklist using structured output
+            provider = get_provider(provider_name)
+
+            logger.info(
+                "Calling LLM structured output API",
+                job_id=job_id,
+                provider=provider_name,
+                model=model_name,
+                user_prompt_length=len(user_prompt),
+            )
+
+            # Generate checklist using structured output (with retry logic).
+            # The Flowdit schema is ~1825 lines with strict mode, so structured
+            # output needs more time than regular chat completions (5 min vs 2 min).
             result = await provider.complete_structured(
                 system=system_prompt,
                 user_message=user_prompt,
                 json_schema=schema,
                 schema_name="FlowditChecklist",
-                model="gpt-4o-mini",
+                model=model_name,
+                max_retries=3,
+                base_delay=2.0,
+                timeout=480.0,
             )
 
             logger.info(
@@ -161,14 +152,18 @@ User Requirements:
                 "message": "Checklist generation configuration error",
             })
         except Exception as e:
+            error_type = type(e).__name__
             logger.error(
                 "Checklist generation failed",
                 error=str(e),
+                error_type=error_type,
                 job_id=job_id,
                 tenant_id=tenant_id,
+                title=title,
+                context_length=len(user_context),
             )
             return json.dumps({
-                "error": str(e),
+                "error": f"{error_type}: {e}",
                 "success": False,
                 "message": "Failed to generate checklist",
             })

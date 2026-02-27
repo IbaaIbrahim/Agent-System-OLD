@@ -11,6 +11,11 @@
         "build": "vite build",
         "dev": "vite build --watch"
     },
+    "dependencies": {
+        "@ricky0123/vad-web": "^0.0.30",
+        "html2canvas": "^1.4.1",
+        "onnxruntime-web": "1.22.0"
+    },
     "peerDependencies": {
         "react": "^18.0.0",
         "react-dom": "^18.0.0",
@@ -20,10 +25,10 @@
     "devDependencies": {
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
+        "react-markdown": "^9.0.0",
+        "remark-gfm": "^4.0.0",
         "typescript": "^5.2.0",
         "vite": "^5.0.0",
-        "vite-plugin-dts": "^3.0.0",
-        "react-markdown": "^9.0.0",
-        "remark-gfm": "^4.0.0"
+        "vite-plugin-dts": "^3.0.0"
     }
 }

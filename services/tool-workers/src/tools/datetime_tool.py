@@ -5,50 +5,18 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from libs.common import get_logger
-from libs.common.tool_catalog import ToolBehavior
 
-from .base import BaseTool
+from .base import BaseTool, catalog_tool
 
 logger = get_logger(__name__)
 
 
+@catalog_tool("get_current_time")
 class DateTimeTool(BaseTool):
     """Tool for getting current date and time information.
 
     Supports multiple timezones and output formats.
     """
-
-    name = "get_current_time"
-    description = (
-        "Get the current date and time. Use this when you need to know the current "
-        "time, date, day of week, or need to perform time-related calculations. "
-        "Supports different timezones and output formats."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "timezone": {
-                "type": "string",
-                "description": (
-                    "Timezone name (e.g., 'UTC', 'America/New_York', 'Europe/London', "
-                    "'Asia/Tokyo'). Defaults to UTC."
-                ),
-                "default": "UTC",
-            },
-            "format": {
-                "type": "string",
-                "description": (
-                    "Output format: 'iso' for ISO 8601 format, 'human' for "
-                    "human-readable format, 'unix' for Unix timestamp. Defaults to 'iso'."
-                ),
-                "enum": ["iso", "human", "unix"],
-                "default": "iso",
-            },
-        },
-        "required": [],
-    }
-    behavior = ToolBehavior.AUTO_EXECUTE
-    required_plan_feature = None  # Always available, no plan restriction
 
     async def execute(
         self,

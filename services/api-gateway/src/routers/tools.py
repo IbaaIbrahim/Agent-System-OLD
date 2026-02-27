@@ -82,10 +82,106 @@ async def submit_tool_result(
     )
 
     try:
+        import json
+
+        # Parse result to check for screenshot
+        result_data = json.loads(body.result)
+        enhanced_result = body.result  # Default to original result
+
+        # Check if result contains screenshot that needs to be saved as a real file
+        if (
+            isinstance(result_data, dict)
+            and result_data.get("screenshot")
+            and result_data.get("screenshot_analysis_pending")
+        ):
+            logger.info(
+                "Screenshot detected, saving as file for analysis",
+                job_id=str(job_id),
+                tool_call_id=body.tool_call_id,
+            )
+
+            try:
+                import base64
+                import uuid as uuid_mod
+
+                from ..services.file_storage import FileStorageService
+                from libs.db.models import FileUpload as FileUploadModel
+                from libs.db.session import get_session_context
+
+                screenshot_base64 = result_data["screenshot"]
+                screenshot_query = result_data.get(
+                    "screenshot_query", "Describe everything visible in this screenshot in full detail."
+                )
+
+                # Decode base64 to raw bytes
+                screenshot_bytes = base64.b64decode(screenshot_base64)
+
+                # Store as a real file in Redis via FileStorageService
+                file_metadata = {
+                    "filename": f"screenshot_{body.tool_call_id[:8]}.png",
+                    "content_type": "image/png",
+                    "tenant_id": str(tenant_id),
+                    "source": "take_screenshot",
+                    "job_id": str(job_id),
+                }
+
+                file_id = await FileStorageService.store_file(screenshot_bytes, file_metadata)
+
+                # Persist file metadata to PostgreSQL
+                async with get_session_context() as session:
+                    file_upload = FileUploadModel(
+                        id=uuid_mod.UUID(file_id),
+                        tenant_id=tenant_id,
+                        job_id=job_id,
+                        filename=file_metadata["filename"],
+                        content_type="image/png",
+                        size_bytes=len(screenshot_bytes),
+                        storage_key=f"file:{file_id}",
+                        metadata_=file_metadata,
+                    )
+                    session.add(file_upload)
+                    await session.commit()
+
+                logger.info(
+                    "Screenshot saved as file",
+                    file_id=file_id,
+                    size_bytes=len(screenshot_bytes),
+                    tool_call_id=body.tool_call_id,
+                )
+
+                # Build compact result: file_id + instructions for the agent
+                result_data = {
+                    "screenshot_file_id": file_id,
+                    "screenshot_filename": file_metadata["filename"],
+                    "screenshot_size_bytes": len(screenshot_bytes),
+                    "screenshot_query": screenshot_query,
+                    "screenshot_analysis_pending": True,
+                    "instructions": (
+                        f"Screenshot has been saved as file '{file_id}'. "
+                        "Use the 'analyze_file' tool with this file_id and the screenshot_query "
+                        "to get a detailed visual analysis. After analysis, the result will be "
+                        "cached and retrievable via 'get_file_description'."
+                    ),
+                }
+
+            except Exception as file_error:
+                logger.error(
+                    "Failed to save screenshot as file",
+                    tool_call_id=body.tool_call_id,
+                    error=str(file_error),
+                )
+                # Remove base64 and provide error
+                result_data = {
+                    "error": f"Failed to save screenshot: {str(file_error)}",
+                    "screenshot_analysis_pending": False,
+                }
+
+            enhanced_result = json.dumps(result_data)
+
         # Store result in Redis
         redis = await get_redis_client()
         result_key = f"tool_result:{body.tool_call_id}"
-        await redis.set(result_key, body.result, ex=300)  # 5 minute expiry
+        await redis.set(result_key, enhanced_result, ex=300)  # 5 minute expiry
 
         # Publish resume signal to Kafka
         producer = await get_producer()
@@ -193,22 +289,34 @@ async def get_available_tools(
             "feature_slug": None,  # Built-in, always available
         },
         {
-            "name": "read_page",
+            "name": "read_page_content",
             "description": "Read the content of the current page",
             "category": "client_side",
             "feature_slug": "read_page",
         },
         {
-            "name": "get_element",
-            "description": "Get a specific element by CSS selector",
+            "name": "take_screenshot",
+            "description": "Capture a screenshot of the current page",
+            "category": "client_side",
+            "feature_slug": "screenshot",
+        },
+        {
+            "name": "inspect_dom_element",
+            "description": "Inspect a specific element by CSS selector",
             "category": "client_side",
             "feature_slug": "get_element",
         },
         {
-            "name": "execute_action",
-            "description": "Execute actions like scroll, click, or highlight",
-            "category": "client_side",
-            "feature_slug": "execute_action",
+            "name": "analyze_file",
+            "description": "Analyze uploaded files using vision models with detailed descriptions",
+            "category": "builtin",
+            "feature_slug": None,
+        },
+        {
+            "name": "get_file_description",
+            "description": "Fetch a cached file analysis description from the database",
+            "category": "builtin",
+            "feature_slug": None,
         },
     ]
 

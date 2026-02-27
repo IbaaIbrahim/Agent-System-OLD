@@ -10,6 +10,8 @@ Event-driven, multi-tenant B2B2B (white-label/partner) AI agent SaaS platform. T
 Frontend (React) → API Gateway (Control Plane, 8000) → Kafka → Orchestrator (Compute Plane) → LLM
                           ↓                                          ↓
                     Stream Edge (Data Plane, 8001) ←── Redis Pub/Sub ←──┘
+
+Frontend (React) → WebSocket Gateway (8002) → Live Session Manager (8003) → Deepgram/ElevenLabs
 ```
 
 **Services:**
@@ -18,6 +20,8 @@ Frontend (React) → API Gateway (Control Plane, 8000) → Kafka → Orchestrato
 - **orchestrator**: Kafka consumer running the agent loop (Think → Act → Observe). Supports **suspend/resume**: serializes state to `job_snapshots`, dispatches tool tasks to Kafka, exits to free CPU, then resumes from snapshot when tool results arrive
 - **tool-workers**: Stateless tool executors via Kafka (`agent.tools` → results in Redis). Real web search via **DuckDuckGo API** (default) or **Brave Search API** (optional, requires key)
 - **archiver**: Moves completed events from Redis (hot) to PostgreSQL (cold). Handles **all 9 event types** (message, delta, tool_result, tool_call, start, complete, error, cancelled, suspended). **Periodic stream cleanup** (hourly, 24h retention)
+- **websocket-gateway** (port 8002): Bidirectional WebSocket server for live assistant features — routes audio/screen frames to live-session-manager, enforces per-tenant connection limits (50), max message size 5MB
+- **live-session-manager** (port 8003): Orchestrates real-time voice + vision pipelines. STT via Deepgram (`nova-3`), TTS via ElevenLabs (`eleven_turbo_v2_5`). Frame processor downscales screen captures to 720×512. Dispatches agent jobs to Kafka. Tracks usage (audio seconds, screen frames, conversation turns) in PostgreSQL
 - **frontend**: React 18 + TypeScript + Vite + Zustand + Tailwind CSS (port 3000)
 
 **Key data flows:**
@@ -25,6 +29,7 @@ Frontend (React) → API Gateway (Control Plane, 8000) → Kafka → Orchestrato
 2. Agent events → Redis Pub/Sub `events:{job_id}` → Stream Edge → SSE to client
 3. Tool calls → Kafka `agent.tools` → Tool Workers → Redis `tool_result:{id}` → Orchestrator
 4. Tool confirmations → API Gateway → Kafka `agent.confirm` → Orchestrator (for CONFIRM_REQUIRED tools)
+5. Live session → WebSocket Gateway → Live Session Manager → Deepgram (STT) / ElevenLabs (TTS) / Vision processor
 
 **SSE event types:** `message`, `delta`, `tool_call`, `tool_result`, `start`, `complete`, `error`, `cancelled`, `suspended`, `confirm_request`, `confirm_response`
 
@@ -74,8 +79,15 @@ An **Internal Transaction Token v2** (signed JWT, HS256, 10-minute TTL) travels 
 - `libs/db/` — SQLAlchemy 2.0 async models, session management. Three PostgreSQL schemas: `tenants`, `billing`, `jobs`
 - `libs/llm/` — Provider-agnostic LLM abstraction. `get_provider("anthropic"|"openai")`. `ToolDefinition` with `.to_anthropic()`/`.to_openai()` format conversion
 - `libs/messaging/` — Kafka async producer/consumer (with DLQ support) and Redis Pub/Sub client
+- `libs/embeddings/` — OpenAI `text-embedding-3-small` (1536 dims). `embed_text()` / `embed_batch()` with chunking. `get_embedder()` singleton
+- `libs/vectordb/` — Milvus abstraction with multi-tenant partitioning (one partition per `tenant_id`). `insert()`, `search()`, `delete()`. Auto-creates collection and partitions
 
 ## Development Commands
+
+**Important:** Always activate the virtual environment before running any Python/pytest/make command:
+```bash
+source /root/Agent-System-Claude/.venv/bin/activate
+```
 
 ```bash
 # Infrastructure
@@ -89,6 +101,8 @@ make stream             # Stream Edge (uvicorn --reload, port 8001)
 make orchestrator       # Orchestrator
 make workers            # Tool Workers
 make archiver           # Archiver
+make ws-gateway         # WebSocket Gateway (port 8002)
+make live-session       # Live Session Manager (port 8003)
 make frontend           # React dev server (Vite, port 3000)
 
 # Database (Alembic)
@@ -127,8 +141,8 @@ All backend `make` targets set `PYTHONPATH=$(PWD)` for module resolution from re
 - **Multi-tenancy**: all operations require `tenant_id`, enforced via middleware.
 - **Config pattern**: service configs extend base `pydantic-settings` from `libs/common/config.py`. Base: `get_settings()`. Service-specific: `get_config()`.
 - **DB models**: SQLAlchemy 2.0 `Mapped[]` columns with `TimestampMixin`, organized into PostgreSQL schemas (`tenants`, `billing`, `jobs`).
-- **Migrations**: sequential numbering `001_`–`006_` in `migrations/versions/`. Current: `001_tenants_users`, `002_pricing_ledger`, `003_jobs_messages`, `004_partners`, `005_billing_plans`, `006_wallet_transactions`.
-- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. 162 unit tests (106 billing/auth + 8 OTT + 24 suspend/resume + 24 web search/archiver), 5 integration test files.
+- **Migrations**: sequential numbering in `migrations/versions/`. Current: `001_tenants_users`, `002_pricing_ledger`, `003_jobs_messages`, `004_partners`, `005_billing_plans`, `006_user_tool_preferences`, `007_file_uploads`, `008_conversations`, `009_file_analysis_description`, `010_knowledge_base`, `011_live_sessions`, `012_file_extracted_text`.
+- **Tests**: `pytest-asyncio` with `asyncio_mode = "auto"` — no explicit `@pytest.mark.asyncio` needed. Organized in subdirectories: `tests/unit/{api-gateway,common,orchestrator,archiver,tool-workers}/`.
 - **Test imports**: Hyphenated service directories (e.g. `services/api-gateway`) require `sys.path.insert(0, "services/api-gateway")` before importing `src.*` modules in unit tests.
 
 ## Adding New Tools
@@ -164,6 +178,8 @@ class MyTool(BaseTool):
 | Auth utilities (JWT, API keys) | `libs/common/auth.py` |
 | DB models (all entities) | `libs/db/models.py` |
 | LLM abstraction | `libs/llm/base.py` |
+| Embeddings (OpenAI) | `libs/embeddings/openai_embedder.py` |
+| Vector DB (Milvus) | `libs/vectordb/milvus_client.py` |
 | Auth middleware (4-tier) | `services/api-gateway/src/middleware/auth.py` |
 | Rate limiting middleware | `services/api-gateway/src/middleware/rate_limit.py` |
 | Partner admin endpoints | `services/api-gateway/src/routers/partners.py` |
@@ -192,20 +208,28 @@ class MyTool(BaseTool):
 | Tool base class | `services/tool-workers/src/tools/base.py` |
 | Tool asset loader | `services/tool-workers/src/tools/assets/loader.py` |
 | Web search tool (real API) | `services/tool-workers/src/tools/web_search.py` |
+| Knowledge base tools | `services/tool-workers/src/tools/save_to_knowledge_base.py`, `search_knowledge_base.py`, `delete_from_knowledge_base.py` |
+| File tools | `services/tool-workers/src/tools/analyze_file.py`, `get_file_description.py` |
 | Tool workers config | `services/tool-workers/src/config.py` |
+| WebSocket gateway main | `services/websocket-gateway/src/main.py` |
+| WebSocket gateway config | `services/websocket-gateway/src/config.py` |
+| Live session manager main | `services/live-session-manager/src/main.py` |
+| Live session manager config | `services/live-session-manager/src/config.py` |
+| Live session state | `services/live-session-manager/src/session/state.py` |
+| Deepgram STT client | `services/live-session-manager/src/stt/deepgram_client.py` |
+| ElevenLabs TTS client | `services/live-session-manager/src/tts/elevenlabs_client.py` |
+| Screen frame processor | `services/live-session-manager/src/vision/frame_processor.py` |
 | Archiver postgres writer | `services/archiver/src/services/postgres_writer.py` |
 | Kafka topic setup | `infrastructure/docker/kafka/create-topics.sh` |
 | DB init SQL | `infrastructure/docker/postgres/init.sql` |
-| Partner migration | `migrations/versions/004_partners.py` |
-| Billing plans migration | `migrations/versions/005_billing_plans.py` |
-| Wallet transactions migration | `migrations/versions/006_wallet_transactions.py` |
-| OTT unit tests | `tests/unit/test_stream_ott.py` |
-| Suspend/resume unit tests | `tests/unit/test_suspend_resume.py` |
+| OTT unit tests | `tests/unit/common/test_stream_ott.py` |
+| Suspend/resume unit tests | `tests/unit/orchestrator/test_suspend_resume.py` |
 | Suspend/resume integration tests | `tests/integration/test_suspend_resume_flow.py` |
-| Web search unit tests | `tests/unit/test_web_search.py` |
-| Archiver events unit tests | `tests/unit/test_archiver_events.py` |
+| Web search unit tests | `tests/unit/tool-workers/test_web_search.py` |
+| Archiver events unit tests | `tests/unit/archiver/test_archiver_events.py` |
 | Frontend chat state | `frontend/src/hooks/useChat.ts` |
 | Frontend chat client | `frontend/apps/demo/src/api/RealChatClient.ts` |
+| Frontend live WebSocket client | `frontend/apps/demo/src/api/LiveWebSocketClient.ts` |
 | ConfirmButtons component | `frontend/packages/chatbot-ui/src/components/ConfirmButtons/ConfirmButtons.tsx` |
 | MessageBubble component | `frontend/packages/chatbot-ui/src/components/MessageBubble/MessageBubble.tsx` |
 | Architecture design doc | `docs/rebuild.md` |

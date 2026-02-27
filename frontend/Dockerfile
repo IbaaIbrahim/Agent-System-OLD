@@ -18,6 +18,14 @@ RUN npm ci
 COPY frontend/packages/ ./packages/
 COPY frontend/apps/ ./apps/
 
+# Vite inlines import.meta.env.VITE_* at build time, so these must be build args
+ARG VITE_AUTH_BROKER_URL
+ARG VITE_API_BASE_URL
+ARG VITE_WS_URL
+ENV VITE_AUTH_BROKER_URL=$VITE_AUTH_BROKER_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+
 # Build the demo app (skip tsc — pre-existing type errors in chatbot-ui package)
 RUN cd apps/demo && npx vite build
 

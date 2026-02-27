@@ -182,6 +182,11 @@ class RedisClient:
         """Decrement a key by amount."""
         return await self.client.decrby(key, amount)
 
+    # Pub/Sub operations
+    async def publish(self, channel: str, message: str) -> int:
+        """Publish a message to a channel."""
+        return await self.client.publish(channel, message)
+
     # Pipeline for batch operations
     def pipeline(self) -> redis.client.Pipeline:
         """Create a pipeline for batch operations."""

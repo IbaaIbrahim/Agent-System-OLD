@@ -1,22 +1,50 @@
 """Base tool class for all tools."""
 
 from abc import ABC, abstractmethod
-from enum import Enum
-from typing import Any
+from typing import Any, TypeVar
 
-from libs.common.tool_catalog import ToolBehavior
+from libs.common.tool_catalog import ToolBehavior, get_tool_metadata
+
+# Type variable for the decorator
+T = TypeVar("T", bound="BaseTool")
 
 
-class ToolCategory(str, Enum):
-    """Tool category determining visibility and execution location.
+def catalog_tool(tool_name: str):
+    """Load tool metadata from TOOL_CATALOG at class definition time.
 
-    DEPRECATED: Use ToolBehavior from libs.common.tool_catalog instead.
-    Kept for backwards compatibility.
+    This decorator eliminates duplication between tool classes and TOOL_CATALOG.
+    Tool classes no longer need to define name, description, parameters, behavior,
+    or required_plan_feature - these are loaded from the catalog.
+
+    Args:
+        tool_name: The tool name as defined in TOOL_CATALOG
+
+    Returns:
+        Class decorator that sets tool attributes from catalog
+
+    Raises:
+        ValueError: If tool_name is not found in TOOL_CATALOG
+
+    Example:
+        @catalog_tool("get_current_time")
+        class DateTimeTool(BaseTool):
+            async def execute(self, arguments, context):
+                ...
     """
 
-    BUILTIN = "builtin"  # Always enabled, not shown in UI (web_search, get_current_time)
-    CONFIGURABLE = "configurable"  # User can toggle in UI (generate_checklist)
-    CLIENT_SIDE = "client_side"  # Executes in frontend (read_page, get_element)
+    def decorator(cls: type[T]) -> type[T]:
+        meta = get_tool_metadata(tool_name)
+        if not meta:
+            raise ValueError(f"Tool '{tool_name}' not found in TOOL_CATALOG")
+
+        cls.name = meta.name
+        cls.description = meta.description
+        cls.parameters = meta.parameters
+        cls.behavior = meta.behavior
+        cls.required_plan_feature = meta.required_plan_feature
+        return cls
+
+    return decorator
 
 
 class BaseTool(ABC):
@@ -25,9 +53,8 @@ class BaseTool(ABC):
     name: str = "base_tool"
     description: str = "Base tool description"
     parameters: dict[str, Any] = {}
-    category: ToolCategory = ToolCategory.BUILTIN  # Legacy, use behavior instead
-    behavior: ToolBehavior = ToolBehavior.AUTO_EXECUTE  # New behavior-based system
-    required_plan_feature: str | None = None  # Plan feature required to use this tool
+    behavior: ToolBehavior = ToolBehavior.AUTO_EXECUTE
+    required_plan_feature: str | None = None
 
     @abstractmethod
     async def execute(
@@ -50,13 +77,13 @@ class BaseTool(ABC):
         """Get tool definition for LLM.
 
         Returns:
-            Tool definition dictionary including category
+            Tool definition dictionary
         """
         return {
             "name": self.name,
             "description": self.description,
             "parameters": self.parameters,
-            "category": self.category.value,
+            "behavior": self.behavior.value,
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> list[str]:

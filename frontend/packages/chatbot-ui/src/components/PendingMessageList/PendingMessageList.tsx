@@ -42,7 +42,7 @@ export const PendingMessageList: React.FC<PendingMessageListProps> = ({ queue, o
                                 <span className="cb-status-label">
                                     {index === 0 ? 'NEXT' : 'WAIT'}
                                 </span>
-                                <span className="cb-pending-text" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg}</span>
+                                <span className="cb-pending-text">{msg}</span>
                             </div>
                             {onDelete && (
                                 <button

@@ -1,5 +1,5 @@
 
-import { ChatClient, ChatState } from './types';
+import { AttachedFile, ChatClient, ChatState } from './types';
 import { MessageProps, MessageStep } from '../components/MessageBubble/MessageBubble';
 
 export class RealChatClient implements ChatClient {
@@ -13,6 +13,8 @@ export class RealChatClient implements ChatClient {
     private pageReadingCallback: ((isReading: boolean) => void) | null = null;
     private customHandlers: Map<string, (args: any) => Promise<string | any>> = new Map();
     private libraryTools: Set<string> = new Set();
+    private conversationId: string | null = null;
+    private effortLevel: 'low' | 'medium' | 'high' = 'medium';
 
     constructor(token: string, apiBaseUrl?: string) {
         this.accessToken = token;
@@ -51,8 +53,27 @@ export class RealChatClient implements ChatClient {
     }
 
     enablePageContext(enabled: boolean) {
-        if (enabled) this.libraryTools.add('read_page_content');
-        else this.libraryTools.delete('read_page_content');
+        if (enabled) {
+            this.libraryTools.add('read_page_content');
+            this.libraryTools.add('read_page_content_advanced');
+            this.libraryTools.add('take_screenshot');
+            this.libraryTools.add('inspect_dom_element');
+        } else {
+            this.libraryTools.delete('read_page_content');
+            this.libraryTools.delete('read_page_content_advanced');
+            this.libraryTools.delete('take_screenshot');
+            this.libraryTools.delete('inspect_dom_element');
+        }
+    }
+
+    enableTakeScreenshot(enabled: boolean) {
+        if (enabled) this.libraryTools.add('take_screenshot');
+        else this.libraryTools.delete('take_screenshot');
+    }
+
+    enableDomInspector(enabled: boolean) {
+        if (enabled) this.libraryTools.add('inspect_dom_element');
+        else this.libraryTools.delete('inspect_dom_element');
     }
 
     private getActiveTools(): string[] {
@@ -60,12 +81,16 @@ export class RealChatClient implements ChatClient {
         return Array.from(all);
     }
 
+    setEffortLevel(level: 'low' | 'medium' | 'high') {
+        this.effortLevel = level;
+    }
+
     setPageReadingCallback(callback: (isReading: boolean) => void) {
         this.pageReadingCallback = callback;
     }
 
 
-    async sendMessage(content: string, onUpdate: (state: ChatState) => void): Promise<void> {
+    async sendMessage(content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: import('./types').AttachedFile[]): Promise<void> {
         if (!this.accessToken) {
             console.error('No access token available');
             return;
@@ -75,7 +100,16 @@ export class RealChatClient implements ChatClient {
         const userMsg: MessageProps = {
             id: Date.now().toString(),
             role: 'user',
-            content
+            content,
+            attachments: attachedFiles?.map(f => ({
+                id: f.file_id,
+                type: (f.content_type.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
+                url: `${this.apiBaseUrl}/v1/files/${f.file_id}/download`,
+                name: f.filename,
+                size: f.size_bytes,
+                contentType: f.content_type,
+                localUrl: f.localBlobUrl,
+            }))
         };
         this.messages = [...this.messages, userMsg];
         onUpdate({ messages: this.messages, isThinking: true });
@@ -87,6 +121,15 @@ export class RealChatClient implements ChatClient {
                 role: m.role,
                 content: m.content
             }));
+
+            // Build metadata with file_ids if present
+            const metadata: Record<string, any> = {
+                enabled_tools: this.getActiveTools(),
+                effort_level: this.effortLevel,
+            };
+            if (fileIds && fileIds.length > 0) {
+                metadata.file_ids = fileIds;
+            }
 
             // 3. Make the API Call
             const response = await fetch(`${this.apiBaseUrl}/v1/chat/completions`, {
@@ -100,9 +143,8 @@ export class RealChatClient implements ChatClient {
                     model: this.currentModel,
                     provider: this.currentProvider,
                     stream: true,
-                    metadata: {
-                        enabled_tools: this.getActiveTools()
-                    }
+                    metadata,
+                    conversation_id: this.conversationId || undefined,
                 })
             });
 
@@ -118,8 +160,11 @@ export class RealChatClient implements ChatClient {
             }
 
             // 4. Handle Streaming Response
-            const { stream_url, job_id } = await response.json();
+            const { stream_url, job_id, conversation_id } = await response.json();
             this.currentJobId = job_id;
+            if (conversation_id) {
+                this.conversationId = conversation_id;
+            }
 
             if (!stream_url) {
                 throw new Error('No stream URL received from gateway');
@@ -138,12 +183,77 @@ export class RealChatClient implements ChatClient {
             // Connect to SSE Stream
             const eventSource = new EventSource(stream_url);
             let fullContent = '';
+            let lastDeltaTime = Date.now(); // Initialize to now - will be updated on first delta
+            let deltaCheckInterval: ReturnType<typeof setInterval> | null = null;
+            let isStreaming = true;
+
+            // Check periodically if we're waiting for deltas (no deltas received in last 2 seconds)
+            // Only show indicator if we've been waiting for at least 2 seconds
+            const checkDeltaTimeout = () => {
+                if (!isStreaming) return;
+                const timeSinceLastDelta = Date.now() - lastDeltaTime;
+                const isWaitingForDeltas = timeSinceLastDelta > 2000;
+                onUpdate({ messages: this.messages, isThinking: true, isWaitingForDeltas });
+            };
+
+            // Start checking every 500ms after initial 2 second delay
+            setTimeout(() => {
+                if (isStreaming) {
+                    deltaCheckInterval = setInterval(checkDeltaTimeout, 500);
+                }
+            }, 2000);
+
+            // Track thinking content separately
+            let thinkingContent = '';
+
+            // Listen for 'reasoning_delta' events (thinking/reasoning tokens)
+            eventSource.addEventListener('reasoning_delta', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.content) {
+                        thinkingContent += data.content;
+                        this.messages = this.messages.map(m => {
+                            if (m.id === assistantMsgId) {
+                                let steps = m.steps ? [...m.steps] : [];
+                                
+                                // Find or create thinking step
+                                let thinkingStep = steps.find(s => s.type === 'thinking');
+                                if (!thinkingStep) {
+                                    // Create new thinking step
+                                    thinkingStep = {
+                                        id: `thinking-${Date.now()}`,
+                                        type: 'thinking' as const,
+                                        content: '',
+                                        isFinished: false,
+                                    };
+                                    steps.push(thinkingStep);
+                                } else {
+                                    // Update existing thinking step
+                                    const stepIndex = steps.findIndex(s => s.id === thinkingStep!.id);
+                                    steps[stepIndex] = {
+                                        ...thinkingStep,
+                                        content: thinkingContent,
+                                        isFinished: false,
+                                    };
+                                }
+                                
+                                return { ...m, steps };
+                            }
+                            return m;
+                        });
+                        onUpdate({ messages: this.messages, isThinking: true });
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse reasoning_delta event data', e);
+                }
+            });
 
             // Listen for 'delta' events for content updates
             eventSource.addEventListener('delta', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.content) {
+                        lastDeltaTime = Date.now(); // Update timestamp
                         fullContent += data.content;
                         this.messages = this.messages.map(m => {
                             if (m.id === assistantMsgId) {
@@ -174,7 +284,7 @@ export class RealChatClient implements ChatClient {
                             }
                             return m;
                         });
-                        onUpdate({ messages: this.messages, isThinking: true });
+                        onUpdate({ messages: this.messages, isThinking: true, isWaitingForDeltas: false });
                     }
                 } catch (e) {
                     console.warn('Failed to parse delta event data', e);
@@ -186,6 +296,10 @@ export class RealChatClient implements ChatClient {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Tool call received:', data);
+
+                    // Backend sends tool_calls as an array
+                    const toolCalls: Array<{id?: string; name?: string; tool_name?: string; arguments?: any}> =
+                        data.tool_calls || [data];
 
                     this.messages = this.messages.map(m => {
                         if (m.id === assistantMsgId) {
@@ -201,14 +315,17 @@ export class RealChatClient implements ChatClient {
                                 });
                             }
 
-                            const newStep: MessageStep = {
-                                id: data.id || `tool-${Date.now()}`,
-                                type: 'tool-call',
-                                toolName: data.name || data.tool_name,
-                                toolArgs: data.arguments,
-                                toolStatus: 'running'
-                            };
-                            return { ...m, steps: [...steps, newStep] };
+                            for (const tc of toolCalls) {
+                                const newStep: MessageStep = {
+                                    id: tc.id || `tool-${Date.now()}`,
+                                    type: 'tool-call',
+                                    toolName: tc.name || tc.tool_name,
+                                    toolArgs: tc.arguments,
+                                    toolStatus: 'running'
+                                };
+                                steps = [...steps, newStep];
+                            }
+                            return { ...m, steps };
                         }
                         return m;
                     });
@@ -347,12 +464,39 @@ export class RealChatClient implements ChatClient {
 
             // Listen for 'complete' event to close connection
             eventSource.addEventListener('complete', () => {
+                isStreaming = false;
+                if (deltaCheckInterval) {
+                    clearInterval(deltaCheckInterval);
+                    deltaCheckInterval = null;
+                }
+                
+                // Mark thinking step as finished if it exists
+                if (thinkingContent) {
+                    this.messages = this.messages.map(m => {
+                        if (m.id === assistantMsgId && m.steps) {
+                            const steps = m.steps.map(s => {
+                                if (s.type === 'thinking') {
+                                    return { ...s, isFinished: true };
+                                }
+                                return s;
+                            });
+                            return { ...m, steps };
+                        }
+                        return m;
+                    });
+                }
+                
                 eventSource.close();
-                onUpdate({ messages: this.messages, isThinking: false });
+                onUpdate({ messages: this.messages, isThinking: false, isWaitingForDeltas: false });
             });
 
             // Handle errors
             eventSource.onerror = (err) => {
+                isStreaming = false;
+                if (deltaCheckInterval) {
+                    clearInterval(deltaCheckInterval);
+                    deltaCheckInterval = null;
+                }
                 console.error('EventSource failed:', err);
                 eventSource.close();
 
@@ -361,7 +505,7 @@ export class RealChatClient implements ChatClient {
                         m.id === assistantMsgId ? { ...m, content: 'Error: Connection to stream failed.' } : m
                     );
                 }
-                onUpdate({ messages: this.messages, isThinking: false });
+                onUpdate({ messages: this.messages, isThinking: false, isWaitingForDeltas: false });
             };
 
 
@@ -383,7 +527,16 @@ export class RealChatClient implements ChatClient {
     reset(onUpdate: (state: ChatState) => void): void {
         this.messages = [];
         this.currentJobId = null;
+        this.conversationId = null;
         onUpdate({ messages: [], isThinking: false });
+    }
+
+    setConversationId(id: string | null): void {
+        this.conversationId = id;
+    }
+
+    getConversationId(): string | null {
+        return this.conversationId;
     }
 
     async sendConfirmResponse(toolCallId: string, confirmed: boolean): Promise<void> {
@@ -441,6 +594,22 @@ export class RealChatClient implements ChatClient {
                         }
                         result = await this.executeReadPageContent(toolArguments);
                         break;
+                    case 'read_page_content_advanced':
+                        // Advanced page reading with screenshots
+                        if (this.pageReadingCallback) {
+                            this.pageReadingCallback(true);
+                        }
+                        result = await this.executeReadPageContentAdvanced(toolArguments);
+                        break;
+                    case 'take_screenshot':
+                        if (this.pageReadingCallback) {
+                            this.pageReadingCallback(true);
+                        }
+                        result = await this.executeTakeScreenshot(toolArguments);
+                        break;
+                    case 'inspect_dom_element':
+                        result = await this.executeInspectDomElement(toolArguments);
+                        break;
                     default:
                         result = JSON.stringify({
                             error: 'unknown_tool',
@@ -462,7 +631,10 @@ export class RealChatClient implements ChatClient {
             );
         } finally {
             // Notify that page reading has ended
-            if (toolName === 'read_page_content' && this.pageReadingCallback) {
+            if (
+                ['read_page_content', 'read_page_content_advanced', 'take_screenshot'].includes(toolName) &&
+                this.pageReadingCallback
+            ) {
                 this.pageReadingCallback(false);
             }
         }
@@ -673,5 +845,494 @@ export class RealChatClient implements ChatClient {
         }
 
         return result;
+    }
+
+    private async executeReadPageContentAdvanced(args: any): Promise<string> {
+        try {
+            const {
+                selector = 'body',
+                include_html = false,
+                find_element_query,
+                capture_screenshot = false,
+                screenshot_selector,
+                screenshot_query
+            } = args;
+
+            const result: any = {
+                success: true,
+                metadata: {
+                    url: window.location.href,
+                    title: document.title,
+                    timestamp: new Date().toISOString(),
+                },
+                content: '',
+                html: null,
+                found_element: null,
+                screenshot: null,
+                screenshot_analysis_pending: false,
+            };
+
+            // 1. Find target element
+            let targetElement: HTMLElement;
+            if (find_element_query) {
+                const found = this.findElementByQuery(find_element_query);
+                if (found) {
+                    targetElement = found;
+                    result.found_element = {
+                        query: find_element_query,
+                        tag: found.tagName,
+                        id: found.id || null,
+                        classes: Array.from(found.classList),
+                        text: found.textContent?.substring(0, 200),
+                    };
+                } else {
+                    targetElement = document.querySelector(selector) as HTMLElement || document.body;
+                    result.found_element = {
+                        query: find_element_query,
+                        found: false,
+                        message: 'Element not found, using default selector',
+                    };
+                }
+            } else {
+                targetElement = document.querySelector(selector) as HTMLElement || document.body;
+            }
+
+            // 2. Extract content
+            result.content = this.extractElementContent(targetElement, 0);
+
+            // 3. Include HTML if requested
+            if (include_html) {
+                result.html = targetElement.outerHTML;
+            }
+
+            // 4. Capture screenshot if requested
+            if (capture_screenshot) {
+                try {
+                    const screenshotElement = screenshot_selector
+                        ? (document.querySelector(screenshot_selector) as HTMLElement || targetElement)
+                        : targetElement;
+
+                    const screenshot = await this.captureScreenshot(screenshotElement, false);
+                    result.screenshot = screenshot;
+                    result.screenshot_query = screenshot_query || 'Analyze this screenshot';
+                    result.screenshot_analysis_pending = true; // Backend will analyze
+                } catch (error: any) {
+                    result.screenshot_error = error.message;
+                }
+            }
+
+            return JSON.stringify(result);
+        } catch (error: any) {
+            return JSON.stringify({
+                success: false,
+                error: error.message || 'Unknown error during advanced page reading',
+            });
+        }
+    }
+
+    private findElementByQuery(query: string): HTMLElement | null {
+        const lowerQuery = query.toLowerCase();
+
+        // Search by text content
+        const allElements = document.querySelectorAll('*');
+        for (const el of Array.from(allElements)) {
+            const text = el.textContent?.toLowerCase() || '';
+            if (text.includes(lowerQuery) && text.length < 1000) {
+                // Prefer shorter matches
+                return el as HTMLElement;
+            }
+        }
+
+        // Search by aria-label
+        const ariaElement = document.querySelector(`[aria-label*="${query}" i]`);
+        if (ariaElement) return ariaElement as HTMLElement;
+
+        // Search by placeholder
+        const placeholderElement = document.querySelector(`[placeholder*="${query}" i]`);
+        if (placeholderElement) return placeholderElement as HTMLElement;
+
+        // Search by button/link text
+        const buttons = document.querySelectorAll('button, a');
+        for (const btn of Array.from(buttons)) {
+            if (btn.textContent?.toLowerCase().includes(lowerQuery)) {
+                return btn as HTMLElement;
+            }
+        }
+
+        return null;
+    }
+
+    private async captureScreenshot(element: HTMLElement, fullPage = false): Promise<string> {
+        // Dynamically import html2canvas to avoid bundle bloat
+        const html2canvas = (await import('html2canvas')).default;
+
+        const canvas = await html2canvas(element, {
+            useCORS: true,
+            allowTaint: false,
+            backgroundColor: '#ffffff',
+            height: fullPage ? document.body.scrollHeight : undefined,
+            windowHeight: fullPage ? document.body.scrollHeight : undefined,
+        });
+
+        // Convert to base64 (remove data URL prefix)
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1];
+
+        return base64;
+    }
+
+    private async executeTakeScreenshot(args: any): Promise<string> {
+        try {
+            const {
+                selector,
+                element_query,
+                screenshot_query = 'Describe what is visible in this screenshot.',
+                full_page = false,
+            } = args;
+
+            // Resolve target element
+            let targetElement: HTMLElement = document.body;
+            if (element_query) {
+                const found = this.findElementByQuery(element_query);
+                if (found) targetElement = found;
+            } else if (selector) {
+                const found = document.querySelector(selector) as HTMLElement;
+                if (found) targetElement = found;
+            }
+
+            const screenshot = await this.captureScreenshot(targetElement, full_page);
+
+            return JSON.stringify({
+                success: true,
+                screenshot,
+                screenshot_query,
+                screenshot_analysis_pending: true,
+                metadata: {
+                    url: window.location.href,
+                    title: document.title,
+                    timestamp: new Date().toISOString(),
+                    element: targetElement === document.body ? 'viewport' : {
+                        tag: targetElement.tagName,
+                        id: targetElement.id || null,
+                        classes: Array.from(targetElement.classList),
+                    },
+                },
+            });
+        } catch (error: any) {
+            return JSON.stringify({
+                success: false,
+                error: error.message || 'Screenshot capture failed',
+            });
+        }
+    }
+
+    private async executeInspectDomElement(args: any): Promise<string> {
+        try {
+            const {
+                selector,
+                element_query,
+                include_computed_styles = true,
+                include_attributes = true,
+                include_hierarchy = true,
+                inspect_depth = 2,
+            } = args;
+
+            // Resolve target element
+            let targetElement: HTMLElement | null = null;
+            if (element_query) {
+                targetElement = this.findElementByQuery(element_query);
+            }
+            if (!targetElement && selector) {
+                targetElement = document.querySelector(selector) as HTMLElement;
+            }
+            if (!targetElement) {
+                return JSON.stringify({
+                    success: false,
+                    error: 'Element not found',
+                    query: element_query,
+                    selector,
+                });
+            }
+
+            const rect = targetElement.getBoundingClientRect();
+            const result: any = {
+                success: true,
+                element: {
+                    tag: targetElement.tagName,
+                    id: targetElement.id || null,
+                    classes: Array.from(targetElement.classList),
+                    text_content: targetElement.textContent?.trim().substring(0, 500),
+                },
+                bounding_rect: {
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height,
+                },
+            };
+
+            if (include_attributes) {
+                const attrs: Record<string, string> = {};
+                for (const attr of Array.from(targetElement.attributes)) {
+                    attrs[attr.name] = attr.value;
+                }
+                result.attributes = attrs;
+                result.accessibility = {
+                    role: targetElement.getAttribute('role'),
+                    aria_label: targetElement.getAttribute('aria-label'),
+                    aria_labelledby: targetElement.getAttribute('aria-labelledby'),
+                    aria_describedby: targetElement.getAttribute('aria-describedby'),
+                    tabindex: targetElement.getAttribute('tabindex'),
+                };
+            }
+
+            if (include_computed_styles) {
+                const cs = window.getComputedStyle(targetElement);
+                result.computed_styles = {
+                    display: cs.display,
+                    position: cs.position,
+                    visibility: cs.visibility,
+                    opacity: cs.opacity,
+                    width: cs.width,
+                    height: cs.height,
+                    margin: cs.margin,
+                    padding: cs.padding,
+                    background_color: cs.backgroundColor,
+                    color: cs.color,
+                    font_size: cs.fontSize,
+                    font_weight: cs.fontWeight,
+                    border: cs.border,
+                    z_index: cs.zIndex,
+                    overflow: cs.overflow,
+                    flex_direction: cs.flexDirection,
+                    grid_template_columns: cs.gridTemplateColumns,
+                };
+            }
+
+            if (include_hierarchy) {
+                const ancestors: any[] = [];
+                let current = targetElement.parentElement;
+                while (current && current !== document.body) {
+                    ancestors.push({
+                        tag: current.tagName,
+                        id: current.id || null,
+                        classes: Array.from(current.classList).slice(0, 5),
+                    });
+                    current = current.parentElement;
+                }
+                result.hierarchy = ancestors;
+            }
+
+            result.children = this.inspectChildren(targetElement, inspect_depth);
+
+            return JSON.stringify(result);
+        } catch (error: any) {
+            return JSON.stringify({
+                success: false,
+                error: error.message || 'DOM inspection failed',
+            });
+        }
+    }
+
+    private inspectChildren(element: HTMLElement, depth: number): any[] {
+        if (depth <= 0) return [];
+        return Array.from(element.children).slice(0, 20).map((child) => {
+            const el = child as HTMLElement;
+            const entry: any = {
+                tag: el.tagName,
+                id: el.id || null,
+                classes: Array.from(el.classList).slice(0, 5),
+                text: el.textContent?.trim().substring(0, 100),
+            };
+            if (depth > 1 && el.children.length > 0) {
+                entry.children = this.inspectChildren(el, depth - 1);
+            }
+            return entry;
+        });
+    }
+
+    async getConversations(offset = 0, limit = 50): Promise<import('./types').ConversationListResponse> {
+        if (!this.accessToken) throw new Error('No access token available');
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations?offset=${offset}&limit=${limit}`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`Failed to fetch conversations: ${response.status}`);
+        return response.json();
+    }
+
+    async loadConversation(id: string, onUpdate: (state: ChatState) => void): Promise<void> {
+        if (!this.accessToken) throw new Error('No access token available');
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations/${id}`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`Failed to load conversation: ${response.status}`);
+        const detail: import('./types').ConversationDetail = await response.json();
+
+        // Map conversation messages to MessageProps, merging consecutive assistant messages from same job
+        const msgs: MessageProps[] = [];
+        let currentAssistantMsg: MessageProps | null = null;
+        let currentJobId: string | null = null;
+
+        for (const m of detail.messages) {
+            // Skip tool messages
+            if (m.role !== 'user' && m.role !== 'assistant') {
+                continue;
+            }
+
+            if (m.role === 'user') {
+                // Flush any pending assistant message
+                if (currentAssistantMsg) {
+                    msgs.push(currentAssistantMsg);
+                    currentAssistantMsg = null;
+                    currentJobId = null;
+                }
+
+                const userMsg: MessageProps = {
+                    id: m.id,
+                    role: 'user',
+                    content: m.content || '',
+                    shouldAnimate: false,
+                };
+
+                // Map attachments if present
+                if (m.attachments && m.attachments.length > 0) {
+                    userMsg.attachments = m.attachments.map(att => ({
+                        id: att.id,
+                        type: att.type as 'image' | 'file',
+                        url: `${this.apiBaseUrl}${att.url}`,
+                        name: att.name,
+                        size: att.size,
+                        contentType: att.content_type,
+                    }));
+                }
+
+                msgs.push(userMsg);
+            } else if (m.role === 'assistant') {
+                // Build a steps-based message to reuse the same render path as live chat
+                const steps: MessageStep[] = [];
+
+                // Build tool_results lookup: tool_call_id -> result
+                const resultById: Record<string, { tool_name?: string; result?: string }> = {};
+                if (m.tool_results) {
+                    for (const tr of m.tool_results) {
+                        resultById[tr.tool_call_id] = { tool_name: tr.tool_name, result: tr.result };
+                    }
+                }
+
+                // Add tool-call steps first (they happened before the final text)
+                if (m.tool_calls && m.tool_calls.length > 0) {
+                    for (const tc of m.tool_calls) {
+                        const res = resultById[tc.id];
+                        steps.push({
+                            id: tc.id,
+                            type: 'tool-call',
+                            toolName: tc.name,
+                            toolArgs: tc.arguments,
+                            toolStatus: res !== undefined ? 'completed' : 'completed',
+                            toolResult: res?.result,
+                            isFinished: true,
+                        });
+                    }
+                }
+
+                // Add text step if there is content
+                if (m.content) {
+                    steps.push({
+                        id: `${m.id}-text`,
+                        type: 'text',
+                        content: m.content,
+                        isFinished: true,
+                    });
+                }
+
+                // Merge consecutive assistant messages from same job (backend already merges,
+                // but guard here in case duplicates slip through)
+                if (currentAssistantMsg && currentJobId === m.job_id) {
+                    // Append steps to existing message
+                    if (currentAssistantMsg.steps) {
+                        currentAssistantMsg.steps.push(...steps);
+                    }
+                } else {
+                    // Flush previous assistant message
+                    if (currentAssistantMsg) {
+                        msgs.push(currentAssistantMsg);
+                    }
+                    // Start new assistant message — use steps path when we have steps, else plain content
+                    currentAssistantMsg = {
+                        id: m.id,
+                        role: 'assistant',
+                        content: steps.length === 0 ? (m.content || '') : undefined,
+                        steps: steps.length > 0 ? steps : undefined,
+                        shouldAnimate: false,
+                    };
+                    currentJobId = m.job_id;
+                }
+            }
+        }
+
+        // Flush any remaining assistant message
+        if (currentAssistantMsg) {
+            msgs.push(currentAssistantMsg);
+        }
+
+        this.messages = msgs;
+        this.conversationId = id;
+        this.currentJobId = null;
+        onUpdate({ messages: this.messages, isThinking: false });
+    }
+
+    async deleteConversation(id: string): Promise<void> {
+        if (!this.accessToken) throw new Error('No access token available');
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations/${id}`,
+            { method: 'DELETE', headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`Failed to delete conversation: ${response.status}`);
+    }
+
+    async searchConversations(query: string, offset = 0, limit = 20): Promise<import('./types').ConversationListResponse> {
+        if (!this.accessToken) throw new Error('No access token available');
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        );
+        if (!response.ok) throw new Error(`Failed to search conversations: ${response.status}`);
+        return response.json();
+    }
+
+    async uploadFile(file: File): Promise<AttachedFile> {
+        if (!this.accessToken) {
+            throw new Error('No access token available');
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${this.apiBaseUrl}/v1/files/upload`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+            },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            let errorDetails = response.statusText;
+            try {
+                const errorJson = await response.json();
+                errorDetails = errorJson.detail || JSON.stringify(errorJson);
+            } catch (e) { /* ignore */ }
+            throw new Error(`File upload failed: ${errorDetails}`);
+        }
+
+        const result = await response.json();
+        return {
+            file_id: result.file_id,
+            filename: result.filename,
+            content_type: result.content_type,
+            size_bytes: result.size_bytes,
+        };
     }
 }

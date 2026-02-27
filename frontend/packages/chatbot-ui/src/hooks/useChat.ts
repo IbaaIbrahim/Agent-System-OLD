@@ -1,14 +1,20 @@
 import React from 'react';
-import { ChatClient, ChatState } from '../api/types';
+import { AttachedFile, ChatClient, ChatState } from '../api/types';
 
 export interface UseChatOptions {
     client: ChatClient | null;
     onToolCall?: Record<string, (args: any) => Promise<any>>;
 }
 
+interface QueuedMessage {
+    text: string;
+    fileIds?: string[];
+    attachedFiles?: AttachedFile[];
+}
+
 export const useChat = ({ client, onToolCall }: UseChatOptions) => {
-    const [chatState, setChatState] = React.useState<ChatState>({ messages: [], isThinking: false });
-    const [messageQueue, setMessageQueue] = React.useState<string[]>([]);
+    const [chatState, setChatState] = React.useState<ChatState>({ messages: [], isThinking: false, isWaitingForDeltas: false });
+    const [messageQueue, setMessageQueue] = React.useState<QueuedMessage[]>([]);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [isTyping, setIsTyping] = React.useState(false);
 
@@ -40,12 +46,12 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
                 }
             }
 
-            const nextMessage = messageQueue[0];
+            const nextItem = messageQueue[0];
             setIsProcessing(true);
             setMessageQueue(prev => prev.slice(1));
 
             try {
-                await client.sendMessage(nextMessage, setChatState);
+                await client.sendMessage(nextItem.text, setChatState, nextItem.fileIds, nextItem.attachedFiles);
             } finally {
                 setIsProcessing(false);
             }
@@ -64,8 +70,8 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         prevMsgCountRef.current = chatState.messages.length;
     }, [chatState.messages]);
 
-    const handleSend = (text: string) => {
-        setMessageQueue(prev => [...prev, text]);
+    const handleSend = (text: string, fileIds?: string[], attachedFiles?: AttachedFile[]) => {
+        setMessageQueue(prev => [...prev, { text, fileIds, attachedFiles }]);
     };
 
     const handleRemoveQueueItem = (index: number) => {
@@ -81,6 +87,26 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         setIsTyping(false);
     };
 
+    const loadConversation = async (conversationId: string) => {
+        if (!client?.loadConversation) return;
+        // Clear animation tracking for fresh conversation
+        finishedMessageIdsRef.current.clear();
+        prevMsgCountRef.current = 0;
+        setMessageQueue([]);
+        setIsProcessing(false);
+        setIsTyping(false);
+        // Load from API — use a local state capture to get loaded messages
+        let loadedMessages: typeof chatState.messages = [];
+        await client.loadConversation(conversationId, (newState) => {
+            loadedMessages = newState.messages;
+            setChatState(newState);
+        });
+        // Mark all loaded messages as already finished (no animation)
+        // Use loadedMessages from callback since chatState update is async
+        loadedMessages.forEach(m => finishedMessageIdsRef.current.add(m.id));
+        prevMsgCountRef.current = loadedMessages.length;
+    };
+
     const reset = () => {
         if (client) client.reset(setChatState);
         setMessageQueue([]);
@@ -93,12 +119,15 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
     return {
         messages: chatState.messages,
         isThinking: chatState.isThinking || isProcessing,
+        isWaitingForDeltas: chatState.isWaitingForDeltas || false,
         isTyping,
-        messageQueue,
+        messageQueue: messageQueue.map(m => m.text),
         sendMessage: handleSend,
         removeQueueItem: handleRemoveQueueItem,
         handleAnimationComplete,
         finishedMessageIds: finishedMessageIdsRef.current,
+        loadConversation,
+        conversationId: client?.getConversationId?.() ?? null,
         reset
     };
 };
