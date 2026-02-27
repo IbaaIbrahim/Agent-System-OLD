@@ -61,7 +61,7 @@ function App() {
     ];
 
     const demoControls = (
-        <div style={{ position: isEmbedded ? 'relative' : 'absolute', top: isEmbedded ? 0 : 10, left: isEmbedded ? 0 : 10, zIndex: 10000, background: 'rgba(255,255,255,0.9)', padding: 10, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' as const }}>
+        <div style={{ position: isEmbedded ? 'relative' : 'absolute', top: isEmbedded ? 0 : 10, left: isEmbedded ? 0 : 10, zIndex: 1, background: 'rgba(255,255,255,0.9)', padding: 10, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' as const }}>
             <span style={{ fontWeight: 'bold', marginRight: 5 }}>Demo Controls:</span>
             <button onClick={() => { setMode('floating'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Floating</button>
             <button onClick={() => { setMode('sidebar'); setIsOpen(true); }} style={{ cursor: 'pointer', padding: '4px 8px' }}>Sidebar</button>
