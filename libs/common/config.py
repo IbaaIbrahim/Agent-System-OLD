@@ -83,6 +83,14 @@ class Settings(BaseSettings):
         description="TTL in seconds for stream one-time tokens",
     )
 
+    # One-Time Token for file download links (openable URLs)
+    file_download_ott_ttl_seconds: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description="TTL in seconds for file download one-time tokens",
+    )
+
     # Rate Limiting
     rate_limit_rpm: int = Field(default=60, ge=1)
     rate_limit_tpm: int = Field(default=100000, ge=1)

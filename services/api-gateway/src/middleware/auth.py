@@ -1,5 +1,6 @@
 """Authentication middleware for API key and JWT validation."""
 
+import re
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -27,6 +28,12 @@ logger = get_logger(__name__)
 # Paths that don't require authentication
 PUBLIC_PATHS = {"/health", "/docs", "/redoc", "/openapi.json"}
 
+# File download with one-time token in query: auth is validated in the route
+FILE_DOWNLOAD_WITH_TOKEN_PATTERN = re.compile(
+    r"^/api/v1/files/[a-f0-9-]{36}/download$",
+    re.IGNORECASE,
+)
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """Middleware for authenticating requests via API key or JWT."""
@@ -38,6 +45,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Skip auth for OPTIONS requests (CORS preflight)
         if request.method == "OPTIONS":
+            return await call_next(request)
+
+        # Skip auth for file download when token is in query (route validates the OTT)
+        if (
+            request.method == "GET"
+            and FILE_DOWNLOAD_WITH_TOKEN_PATTERN.match(request.url.path)
+            and request.query_params.get("token")
+        ):
             return await call_next(request)
 
         try:

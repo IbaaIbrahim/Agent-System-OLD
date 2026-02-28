@@ -282,6 +282,42 @@
     color: var(--cb-text-tertiary);
 }
 
+/* File chip loading & error states */
+.cb-att-chip-loading {
+    pointer-events: none;
+    opacity: 0.85;
+}
+
+.cb-att-chip-loading .cb-att-chip-action {
+    opacity: 0.6;
+}
+
+.cb-att-chip-error .cb-att-chip-icon,
+.cb-att-chip-error .cb-att-chip-name {
+    color: var(--cb-accent-primary, #e57373);
+}
+
+.cb-att-chip-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: cb-att-spin 0.7s linear infinite;
+}
+
+.cb-att-chip-error-msg {
+    font-size: 10px;
+    color: var(--cb-accent-primary, #e57373);
+}
+
+@keyframes cb-att-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* Action icon (eye / external link) */
 .cb-att-chip-action {
     color: var(--cb-text-tertiary);

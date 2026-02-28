@@ -4,7 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from libs.common import get_logger
+from libs.common import get_logger, NUL, sanitize_for_postgres
 from libs.db import get_session_context
 from libs.db.models import Job, JobSnapshot, JobStatus
 
@@ -38,7 +38,7 @@ class SnapshotService:
                 if state.completed_at:
                     job.completed_at = state.completed_at
                 if state.error:
-                    job.error = state.error
+                    job.error = (state.error or "").replace(NUL, "")
             else:
                 # Create new job
                 job = Job(
@@ -90,7 +90,7 @@ class SnapshotService:
             if state.completed_at:
                 job.completed_at = state.completed_at
             if state.error:
-                job.error = state.error
+                job.error = (state.error or "").replace(NUL, "")
 
             await session.commit()
 
@@ -101,10 +101,13 @@ class SnapshotService:
             state: Agent state to snapshot
         """
         async with get_session_context() as session:
+            raw = StateSerializer.serialize(state)
+            state_data = sanitize_for_postgres(raw)
+            assert isinstance(state_data, dict)
             snapshot = JobSnapshot(
                 job_id=state.job_id,
                 sequence_num=state.iteration,
-                state_data=StateSerializer.serialize(state),
+                state_data=state_data,
             )
             session.add(snapshot)
             await session.commit()

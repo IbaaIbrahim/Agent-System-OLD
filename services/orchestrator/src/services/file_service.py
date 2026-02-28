@@ -2,6 +2,7 @@
 import base64
 import io
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,45 @@ def _get_disk_path(base_path: str, file_id: str) -> Path:
 
 class FileService:
     """Service for retrieving and processing files."""
+
+    @staticmethod
+    async def get_saved_file_description(file_id: str) -> tuple[str | None, str | None]:
+        """Return saved analysis or extracted text for a file from the database.
+
+        Gives the agent extended access to the file in later turns without
+        re-uploading. The analyze_file tool saves to file_uploads on first analysis.
+
+        Args:
+            file_id: Unique file identifier (UUID string).
+
+        Returns:
+            Tuple of (description_text, filename). description_text is
+            extracted_text if present, else analysis_description; filename for display.
+            (None, None) if not found or no saved description.
+        """
+        try:
+            from libs.db.models import FileUpload
+            from libs.db.session import get_session_context
+
+            file_uuid = uuid.UUID(file_id)
+            async with get_session_context() as session:
+                row = await session.get(FileUpload, file_uuid)
+                if not row:
+                    return None, None
+                # Prefer full extracted text; fall back to vision analysis description
+                text = row.extracted_text if row.extracted_text else row.analysis_description
+                if not text:
+                    return None, row.filename
+                return text, row.filename
+        except (ValueError, TypeError):
+            return None, None
+        except Exception as e:
+            logger.warning(
+                "Failed to load saved file description",
+                file_id=file_id,
+                error=str(e),
+            )
+            return None, None
 
     @staticmethod
     async def retrieve_file(file_id: str) -> tuple[bytes, dict[str, Any]]:
