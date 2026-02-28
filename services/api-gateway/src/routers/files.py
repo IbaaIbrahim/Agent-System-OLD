@@ -4,10 +4,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 
 from libs.common import get_logger
+from libs.common.auth import create_file_download_ott, verify_file_download_ott
+from libs.common.exceptions import AuthenticationError
 from libs.db.models import FileUpload as FileUploadModel
 from libs.db.session import get_session_context
 
@@ -17,6 +19,29 @@ from ..services.file_storage import FileStorageService
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def get_download_tenant_id(
+    request: Request,
+    file_id: str,
+    token: str | None = Query(None),
+) -> uuid.UUID:
+    """Resolve tenant_id from one-time token (query) or Bearer auth."""
+    if token:
+        try:
+            payload = verify_file_download_ott(token)
+            if payload.file_id != file_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Token does not match file",
+                )
+            return uuid.UUID(payload.tenant_id)
+        except AuthenticationError as e:
+            raise HTTPException(
+                status_code=401,
+                detail=e.message or "Invalid or expired download link",
+            )
+    return get_tenant_id(request)
 
 
 class FileUploadResponse(BaseModel):
@@ -38,6 +63,12 @@ class FileMetadataResponse(BaseModel):
     size_bytes: int
     created_at: str
     job_id: str | None = None
+
+
+class FileDownloadUrlResponse(BaseModel):
+    """Response with a short-lived openable download URL."""
+
+    url: str
 
 
 # Allowed MIME types for file uploads
@@ -216,14 +247,50 @@ async def get_file_metadata(
         )
 
 
+@router.get("/{file_id}/download-url", response_model=FileDownloadUrlResponse)
+async def get_file_download_url(
+    request: Request,
+    file_id: str,
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user_id: uuid.UUID | None = Depends(get_user_id),
+) -> FileDownloadUrlResponse:
+    """Return a short-lived openable URL for downloading the file.
+
+    The URL includes a one-time token so it can be opened in a new tab
+    or shared without sending the Bearer header.
+    """
+    try:
+        file_uuid = uuid.UUID(file_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file ID format")
+
+    async with get_session_context() as session:
+        file_upload = await session.get(FileUploadModel, file_uuid)
+        if not file_upload or file_upload.tenant_id != tenant_id:
+            raise HTTPException(status_code=404, detail="File not found")
+
+    partner_id: uuid.UUID | None = getattr(request.state, "partner_id", None)
+    ott = create_file_download_ott(
+        file_id=file_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        partner_id=partner_id,
+    )
+    base = str(request.base_url).rstrip("/")
+    download_path = f"/api/v1/files/{file_id}/download"
+    url = f"{base}{download_path}?token={ott}"
+    return FileDownloadUrlResponse(url=url)
+
+
 @router.get("/{file_id}/download")
 async def download_file(
     file_id: str,
-    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    tenant_id: uuid.UUID = Depends(get_download_tenant_id),
 ):
     """Download file data.
 
-    Retrieves file from Redis hot storage. File must not be expired.
+    Authenticate either via Bearer token (tenant_id from auth) or via
+    one-time token in query string (from GET /download-url).
     """
     logger.info(
         "File download request",
@@ -253,17 +320,26 @@ async def download_file(
             )
             raise HTTPException(status_code=404, detail="File not found")
 
-    # Retrieve file data from Redis
+    # Retrieve file data from Redis (or disk if FILE_STORAGE_PERSIST enabled)
     try:
         file_data, metadata = await FileStorageService.retrieve_file(file_id)
 
         from fastapi.responses import Response
 
+        # Use inline for PDF and images so they open in the browser tab; attachment for the rest
+        content_type = file_upload.content_type or "application/octet-stream"
+        is_viewable = content_type == "application/pdf" or (
+            content_type.startswith("image/") if content_type else False
+        )
+        disposition = "inline" if is_viewable else "attachment"
+        # Escape quotes in filename for the header
+        safe_filename = file_upload.filename.replace("\\", "\\\\").replace('"', '\\"')
+
         return Response(
             content=file_data,
-            media_type=file_upload.content_type,
+            media_type=content_type,
             headers={
-                "Content-Disposition": f'attachment; filename="{file_upload.filename}"',
+                "Content-Disposition": f'{disposition}; filename="{safe_filename}"',
             },
         )
 
@@ -274,7 +350,10 @@ async def download_file(
         )
         raise HTTPException(
             status_code=410,
-            detail="File has expired. Files are only available for 15 minutes after upload.",
+            detail=(
+                "File has expired. Files are kept for 15 minutes in cache. "
+                "Enable FILE_STORAGE_PERSIST to store files on disk so they remain available."
+            ),
         )
     except Exception as e:
         logger.error(

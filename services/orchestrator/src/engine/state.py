@@ -172,11 +172,17 @@ class StateManager:
         """
         from libs.llm import MessageRole
 
-        # Convert message dicts to LLMMessage objects
+        # Convert message dicts to LLMMessage objects.
+        # Normalize content: LLM APIs require string (not null) for user/assistant messages.
         llm_messages = []
         for msg in messages:
             role = MessageRole(msg["role"])
-            
+            raw_content = msg.get("content")
+            if raw_content is None and role in (MessageRole.USER, MessageRole.ASSISTANT):
+                content: str | list[dict[str, Any]] | None = ""
+            else:
+                content = raw_content
+
             # Convert tool_calls dicts to ToolCall objects if present
             tool_calls = msg.get("tool_calls")
             if tool_calls:
@@ -188,10 +194,12 @@ class StateManager:
                     ) if isinstance(tc, dict) else tc
                     for tc in tool_calls
                 ]
-                
+            else:
+                tool_calls = None
+
             llm_messages.append(LLMMessage(
                 role=role,
-                content=msg.get("content"),
+                content=content,
                 tool_calls=tool_calls,
                 tool_call_id=msg.get("tool_call_id"),
             ))

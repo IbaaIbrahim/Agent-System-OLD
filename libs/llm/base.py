@@ -181,6 +181,10 @@ class LLMMessage:
         if self.name:
             msg["name"] = self.name
 
+        # OpenAI requires content to be a string (not null) for user/assistant messages
+        if "content" not in msg:
+            msg["content"] = ""
+
         return msg
 
 

@@ -268,3 +268,15 @@ This is a Docker Compose-based multi-service platform. All services (17 containe
 4. Get JWT: `POST /api/v1/auth/token` with tenant API key and `user_id`.
 5. Chat: `POST /api/v1/chat/completions` with JWT (body: `{"messages": [{"role":"user","content":"..."}]}`).
 6. Stream response: connect SSE to the `stream_url` returned by the chat endpoint.
+
+### Auth-broker setup for frontend demo
+
+The **auth-broker** (port 8003) is a convenience proxy that the frontend uses to obtain JWT tokens. It requires real `TENANT_API_KEY` and `USER_ID` values in `.env` — placeholder values will cause the frontend to fail silently (no LLM responses, no conversation persistence).
+
+To set up:
+1. Create a tenant, API key, and user via the admin API (see "Hello world API flow" above).
+2. Set `TENANT_API_KEY` and `USER_ID` in `.env` with the real values.
+3. Restart the auth-broker: `sudo docker compose up -d auth-broker`.
+4. Verify: `curl -s -X POST http://localhost:8003/request-token` should return a valid JWT.
+
+The frontend Docker container (port 8005) uses env vars `VITE_AUTH_BROKER_URL`, `VITE_API_BASE_URL`, and `VITE_WS_URL` baked in at build time. The defaults in `.env.example` point to `localhost` which works for the Docker setup.
