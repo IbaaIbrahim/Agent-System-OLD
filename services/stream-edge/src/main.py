@@ -1,5 +1,6 @@
 """Stream Edge - Data Plane entry point for SSE streaming."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -41,13 +42,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("Stream Edge started successfully")
 
-    yield
-
-    # Cleanup
-    logger.info("Shutting down Stream Edge")
-    await app.state.connection_manager.close_all()
-    await close_db()
-    logger.info("Stream Edge shutdown complete")
+    try:
+        yield
+    finally:
+        # Cleanup always runs (normal shutdown or Ctrl+C)
+        try:
+            logger.info("Shutting down Stream Edge")
+            await app.state.connection_manager.close_all()
+            await close_db()
+            logger.info("Stream Edge shutdown complete")
+        except asyncio.CancelledError:
+            logger.info("Stream Edge shutdown complete (cancelled)")
 
 
 def create_app() -> FastAPI:

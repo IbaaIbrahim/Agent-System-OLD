@@ -413,3 +413,92 @@ def verify_stream_ott(token: str) -> StreamOTTPayload:
         )
 
     return StreamOTTPayload(**payload)
+
+
+# --- One-Time Tokens for file download ---
+# Short-lived tokens in query string so file download links can be opened in a new tab
+# without sending Bearer header. Same secret as stream OTT.
+
+
+class FileDownloadOTTPayload(BaseModel):
+    """Decoded payload from a file download one-time token."""
+
+    purpose: str
+    file_id: str
+    tenant_id: str
+    user_id: str | None = None
+    partner_id: str | None = None
+    jti: str
+    exp: int
+    iat: int
+
+
+def create_file_download_ott(
+    file_id: str,
+    tenant_id: UUID,
+    user_id: UUID | None = None,
+    partner_id: UUID | None = None,
+) -> str:
+    """Create a one-time token for file download URL authentication.
+
+    The token is used in query string so the link can be opened in a new tab
+    without sending Authorization header.
+
+    Args:
+        file_id: File identifier
+        tenant_id: Tenant identifier
+        user_id: User identifier (optional)
+        partner_id: Partner identifier (optional)
+
+    Returns:
+        Encoded JWT string (the OTT)
+    """
+    settings = get_settings()
+    now = datetime.now(UTC)
+    ttl = settings.file_download_ott_ttl_seconds
+    payload: dict[str, Any] = {
+        "purpose": "file_download_ott",
+        "file_id": file_id,
+        "tenant_id": str(tenant_id),
+        "user_id": str(user_id) if user_id else None,
+        "partner_id": str(partner_id) if partner_id else None,
+        "jti": secrets.token_urlsafe(16),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=ttl)).timestamp()),
+    }
+
+    return jwt.encode(
+        payload,
+        settings.internal_jwt_secret,
+        algorithm="HS256",
+    )
+
+
+def verify_file_download_ott(token: str) -> FileDownloadOTTPayload:
+    """Verify and decode a file download one-time token."""
+    settings = get_settings()
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.internal_jwt_secret,
+            algorithms=["HS256"],
+        )
+    except jwt.ExpiredSignatureError:
+        raise AuthenticationError(
+            message="File download link has expired",
+            details={"reason": "expired"},
+        )
+    except jwt.InvalidTokenError as e:
+        raise AuthenticationError(
+            message="Invalid file download link",
+            details={"reason": str(e)},
+        )
+
+    if payload.get("purpose") != "file_download_ott":
+        raise AuthenticationError(
+            message="Invalid token purpose",
+            details={"reason": "wrong_purpose"},
+        )
+
+    return FileDownloadOTTPayload(**payload)
