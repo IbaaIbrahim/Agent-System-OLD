@@ -399,6 +399,24 @@ async def create_chat_completion(
     if plan_tools is not None:
         job_metadata["plan_tools"] = plan_tools
 
+    # Merge file_ids from entire conversation so the agent has extended access to
+    # previously attached files (saved descriptions are injected by the orchestrator)
+    if conversation_id_val:
+        async with get_session_context() as session:
+            from sqlalchemy import select
+            prev_jobs = await session.execute(
+                select(Job.metadata_).where(
+                    Job.conversation_id == conversation_id_val,
+                    Job.tenant_id == tenant_id,
+                )
+            )
+            all_file_ids: set[str] = set(job_metadata.get("file_ids") or [])
+            for (meta,) in prev_jobs:
+                if meta and isinstance(meta, dict):
+                    all_file_ids.update(meta.get("file_ids") or [])
+            if all_file_ids:
+                job_metadata["file_ids"] = list(all_file_ids)
+
     job_payload = {
         "job_id": str(job_id),
         "tenant_id": str(tenant_id),

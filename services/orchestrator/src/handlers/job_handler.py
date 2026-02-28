@@ -75,15 +75,24 @@ class JobHandler:
                         logger.info("Injecting analyze_file tool definition", job_id=str(job_id))
                         tools.append(self.analyze_file_tool)
                 
-                # Content injection: Fetch blocks for files
+                # Content injection: saved descriptions (extended access) + raw content when no saved
                 from ..services.file_service import FileService
                 all_blocks = []
+                saved_descriptions_blocks = []
                 for fid in file_ids:
-                    blocks = await FileService.get_content_blocks(fid)
-                    all_blocks.extend(blocks)
+                    saved_text, filename = await FileService.get_saved_file_description(fid)
+                    if saved_text and filename:
+                        saved_descriptions_blocks.append({
+                            "type": "text",
+                            "text": f"\n\n[Saved analysis for file: {filename}]\n{saved_text}\n--- End of saved analysis ---"
+                        })
+                    # If no saved description, inject raw content (from Redis/disk) so agent can use analyze_file
+                    if not saved_text:
+                        blocks = await FileService.get_content_blocks(fid)
+                        all_blocks.extend(blocks)
                 
                 # Inject blocks into the last user message
-                if all_blocks and message["messages"] and message["messages"][-1]["role"] == "user":
+                if (saved_descriptions_blocks or all_blocks) and message["messages"] and message["messages"][-1]["role"] == "user":
                     last_msg = message["messages"][-1]
                     original_content = last_msg.get("content", "")
                     
@@ -93,18 +102,31 @@ class JobHandler:
                     elif original_content is None:
                         last_msg["content"] = []
                     
-                    # Append content
-                    last_msg["content"].append({
-                        "type": "text", 
-                        "text": "\n\n[Attached Files Content]\n"
-                    })
-                    last_msg["content"].extend(all_blocks)
+                    # Prepend saved descriptions so agent has extended access to previously analyzed files
+                    if saved_descriptions_blocks:
+                        last_msg["content"].append({
+                            "type": "text",
+                            "text": "\n\n[Attached Files – Saved Descriptions]\n"
+                        })
+                        last_msg["content"].extend(saved_descriptions_blocks)
+                    # Raw content for files not yet analyzed (or no cache)
+                    if all_blocks:
+                        last_msg["content"].append({
+                            "type": "text",
+                            "text": "\n\n[Attached Files Content]\n"
+                        })
+                        last_msg["content"].extend(all_blocks)
                     
-                    # Also append the system note for tool usage
+                    # System note: use saved descriptions when present; analyze_file for details or specific queries
                     files_list = ", ".join(file_ids)
                     last_msg["content"].append({
                         "type": "text",
-                        "text": f"\n\n[System Note: Use the 'analyze_file' tool for detailed analysis of these files if needed. Files IDs: {files_list}]"
+                        "text": (
+                            f"\n\n[System Note: Files IDs: {files_list}. "
+                            "When a saved analysis is shown above, you can use it for extended access. "
+                            "Use the 'analyze_file' tool for detailed analysis of files without a saved description, "
+                            "or to query a specific section (e.g. 'what are the skills?') with the query parameter.]"
+                        )
                     })
             
             # Create agent state

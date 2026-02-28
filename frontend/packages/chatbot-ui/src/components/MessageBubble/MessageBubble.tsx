@@ -5,6 +5,7 @@ import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
 import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
+import { useChatbotContext } from '../../context/ChatbotContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -108,18 +109,42 @@ const ImageLightbox: React.FC<{
 // --- Attachment Chip (Claude-style compact chip above message) ---
 const AttachmentChip: React.FC<{ att: Attachment }> = ({ att }) => {
     const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [fileLoading, setFileLoading] = useState(false);
+    const [fileError, setFileError] = useState<string | null>(null);
+    const context = useChatbotContext();
 
-    const handleClick = () => {
+    const handleClick = async () => {
         if (att.type === 'image') {
             setLightboxOpen(true);
-        } else {
-            window.open(att.localUrl || att.url, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        // File: always use openable download URL (never blob/localUrl) so link works in new tab and after reload
+        if (!context) {
+            window.open(att.url, '_blank', 'noopener,noreferrer');
+            return;
+        }
+        setFileError(null);
+        setFileLoading(true);
+        try {
+            const fileId = att.id || att.url;
+            const openableUrl = await context.getFileDownloadUrl(fileId);
+            window.open(openableUrl, '_blank', 'noopener,noreferrer');
+        } catch (e) {
+            setFileError(e instanceof Error ? e.message : 'Failed to open file');
+        } finally {
+            setFileLoading(false);
         }
     };
 
     return (
         <>
-            <div className="cb-att-chip" onClick={handleClick} title={att.name}>
+            <div
+                className={`cb-att-chip ${fileLoading ? 'cb-att-chip-loading' : ''} ${fileError ? 'cb-att-chip-error' : ''}`}
+                onClick={handleClick}
+                title={fileError || att.name}
+                role="button"
+                aria-busy={fileLoading}
+            >
                 {att.type === 'image' ? (
                     <div className="cb-att-chip-thumb">
                         {att.localUrl ? (
@@ -129,12 +154,21 @@ const AttachmentChip: React.FC<{ att: Attachment }> = ({ att }) => {
                         )}
                     </div>
                 ) : (
-                    <div className="cb-att-chip-icon">{getFileIcon(att.contentType)}</div>
+                    <div className="cb-att-chip-icon">
+                        {fileLoading ? (
+                            <span className="cb-att-chip-spinner" aria-hidden />
+                        ) : (
+                            getFileIcon(att.contentType)
+                        )}
+                    </div>
                 )}
                 <div className="cb-att-chip-info">
                     <span className="cb-att-chip-name">{att.name || 'File'}</span>
-                    {att.size != null && (
+                    {att.size != null && !fileLoading && (
                         <span className="cb-att-chip-size">{formatFileSize(att.size)}</span>
+                    )}
+                    {fileError && (
+                        <span className="cb-att-chip-error-msg">{fileError}</span>
                     )}
                 </div>
                 <div className="cb-att-chip-action">
