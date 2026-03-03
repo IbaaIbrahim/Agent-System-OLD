@@ -94,6 +94,8 @@ Messages msg-1 and msg-2 are shared. At msg-2, there are two children (msg-3, ms
 
 **Backend flow (switch):** `POST /conversations/{id}/switch-branch` → updates `active_branch` at specified branch point → returns updated conversation.
 
+**Parent resolution (new messages):** When continuing a conversation, the chat endpoint uses `get_conversation_messages_tree()` to find the last message on the **active branch** as the parent for the new user message. This ensures new messages attach to the correct branch (not just the most recently created message globally).
+
 **Tree walking:** `get_conversation_messages_tree()` in `conversation.py` builds adjacency list, walks from roots following `active_branch` selections. Falls back to flat chronological query for old conversations without `parent_message_id`. Annotates branch points with `branch_count`, `active_branch_index`, `branch_ids`.
 
 **Frontend:** `BranchNavigator` component shows `< 1/3 >` at branch points. `MessageActions` component provides copy/reply/edit hover buttons. Edit triggers inline textarea, submits via `client.editMessage()`.
@@ -234,15 +236,24 @@ class MyTool(BaseTool):
 | Subscriptions router | `services/api-gateway/src/routers/subscriptions.py` |
 | Top-ups router | `services/api-gateway/src/routers/topups.py` |
 | Features router | `services/api-gateway/src/routers/features.py` |
+| File upload/download router | `services/api-gateway/src/routers/files.py` |
+| Live session router | `services/api-gateway/src/routers/live.py` |
+| Tools router (client results) | `services/api-gateway/src/routers/tools.py` |
+| Jobs router | `services/api-gateway/src/routers/jobs.py` |
+| Users router | `services/api-gateway/src/routers/users.py` |
+| File storage service | `services/api-gateway/src/services/file_storage.py` |
 | Background job scheduler | `services/api-gateway/src/jobs/scheduler.py` |
 | Agent execution loop | `services/orchestrator/src/engine/agent.py` |
 | Agent state machine | `services/orchestrator/src/engine/state.py` |
 | Agent state serializer | `services/orchestrator/src/engine/serializer.py` |
 | Phase executor (tool resumption) | `services/orchestrator/src/engine/phase_executor.py` |
 | Distributed state lock | `services/orchestrator/src/services/state_lock.py` |
+| Job handler (new job entry point) | `services/orchestrator/src/handlers/job_handler.py` |
 | Resume handler (suspend/resume) | `services/orchestrator/src/handlers/resume_handler.py` |
 | Confirm handler (tool confirmations) | `services/orchestrator/src/handlers/confirm_handler.py` |
 | Tool handler (dispatch logic) | `services/orchestrator/src/handlers/tool_handler.py` |
+| User response handler | `services/orchestrator/src/handlers/user_response_handler.py` |
+| Multi-phase execution | `services/orchestrator/src/engine/phases.py` |
 | Tool catalog (behavior config) | `libs/common/tool_catalog.py` |
 | Tool base class | `services/tool-workers/src/tools/base.py` |
 | Tool asset loader | `services/tool-workers/src/tools/assets/loader.py` |
@@ -268,6 +279,7 @@ class MyTool(BaseTool):
 | BranchNavigator (branch switching) | `frontend/packages/chatbot-ui/src/components/BranchNavigator/BranchNavigator.tsx` |
 | ConfirmButtons component | `frontend/packages/chatbot-ui/src/components/ConfirmButtons/ConfirmButtons.tsx` |
 | Architecture design doc | `docs/rebuild.md` |
+| Multi-phase agent design | `docs/multi-phase-agent.md` |
 | Project plan | `docs/plan.md` |
 | Tool management plan | `docs/tools-plan.md` |
 | Environment template | `.env.example` |
