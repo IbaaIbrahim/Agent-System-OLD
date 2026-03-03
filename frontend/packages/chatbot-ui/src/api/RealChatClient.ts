@@ -293,6 +293,13 @@ export class RealChatClient implements ChatClient {
                                 let updatedM = { ...m, content: fullContent };
                                 if (m.steps && m.steps.length > 0) {
                                     const steps = [...m.steps];
+
+                                    // Mark any unfinished thinking step as finished since we received a regular delta
+                                    const thinkingIndex = steps.findIndex(s => s.type === 'thinking' && !s.isFinished);
+                                    if (thinkingIndex !== -1) {
+                                        steps[thinkingIndex] = { ...steps[thinkingIndex], isFinished: true };
+                                    }
+
                                     const lastStep = steps[steps.length - 1];
                                     if (lastStep && lastStep.type === 'text') {
                                         steps[steps.length - 1] = {
@@ -323,12 +330,19 @@ export class RealChatClient implements ChatClient {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Tool call received:', data);
-                    const toolCalls: Array<{id?: string; name?: string; tool_name?: string; arguments?: any}> =
+                    const toolCalls: Array<{ id?: string; name?: string; tool_name?: string; arguments?: any }> =
                         data.tool_calls || [data];
 
                     this.messages = this.messages.map(m => {
                         if (m.id === assistantMsgId) {
                             let steps = m.steps ? [...m.steps] : [];
+
+                            // Mark any unfinished thinking step as finished since we are calling a tool
+                            const thinkingIndex = steps.findIndex(s => s.type === 'thinking' && !s.isFinished);
+                            if (thinkingIndex !== -1) {
+                                steps[thinkingIndex] = { ...steps[thinkingIndex], isFinished: true };
+                            }
+
                             if (steps.length === 0 && fullContent) {
                                 steps.push({
                                     id: `text-pre-${Date.now()}`,
