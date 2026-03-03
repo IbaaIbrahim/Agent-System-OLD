@@ -26,10 +26,31 @@
     resize: none;
     font-family: inherit;
     font-size: var(--cb-text-base);
+    line-height: 1.5;
+    padding: 8px 4px;
     outline: none;
-    min-height: 40px;
-    max-height: 150px;
+    min-height: 44px;
+    max-height: 180px;
     width: 100%;
+    box-sizing: border-box;
+    transition: background-color 0.2s;
+}
+
+.cb-composer-textarea::-webkit-scrollbar {
+    width: 6px;
+}
+
+.cb-composer-textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.cb-composer-textarea::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+}
+
+.cb-composer-textarea::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.25);
 }
 
 .cb-composer-textarea::placeholder {
@@ -150,6 +171,7 @@
         opacity: 0;
         transform: scale(0.9) translateY(4px);
     }
+
     to {
         opacity: 1;
         transform: scale(1) translateY(0);
@@ -220,7 +242,9 @@
 }
 
 @keyframes cb-spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* === Upload Error === */

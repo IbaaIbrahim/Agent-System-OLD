@@ -75,6 +75,20 @@ export const Composer: React.FC<ComposerProps> = ({
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const composerRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const adjustHeight = useCallback(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.style.height = 'auto';
+            const newHeight = Math.min(textarea.scrollHeight, 180);
+            textarea.style.height = `${newHeight}px`;
+        }
+    }, []);
+
+    useEffect(() => {
+        adjustHeight();
+    }, [input, adjustHeight]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -315,6 +329,7 @@ export const Composer: React.FC<ComposerProps> = ({
                 )}
 
                 <textarea
+                    ref={textareaRef}
                     className="cb-composer-textarea"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
