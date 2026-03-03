@@ -1,0 +1,43 @@
+.cb-message-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    /* opacity: 0; */
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    padding: 2px;
+    border-radius: 6px;
+    /* background: var(--cb-bg-secondary, rgba(30, 30, 30, 0.95)); */
+    /* border: 1px solid var(--cb-border-subtle, rgba(255, 255, 255, 0.1)); */
+    /* box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); */
+    margin-top: 4px;
+}
+
+.cb-row-user .cb-message-actions {
+    justify-content: end;
+}
+
+.cb-message-row:hover .cb-message-actions {
+    /* opacity: 1; */
+    pointer-events: auto;
+}
+
+.cb-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--cb-text-tertiary, rgba(255, 255, 255, 0.5));
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    padding: 0;
+}
+
+.cb-action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--cb-text-primary, rgba(255, 255, 255, 0.95));
+}

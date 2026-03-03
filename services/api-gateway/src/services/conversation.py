@@ -1,5 +1,6 @@
 """Conversation service for managing chat sessions."""
 
+import json
 import uuid
 
 from sqlalchemy import delete, func, select, update
@@ -8,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from libs.common import get_logger
 from libs.db.models import ChatMessage, Conversation, FileUpload, Job
 from libs.db.session import get_session_context
+from libs.messaging.redis import RedisStreams
 
 logger = get_logger(__name__)
 
@@ -213,6 +215,12 @@ class ConversationService:
                     if msg.metadata_ and msg.metadata_.get("tool_name"):
                         message_dict["tool_name"] = msg.metadata_["tool_name"]
 
+                # Include reply_to_message_id if present
+                if msg.metadata_ and msg.metadata_.get("reply_to_message_id"):
+                    message_dict["reply_to_message_id"] = msg.metadata_[
+                        "reply_to_message_id"
+                    ]
+
                 # Add attachments for user messages
                 if role == "user" and str(msg.job_id) in job_file_ids:
                     attachments = []
@@ -229,6 +237,126 @@ class ConversationService:
             merged_messages = self._merge_assistant_messages(messages)
 
             return merged_messages
+
+    async def _fetch_hot_events(
+        self,
+        job_ids: set[str],
+        known_event_ids: set[str],
+        rows: list,
+        jobs_with_assistant: set[str] | None = None,
+    ) -> list[dict]:
+        """Fetch recent events from Redis streams that aren't yet in PostgreSQL.
+
+        Returns message dicts in the same format as the tree-walk adjacency
+        entries so they can be merged directly.
+        """
+        # Event types that correspond to ChatMessage records
+        CONVERSATIONAL_TYPES = {"message", "tool_call", "tool_result"}
+
+        streams = RedisStreams()
+        hot_messages: list[dict] = []
+        if jobs_with_assistant is None:
+            jobs_with_assistant = set()
+
+        # Build a lookup: job_id -> last message id (for parent linking)
+        last_msg_by_job: dict[str, str] = {}
+        for row in rows:
+            msg = row[0]
+            last_msg_by_job[str(msg.job_id)] = str(msg.id)
+
+        for job_id in job_ids:
+            # Skip jobs that already have their assistant response in PG —
+            # the archiver has fully processed them, so Redis events would
+            # be duplicates that inflate branch counts.
+            if job_id in jobs_with_assistant:
+                continue
+
+            stream_key = f"events:{job_id}"
+            try:
+                entries = await streams.read_range(
+                    stream=stream_key, count=500,
+                )
+            except Exception:
+                logger.debug(
+                    "No Redis stream for job (may have expired)",
+                    job_id=job_id,
+                )
+                continue
+
+            for entry in entries:
+                event_type = entry.data.get("type", "")
+                if event_type not in CONVERSATIONAL_TYPES:
+                    continue
+
+                # Deduplicate: skip events already archived in PostgreSQL
+                event_id = entry.id
+                if event_id in known_event_ids:
+                    continue
+
+                event_data = entry.data.get("data", {})
+                if isinstance(event_data, str):
+                    try:
+                        event_data = json.loads(event_data)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+                # Determine parent: chain to last known message in this job
+                parent_id = last_msg_by_job.get(job_id)
+
+                # Build a synthetic message ID from the Redis entry ID
+                # so it's unique but distinguishable from UUIDs
+                synthetic_id = f"hot-{job_id[:8]}-{entry.id}"
+
+                if event_type == "message":
+                    role = event_data.get("role", "assistant")
+                    msg_dict: dict = {
+                        "id": synthetic_id,
+                        "role": role,
+                        "content": event_data.get("content"),
+                        "job_id": job_id,
+                        "created_at": None,
+                        "parent_message_id": parent_id,
+                    }
+                    if event_data.get("tool_calls"):
+                        msg_dict["tool_calls"] = event_data["tool_calls"]
+
+                elif event_type == "tool_call":
+                    msg_dict = {
+                        "id": synthetic_id,
+                        "role": "assistant",
+                        "content": event_data.get("content"),
+                        "job_id": job_id,
+                        "created_at": None,
+                        "parent_message_id": parent_id,
+                        "tool_calls": event_data.get("tool_calls"),
+                    }
+
+                elif event_type == "tool_result":
+                    msg_dict = {
+                        "id": synthetic_id,
+                        "role": "tool",
+                        "content": event_data.get("result"),
+                        "job_id": job_id,
+                        "created_at": None,
+                        "parent_message_id": parent_id,
+                        "tool_call_id": event_data.get("tool_call_id"),
+                        "tool_name": event_data.get("tool_name"),
+                    }
+                else:
+                    continue
+
+                hot_messages.append(msg_dict)
+                # Update chain: next event in this job parents to this one
+                last_msg_by_job[job_id] = synthetic_id
+
+        if hot_messages:
+            logger.info(
+                "Merged hot events from Redis",
+                count=len(hot_messages),
+                job_ids=list(job_ids),
+            )
+
+        return hot_messages
 
     def _merge_assistant_messages(self, messages: list[dict]) -> list[dict]:
         """Merge consecutive assistant messages from the same job.
@@ -320,6 +448,312 @@ class ConversationService:
             merged.append(current_assistant)
 
         return merged
+
+    async def get_conversation_messages_tree(
+        self,
+        conversation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        active_branch_override: dict[str, str] | None = None,
+    ) -> list[dict]:
+        """Get messages for the active branch of a conversation tree.
+
+        Walks the message tree from root to leaves, following active_branch
+        selections at each branch point. Falls back to latest child when no
+        explicit selection exists.
+        """
+        async with get_session_context() as session:
+            conv = await self.get_conversation(conversation_id, tenant_id)
+            if not conv:
+                return []
+
+            active_branch = (
+                active_branch_override
+                if active_branch_override is not None
+                else (conv.active_branch or {})
+            )
+
+            # Fetch all messages
+            stmt = (
+                select(
+                    ChatMessage,
+                    Job.created_at.label("job_created_at"),
+                    Job.metadata_,
+                )
+                .join(Job, ChatMessage.job_id == Job.id)
+                .where(Job.conversation_id == conversation_id)
+                .order_by(Job.created_at.asc(), ChatMessage.sequence_num.asc())
+            )
+            result = await session.execute(stmt)
+            rows = result.all()
+
+            if not rows:
+                return []
+
+            # Check if any message has parent_message_id set
+            has_tree = any(row[0].parent_message_id is not None for row in rows)
+            if not has_tree:
+                return await self.get_conversation_messages(
+                    conversation_id, tenant_id
+                )
+
+            # Collect file info
+            all_file_ids: set[str] = set()
+            job_file_ids: dict[str, list[str]] = {}
+            for row in rows:
+                msg = row[0]
+                job_metadata = row[2]
+                role_value = (
+                    msg.role.value if hasattr(msg.role, "value") else msg.role
+                )
+                if role_value == "user" and job_metadata:
+                    fids = job_metadata.get("file_ids", [])
+                    if fids:
+                        job_file_ids[str(msg.job_id)] = fids
+                        all_file_ids.update(fids)
+
+            file_map: dict[str, dict] = {}
+            if all_file_ids:
+                file_uuids = [uuid.UUID(fid) for fid in all_file_ids]
+                file_stmt = select(FileUpload).where(
+                    FileUpload.id.in_(file_uuids)
+                )
+                file_result = await session.execute(file_stmt)
+                for fu in file_result.scalars():
+                    file_map[str(fu.id)] = {
+                        "id": str(fu.id),
+                        "type": (
+                            "image"
+                            if fu.content_type.startswith("image/")
+                            else "file"
+                        ),
+                        "url": f"/v1/files/{fu.id}/download",
+                        "name": fu.filename,
+                        "size": fu.size_bytes,
+                        "content_type": fu.content_type,
+                    }
+
+            # ---- Hot event merge: fetch recent events from Redis ----
+            # The archiver buffers events for up to 5s before flushing to
+            # PostgreSQL.  To avoid a "reload gap" we also read from the
+            # Redis event streams for each job and merge any events that
+            # haven't been archived yet.
+            known_event_ids: set[str] = set()
+            jobs_with_assistant: set[str] = set()
+            for row in rows:
+                msg = row[0]
+                if msg.metadata_ and msg.metadata_.get("event_id"):
+                    known_event_ids.add(msg.metadata_["event_id"])
+                role_val = (
+                    msg.role.value if hasattr(msg.role, "value") else msg.role
+                )
+                if role_val == "assistant":
+                    jobs_with_assistant.add(str(msg.job_id))
+
+            job_ids = {str(row[0].job_id) for row in rows}
+            hot_messages = await self._fetch_hot_events(
+                job_ids, known_event_ids, rows,
+                jobs_with_assistant,
+            )
+
+            # Build adjacency list: parent_id -> list of child messages
+            children: dict[str | None, list[dict]] = {}
+
+            for row in rows:
+                msg = row[0]
+                role = (
+                    msg.role.value if hasattr(msg.role, "value") else msg.role
+                )
+                parent_id = (
+                    str(msg.parent_message_id)
+                    if msg.parent_message_id
+                    else None
+                )
+
+                msg_dict: dict = {
+                    "id": str(msg.id),
+                    "role": role,
+                    "content": msg.content,
+                    "job_id": str(msg.job_id),
+                    "created_at": (
+                        msg.created_at.isoformat()
+                        if msg.created_at
+                        else None
+                    ),
+                    "parent_message_id": parent_id,
+                }
+
+                if msg.tool_calls:
+                    msg_dict["tool_calls"] = msg.tool_calls
+                if role == "tool":
+                    if msg.tool_call_id:
+                        msg_dict["tool_call_id"] = msg.tool_call_id
+                    if msg.metadata_ and msg.metadata_.get("tool_name"):
+                        msg_dict["tool_name"] = msg.metadata_["tool_name"]
+                if msg.metadata_ and msg.metadata_.get("reply_to_message_id"):
+                    msg_dict["reply_to_message_id"] = msg.metadata_[
+                        "reply_to_message_id"
+                    ]
+                if role == "user" and str(msg.job_id) in job_file_ids:
+                    attachments = []
+                    for fid in job_file_ids[str(msg.job_id)]:
+                        if fid in file_map:
+                            attachments.append(file_map[fid])
+                    if attachments:
+                        msg_dict["attachments"] = attachments
+
+                children.setdefault(parent_id, []).append(msg_dict)
+
+            # Merge hot (Redis) messages into the adjacency list
+            for hot_msg in hot_messages:
+                parent_id = hot_msg.get("parent_message_id")
+                children.setdefault(parent_id, []).append(hot_msg)
+
+            # Walk tree from roots following active_branch
+            result_messages: list[dict] = []
+            current_nodes = children.get(None, [])
+
+            while current_nodes:
+                # Separate assistant/tool messages from user messages.
+                # Due to a race condition, the archiver may write an
+                # assistant response *after* the next user message is
+                # created, causing both to share the same parent.  In
+                # that case we chain them: assistant first, then treat
+                # user messages as children of the last assistant.
+                non_user = [
+                    n for n in current_nodes
+                    if n["role"] in ("assistant", "tool")
+                ]
+                user_nodes = [
+                    n for n in current_nodes
+                    if n["role"] == "user"
+                ]
+
+                if non_user and user_nodes:
+                    # Mixed siblings — chain assistant/tool msgs first
+                    non_user.sort(
+                        key=lambda x: (x.get("created_at") or "", x["id"]),
+                    )
+                    for msg in non_user:
+                        result_messages.append(msg)
+                    # Gather actual children of the assistant msgs
+                    next_nodes = list(user_nodes)
+                    for msg in non_user:
+                        next_nodes.extend(children.get(msg["id"], []))
+                    current_nodes = next_nodes
+                    continue
+
+                # All nodes are the same kind — apply branch logic
+                if len(current_nodes) == 1:
+                    chosen = current_nodes[0]
+                else:
+                    # Multiple children = branch point on the parent
+                    parent_id = current_nodes[0].get("parent_message_id")
+                    active_child_id = (
+                        active_branch.get(parent_id) if parent_id else None
+                    )
+
+                    chosen = None
+                    chosen_index = 0
+                    if active_child_id:
+                        for i, c in enumerate(current_nodes):
+                            if c["id"] == active_child_id:
+                                chosen = c
+                                chosen_index = i
+                                break
+
+                    if chosen is None:
+                        chosen = current_nodes[-1]
+                        chosen_index = len(current_nodes) - 1
+
+                    # Annotate with branch metadata
+                    chosen["branch_point"] = True
+                    chosen["branch_count"] = len(current_nodes)
+                    chosen["active_branch_index"] = chosen_index
+                    chosen["branch_ids"] = [c["id"] for c in current_nodes]
+
+                result_messages.append(chosen)
+                current_nodes = children.get(chosen["id"], [])
+
+            merged = self._merge_assistant_messages(result_messages)
+            return merged
+
+    async def switch_branch(
+        self,
+        conversation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        branch_point_message_id: str,
+        target_child_message_id: str,
+    ) -> None:
+        """Switch the active branch at a given branch point."""
+        async with get_session_context() as session:
+            conv_stmt = select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.tenant_id == tenant_id,
+            )
+            result = await session.execute(conv_stmt)
+            conv = result.scalar_one_or_none()
+            if not conv:
+                return
+
+            branch = dict(conv.active_branch or {})
+            branch[branch_point_message_id] = target_child_message_id
+
+            stmt = (
+                update(Conversation)
+                .where(Conversation.id == conversation_id)
+                .values(active_branch=branch)
+            )
+            await session.execute(stmt)
+
+    async def get_branch_context_messages(
+        self,
+        conversation_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        branch_point_message_id: str,
+    ) -> list[dict]:
+        """Get all messages from root to a specific message (inclusive).
+
+        Used to build conversation context when creating a new branch.
+        """
+        async with get_session_context() as session:
+            stmt = (
+                select(ChatMessage)
+                .join(Job, ChatMessage.job_id == Job.id)
+                .where(Job.conversation_id == conversation_id)
+            )
+            result = await session.execute(stmt)
+            all_msgs = {str(m.id): m for m in result.scalars().all()}
+
+            # Walk from target back to root
+            path: list[str] = []
+            current_id: str | None = branch_point_message_id
+            while current_id and current_id in all_msgs:
+                path.append(current_id)
+                msg = all_msgs[current_id]
+                current_id = (
+                    str(msg.parent_message_id)
+                    if msg.parent_message_id
+                    else None
+                )
+
+            path.reverse()
+
+            context: list[dict] = []
+            for msg_id in path:
+                msg = all_msgs[msg_id]
+                role = (
+                    msg.role.value
+                    if hasattr(msg.role, "value")
+                    else msg.role
+                )
+                context.append({
+                    "role": role,
+                    "content": msg.content,
+                    "tool_calls": msg.tool_calls,
+                    "tool_call_id": msg.tool_call_id,
+                })
+
+            return context
 
     async def search_conversations(
         self,

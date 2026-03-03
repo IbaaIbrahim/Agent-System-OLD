@@ -23,6 +23,7 @@ from ..services.billing import (
     BillingService,
     estimate_tokens_from_messages,
 )
+from ..services.conversation import get_conversation_service
 from ..services.feature import get_feature_service
 from ..services.subscription import get_subscription_service
 
@@ -73,6 +74,7 @@ class ChatCompletionResponse(BaseModel):
     status: str = "pending"
     created_at: str | None = None
     conversation_id: str | None = None
+    user_message_id: str | None = None
 
 
 @router.post("/chat/completions", response_model=ChatCompletionResponse)
@@ -310,10 +312,45 @@ async def create_chat_completion(
         # When continuing an existing conversation, previous messages are
         # already stored in earlier jobs — only persist the latest user message
         # to avoid duplicates on conversation reload.
+        # Extract reply_to_message_id from request metadata
+        reply_to_message_id = (
+            body.metadata.get("reply_to_message_id")
+            if body.metadata else None
+        )
+
+        user_message_id: uuid.UUID | None = None
+
         if body.conversation_id:
             # Continuing conversation: find and save only the last user message
+            # Walk the active branch tree to find the correct parent message.
+            # A simple ORDER BY created_at DESC would pick the most recent
+            # message globally, which may belong to a different branch.
+            last_msg_id = None
+            conv_service = get_conversation_service()
+            tree_messages = await conv_service.get_conversation_messages_tree(
+                conversation_id_val, tenant_id
+            )
+            if tree_messages:
+                # get_conversation_messages_tree() may include "hot" Redis
+                # events with synthetic non-UUID IDs (e.g. "hot-..."). For
+                # parent_message_id we must link to a real persisted message,
+                # so walk backwards and pick the last entry whose id is a
+                # valid UUID. If none are UUIDs, we leave last_msg_id as None.
+                for msg in reversed(tree_messages):
+                    msg_id = msg.get("id")
+                    if not isinstance(msg_id, str):
+                        continue
+                    try:
+                        last_msg_id = uuid.UUID(msg_id)
+                        break
+                    except (ValueError, TypeError):
+                        continue
+
             for msg in reversed(body.messages):
                 if msg.role == "user":
+                    msg_metadata = {}
+                    if reply_to_message_id:
+                        msg_metadata["reply_to_message_id"] = reply_to_message_id
                     chat_msg = ChatMessageModel(
                         job_id=job_id,
                         sequence_num=0,
@@ -321,6 +358,8 @@ async def create_chat_completion(
                         content=msg.content,
                         tool_calls=msg.tool_calls,
                         tool_call_id=msg.tool_call_id,
+                        parent_message_id=last_msg_id,
+                        metadata_=msg_metadata if msg_metadata else {},
                     )
                     session.add(chat_msg)
                     break
@@ -338,6 +377,7 @@ async def create_chat_completion(
                 session.add(chat_msg)
 
         await session.flush()  # Ensure IDs are generated
+        user_message_id = chat_msg.id  # type: ignore[possibly-undefined]
 
     logger.info(
         "Job persisted to database",
@@ -498,6 +538,7 @@ async def create_chat_completion(
         status="pending",
         created_at=now.isoformat(),
         conversation_id=str(conversation_id_val) if conversation_id_val else None,
+        user_message_id=str(user_message_id) if user_message_id else None,
     )
 
 

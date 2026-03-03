@@ -110,6 +110,18 @@ class PostgresWriter:
                 )
                 max_seq = result.scalar() or 0
 
+                # Get the last message ID in this job to use as parent
+                last_msg_result = await session.execute(
+                    text("""
+                        SELECT id FROM jobs.chat_messages
+                        WHERE job_id = :job_id
+                        ORDER BY sequence_num DESC
+                        LIMIT 1
+                    """),
+                    {"job_id": job_id},
+                )
+                last_msg_id = last_msg_result.scalar()
+
                 # Load job record for lifecycle event updates
                 job_result = await session.execute(
                     select(Job).where(Job.id == job_id)
@@ -137,12 +149,15 @@ class PostgresWriter:
                             tool_call_id=data.get("tool_call_id"),
                             input_tokens=data.get("input_tokens"),
                             output_tokens=data.get("output_tokens"),
+                            parent_message_id=last_msg_id,
                             metadata_={
                                 "event_id": event["event_id"],
                                 "timestamp_ms": event["timestamp_ms"],
                             },
                         )
                         session.add(message)
+                        await session.flush()
+                        last_msg_id = message.id
 
                     elif event_type == "tool_result":
                         max_seq += 1
@@ -152,12 +167,15 @@ class PostgresWriter:
                             role=MessageRole.TOOL,
                             content=data.get("result"),
                             tool_call_id=data.get("tool_call_id"),
+                            parent_message_id=last_msg_id,
                             metadata_={
                                 "tool_name": data.get("tool_name"),
                                 "event_id": event["event_id"],
                             },
                         )
                         session.add(message)
+                        await session.flush()
+                        last_msg_id = message.id
 
                     elif event_type == "tool_call":
                         # Tool calls are part of conversation history
@@ -169,12 +187,15 @@ class PostgresWriter:
                             role=MessageRole.ASSISTANT,
                             content=data.get("content"),  # Preserve pre-tool content
                             tool_calls=data.get("tool_calls"),  # LLM's tool requests
+                            parent_message_id=last_msg_id,
                             metadata_={
                                 "event_id": event["event_id"],
                                 "event_type": "tool_call",
                             },
                         )
                         session.add(message)
+                        await session.flush()
+                        last_msg_id = message.id
 
                     # LIFECYCLE EVENTS → Job table updates
                     elif event_type == "start":

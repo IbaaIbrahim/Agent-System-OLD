@@ -25,7 +25,7 @@ class ToolMetadata(BaseModel):
     client_side_execution: bool = False  # If True, executes in browser instead of backend workers
     # Model preferences (used when user doesn't specify a model)
     preferred_provider: str | None = None  # e.g., "anthropic", "openai"
-    preferred_model: str | None = None  # e.g., "claude-3-5-sonnet-20241022"
+    preferred_model: str | None = None  # e.g., "claude-sonnet-4-5"
     # Plan requirement (which plans include this tool)
     required_plan_feature: str | None = None  # e.g., "tools.web_search"
     # For USER_ENABLED tools - UI display
@@ -98,7 +98,7 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         },
         behavior=ToolBehavior.USER_ENABLED,
         preferred_provider="anthropic",
-        preferred_model="claude-3-5-haiku-20241022",  # Search summarization, use fast model
+        preferred_model="claude-haiku-4-5",  # Search summarization, use fast model
         # required_plan_feature="tools.web_search",
         required_plan_feature=None,
         toggle_label="Web Search",
@@ -124,7 +124,7 @@ TOOL_CATALOG: dict[str, ToolMetadata] = {
         },
         behavior=ToolBehavior.USER_ENABLED,
         preferred_provider="anthropic",
-        preferred_model="claude-3-5-sonnet-20241022",  # Code needs reasoning
+        preferred_model="claude-sonnet-4-5",  # Code needs reasoning
         # required_plan_feature="tools.code_executor",
         required_plan_feature=None,
     ),

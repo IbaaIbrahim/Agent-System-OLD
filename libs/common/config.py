@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     default_llm_provider: Literal["anthropic", "openai"] = "anthropic"
-    anthropic_default_model: str = "claude-sonnet-4-20250514"
-    openai_default_model: str = "gpt-4-turbo-preview"
+    anthropic_default_model: str = "claude-sonnet-4-5"
+    openai_default_model: str = "gpt-4o-mini"
     llm_timeout: int = Field(default=120, ge=10, description="Timeout for LLM provider calls in seconds")
 
     # Authentication

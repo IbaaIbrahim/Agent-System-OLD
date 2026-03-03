@@ -2,10 +2,17 @@ import React from 'react';
 const { useState, useRef, useEffect, useCallback } = React;
 import './Composer.css';
 import { ReasoningMenu, PlusMenu, EffortLevel } from '../ComposerMenu/ComposerMenu';
+import { ReplyPreview } from '../ReplyPreview/ReplyPreview';
 import { AttachedFile } from '../../api/types';
 
+export interface ReplyingTo {
+    id: string;
+    role: string;
+    content: string;
+}
+
 export interface ComposerProps {
-    onSend?: (text: string, fileIds?: string[], attachedFiles?: AttachedFile[]) => void;
+    onSend?: (text: string, fileIds?: string[], attachedFiles?: AttachedFile[], replyToMessageId?: string) => void;
     disabled?: boolean;
     placeholder?: string;
     effortLevel?: EffortLevel;
@@ -15,6 +22,8 @@ export interface ComposerProps {
     pageContextEnabled?: boolean;
     onPageContextChange?: (enabled: boolean) => void;
     onFileUpload?: (file: File) => Promise<AttachedFile>;
+    replyingTo?: ReplyingTo | null;
+    onDismissReply?: () => void;
 }
 
 const ALLOWED_TYPES = [
@@ -54,7 +63,9 @@ export const Composer: React.FC<ComposerProps> = ({
     onWebSearchChange,
     pageContextEnabled = false,
     onPageContextChange,
-    onFileUpload
+    onFileUpload,
+    replyingTo,
+    onDismissReply
 }) => {
     const [input, setInput] = useState('');
     const [activeMenu, setActiveMenu] = useState<'plus' | 'reasoning' | null>(null);
@@ -78,12 +89,13 @@ export const Composer: React.FC<ComposerProps> = ({
     const handleSendMessage = useCallback(() => {
         if ((input.trim() || attachedFiles.length > 0) && !disabled) {
             const fileIds = attachedFiles.length > 0 ? attachedFiles.map(f => f.file_id) : undefined;
-            onSend?.(input, fileIds, attachedFiles.length > 0 ? [...attachedFiles] : undefined);
+            onSend?.(input, fileIds, attachedFiles.length > 0 ? [...attachedFiles] : undefined, replyingTo?.id);
             setInput('');
             setAttachedFiles([]);
             setUploadError(null);
+            onDismissReply?.();
         }
-    }, [input, attachedFiles, disabled, onSend]);
+    }, [input, attachedFiles, disabled, onSend, replyingTo, onDismissReply]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -250,6 +262,15 @@ export const Composer: React.FC<ComposerProps> = ({
             )}
 
             <div className="cb-composer-input-wrapper">
+                {/* Reply preview */}
+                {replyingTo && onDismissReply && (
+                    <ReplyPreview
+                        role={replyingTo.role}
+                        content={replyingTo.content}
+                        onDismiss={onDismissReply}
+                    />
+                )}
+
                 {/* Attached files preview */}
                 {attachedFiles.length > 0 && (
                     <div className="cb-attached-files">

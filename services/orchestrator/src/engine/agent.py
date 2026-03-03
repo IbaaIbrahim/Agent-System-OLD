@@ -585,6 +585,11 @@ class AgentExecutor:
             pending_tool_count=len(state.pending_tool_calls),
         )
 
+        # Tool results already emitted by resume handler as they arrived
+        already_emitted = set(
+            state.metadata.get("emitted_tool_result_ids", [])
+        )
+
         # Inject tool results into message history
         for tc in state.pending_tool_calls:
             result = tool_results.get(tc.id)
@@ -601,13 +606,16 @@ class AgentExecutor:
             # Add to message history
             state.add_tool_result(tc.id, result)
 
-            # Emit event for client (unless tool has emit_events=False)
-            if self._should_emit_tool_event(tc.name):
+            # Emit event for client only if not already emitted partially
+            if tc.id not in already_emitted and self._should_emit_tool_event(tc.name):
                 await self._emit_event(state, "tool_result", {
                     "tool_call_id": tc.id,
                     "tool_name": tc.name,
                     "result": result,
                 })
+
+        # Clean up partial emission tracking
+        state.metadata.pop("emitted_tool_result_ids", None)
 
         # Clear pending tools and mark as running
         state.pending_tool_calls = []
