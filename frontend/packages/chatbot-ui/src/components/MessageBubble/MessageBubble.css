@@ -3,6 +3,11 @@
     gap: var(--cb-space-3);
     margin-bottom: var(--cb-space-4);
     animation: cb-fade-in 0.3s ease-out;
+    position: relative;
+}
+
+.cb-message-row:hover {
+    z-index: 1;
 }
 
 .cb-row-user {
@@ -395,6 +400,31 @@
     color: rgba(255, 255, 255, 0.45);
 }
 
+/* === Reply Indicator === */
+.cb-reply-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: var(--cb-text-tertiary);
+    border-left: 2px solid var(--cb-accent-primary, #6366f1);
+    border-radius: 0 4px 4px 0;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.cb-reply-indicator svg {
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+
+.cb-reply-indicator-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 @keyframes cb-fade-in {
     from {
         opacity: 0;
@@ -405,4 +435,73 @@
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* Inline edit */
+.cb-edit-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.cb-edit-textarea {
+    width: 100%;
+    min-height: 60px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.95);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+}
+
+.cb-edit-textarea:focus {
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.cb-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.cb-edit-cancel,
+.cb-edit-save {
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.cb-edit-cancel {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.cb-edit-cancel:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.cb-edit-save {
+    background: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.cb-edit-save:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.cb-edit-save:disabled {
+    opacity: 0.4;
+    cursor: default;
 }

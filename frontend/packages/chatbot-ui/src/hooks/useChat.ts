@@ -10,6 +10,7 @@ interface QueuedMessage {
     text: string;
     fileIds?: string[];
     attachedFiles?: AttachedFile[];
+    replyToMessageId?: string;
 }
 
 export const useChat = ({ client, onToolCall }: UseChatOptions) => {
@@ -51,7 +52,7 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
             setMessageQueue(prev => prev.slice(1));
 
             try {
-                await client.sendMessage(nextItem.text, setChatState, nextItem.fileIds, nextItem.attachedFiles);
+                await client.sendMessage(nextItem.text, setChatState, nextItem.fileIds, nextItem.attachedFiles, nextItem.replyToMessageId);
             } finally {
                 setIsProcessing(false);
             }
@@ -70,8 +71,8 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         prevMsgCountRef.current = chatState.messages.length;
     }, [chatState.messages]);
 
-    const handleSend = (text: string, fileIds?: string[], attachedFiles?: AttachedFile[]) => {
-        setMessageQueue(prev => [...prev, { text, fileIds, attachedFiles }]);
+    const handleSend = (text: string, fileIds?: string[], attachedFiles?: AttachedFile[], replyToMessageId?: string) => {
+        setMessageQueue(prev => [...prev, { text, fileIds, attachedFiles, replyToMessageId }]);
     };
 
     const handleRemoveQueueItem = (index: number) => {

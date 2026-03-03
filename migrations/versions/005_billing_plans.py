@@ -625,8 +625,8 @@ def upgrade() -> None:
             (gen_random_uuid(), 'summarization', 'Summarization', 'Document and text summarization', 'openai', 'gpt-4o-mini', 1.0),
             (gen_random_uuid(), 'rag', 'RAG Query', 'Retrieval-augmented generation queries', 'openai', 'gpt-4o-mini', 1.2),
             (gen_random_uuid(), 'checklist_generation', 'Checklist Generation', 'Generate structured checklists', 'openai', 'gpt-4o', 1.5),
-            (gen_random_uuid(), 'document_analysis', 'Document Analysis', 'Analyze large documents', 'anthropic', 'claude-sonnet-4-20250514', 2.0),
-            (gen_random_uuid(), 'code_generation', 'Code Generation', 'Generate and analyze code', 'anthropic', 'claude-sonnet-4-20250514', 1.5),
+            (gen_random_uuid(), 'document_analysis', 'Document Analysis', 'Analyze large documents', 'anthropic', 'claude-sonnet-4-5', 2.0),
+            (gen_random_uuid(), 'code_generation', 'Code Generation', 'Generate and analyze code', 'anthropic', 'claude-sonnet-4-5', 1.5),
             (gen_random_uuid(), 'data_extraction', 'Data Extraction', 'Extract structured data from text', 'openai', 'gpt-4o', 1.2);
     """)
 

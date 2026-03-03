@@ -15,6 +15,13 @@ export class RealChatClient implements ChatClient {
     private libraryTools: Set<string> = new Set();
     private conversationId: string | null = null;
     private effortLevel: 'low' | 'medium' | 'high' = 'medium';
+    private lastOnUpdate: ((state: ChatState) => void) | null = null;
+
+    private static isUuid(value: string): boolean {
+        return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
+            value,
+        );
+    }
 
     constructor(token: string, apiBaseUrl?: string) {
         this.accessToken = token;
@@ -90,17 +97,22 @@ export class RealChatClient implements ChatClient {
     }
 
 
-    async sendMessage(content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: import('./types').AttachedFile[]): Promise<void> {
+    async sendMessage(content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: import('./types').AttachedFile[], replyToMessageId?: string): Promise<void> {
         if (!this.accessToken) {
             console.error('No access token available');
             return;
         }
 
+        // Remember the latest updater so we can refresh after edit branches
+        this.lastOnUpdate = onUpdate;
+
         // 1. Add User Message immediately
+        const lastMsg = this.messages.length > 0 ? this.messages[this.messages.length - 1] : null;
         const userMsg: MessageProps = {
             id: Date.now().toString(),
             role: 'user',
             content,
+            parentMessageId: lastMsg?.id,
             attachments: attachedFiles?.map(f => ({
                 id: f.file_id,
                 type: (f.content_type.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
@@ -129,6 +141,9 @@ export class RealChatClient implements ChatClient {
             };
             if (fileIds && fileIds.length > 0) {
                 metadata.file_ids = fileIds;
+            }
+            if (replyToMessageId) {
+                metadata.reply_to_message_id = replyToMessageId;
             }
 
             // 3. Make the API Call
@@ -160,10 +175,18 @@ export class RealChatClient implements ChatClient {
             }
 
             // 4. Handle Streaming Response
-            const { stream_url, job_id, conversation_id } = await response.json();
+            const { stream_url, job_id, conversation_id, user_message_id } = await response.json();
             this.currentJobId = job_id;
             if (conversation_id) {
                 this.conversationId = conversation_id;
+            }
+
+            // Replace temp user message ID with real UUID from backend
+            if (user_message_id) {
+                this.messages = this.messages.map(m =>
+                    m.id === userMsg.id ? { ...m, id: user_message_id } : m
+                );
+                onUpdate({ messages: this.messages, isThinking: true });
             }
 
             if (!stream_url) {
@@ -180,15 +203,36 @@ export class RealChatClient implements ChatClient {
             this.messages = [...this.messages, assistantMsg];
             onUpdate({ messages: this.messages, isThinking: true });
 
-            // Connect to SSE Stream
-            const eventSource = new EventSource(stream_url);
+            // Stream the assistant response via SSE
+            await this._streamAssistantResponse(stream_url, assistantMsgId, onUpdate);
+
+        } catch (error: any) {
+            console.error('RealChatClient Error:', error);
+
+            // Add error message as assistant response for visibility
+            const errorMsg: MessageProps = {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: `Error: ${error.message || 'Unknown error occurred.'}`
+            };
+            this.messages = [...this.messages, errorMsg];
+            onUpdate({ messages: this.messages, isThinking: false });
+        }
+    }
+
+    private _streamAssistantResponse(
+        streamUrl: string,
+        assistantMsgId: string,
+        onUpdate: (state: ChatState) => void,
+    ): Promise<void> {
+        return new Promise<void>((resolve) => {
+            const eventSource = new EventSource(streamUrl);
             let fullContent = '';
-            let lastDeltaTime = Date.now(); // Initialize to now - will be updated on first delta
+            let lastDeltaTime = Date.now();
             let deltaCheckInterval: ReturnType<typeof setInterval> | null = null;
             let isStreaming = true;
+            let thinkingContent = '';
 
-            // Check periodically if we're waiting for deltas (no deltas received in last 2 seconds)
-            // Only show indicator if we've been waiting for at least 2 seconds
             const checkDeltaTimeout = () => {
                 if (!isStreaming) return;
                 const timeSinceLastDelta = Date.now() - lastDeltaTime;
@@ -196,17 +240,12 @@ export class RealChatClient implements ChatClient {
                 onUpdate({ messages: this.messages, isThinking: true, isWaitingForDeltas });
             };
 
-            // Start checking every 500ms after initial 2 second delay
             setTimeout(() => {
                 if (isStreaming) {
                     deltaCheckInterval = setInterval(checkDeltaTimeout, 500);
                 }
             }, 2000);
 
-            // Track thinking content separately
-            let thinkingContent = '';
-
-            // Listen for 'reasoning_delta' events (thinking/reasoning tokens)
             eventSource.addEventListener('reasoning_delta', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
@@ -215,11 +254,8 @@ export class RealChatClient implements ChatClient {
                         this.messages = this.messages.map(m => {
                             if (m.id === assistantMsgId) {
                                 let steps = m.steps ? [...m.steps] : [];
-                                
-                                // Find or create thinking step
                                 let thinkingStep = steps.find(s => s.type === 'thinking');
                                 if (!thinkingStep) {
-                                    // Create new thinking step
                                     thinkingStep = {
                                         id: `thinking-${Date.now()}`,
                                         type: 'thinking' as const,
@@ -228,7 +264,6 @@ export class RealChatClient implements ChatClient {
                                     };
                                     steps.push(thinkingStep);
                                 } else {
-                                    // Update existing thinking step
                                     const stepIndex = steps.findIndex(s => s.id === thinkingStep!.id);
                                     steps[stepIndex] = {
                                         ...thinkingStep,
@@ -236,7 +271,6 @@ export class RealChatClient implements ChatClient {
                                         isFinished: false,
                                     };
                                 }
-                                
                                 return { ...m, steps };
                             }
                             return m;
@@ -248,30 +282,24 @@ export class RealChatClient implements ChatClient {
                 }
             });
 
-            // Listen for 'delta' events for content updates
             eventSource.addEventListener('delta', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.content) {
-                        lastDeltaTime = Date.now(); // Update timestamp
+                        lastDeltaTime = Date.now();
                         fullContent += data.content;
                         this.messages = this.messages.map(m => {
                             if (m.id === assistantMsgId) {
                                 let updatedM = { ...m, content: fullContent };
-
-                                // If we are in "steps mode", we must sync the content to a text step
                                 if (m.steps && m.steps.length > 0) {
                                     const steps = [...m.steps];
                                     const lastStep = steps[steps.length - 1];
-
                                     if (lastStep && lastStep.type === 'text') {
-                                        // Update the existing last text step
                                         steps[steps.length - 1] = {
                                             ...lastStep,
                                             content: (lastStep.content || '') + data.content
                                         };
                                     } else {
-                                        // Create a new text step
                                         steps.push({
                                             id: `text-${Date.now()}`,
                                             type: 'text',
@@ -291,22 +319,16 @@ export class RealChatClient implements ChatClient {
                 }
             });
 
-            // Listen for 'tool_call' events (for informational display)
             eventSource.addEventListener('tool_call', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Tool call received:', data);
-
-                    // Backend sends tool_calls as an array
                     const toolCalls: Array<{id?: string; name?: string; tool_name?: string; arguments?: any}> =
                         data.tool_calls || [data];
 
                     this.messages = this.messages.map(m => {
                         if (m.id === assistantMsgId) {
                             let steps = m.steps ? [...m.steps] : [];
-
-                            // Transition from simple content to steps:
-                            // Move existing top-level content to a text step so it remains visible
                             if (steps.length === 0 && fullContent) {
                                 steps.push({
                                     id: `text-pre-${Date.now()}`,
@@ -314,7 +336,6 @@ export class RealChatClient implements ChatClient {
                                     content: fullContent
                                 });
                             }
-
                             for (const tc of toolCalls) {
                                 const newStep: MessageStep = {
                                     id: tc.id || `tool-${Date.now()}`,
@@ -335,22 +356,15 @@ export class RealChatClient implements ChatClient {
                 }
             });
 
-            // Listen for 'tool_result' events (when tools complete)
             eventSource.addEventListener('tool_result', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Tool result received:', data);
-
                     this.messages = this.messages.map(m => {
                         if (m.id === assistantMsgId && m.steps) {
                             const steps = m.steps.map(s => {
-                                // Match by tool call ID or name if ID is missing
                                 if (s.type === 'tool-call' && (s.id === data.tool_call_id || s.toolName === data.tool_name)) {
-                                    return {
-                                        ...s,
-                                        toolStatus: 'completed',
-                                        toolResult: data.result
-                                    } as MessageStep;
+                                    return { ...s, toolStatus: 'completed', toolResult: data.result } as MessageStep;
                                 }
                                 return s;
                             });
@@ -364,17 +378,13 @@ export class RealChatClient implements ChatClient {
                 }
             });
 
-            // Listen for 'confirm_request' events (for CONFIRM_REQUIRED tools)
             eventSource.addEventListener('confirm_request', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Confirm request received:', data);
-
                     this.messages = this.messages.map(m => {
                         if (m.id === assistantMsgId) {
                             let steps = m.steps ? [...m.steps] : [];
-
-                            // Move existing content to a text step if needed
                             if (steps.length === 0 && fullContent) {
                                 steps.push({
                                     id: `text-pre-${Date.now()}`,
@@ -382,8 +392,6 @@ export class RealChatClient implements ChatClient {
                                     content: fullContent
                                 });
                             }
-
-                            // Add confirm request step
                             steps.push({
                                 id: data.tool_call_id,
                                 type: 'confirm-request',
@@ -403,20 +411,15 @@ export class RealChatClient implements ChatClient {
                 }
             });
 
-            // Listen for 'confirm_response' events (user's decision processed)
             eventSource.addEventListener('confirm_response', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Confirm response received:', data);
-
                     this.messages = this.messages.map(m => {
                         if (m.id === assistantMsgId && m.steps) {
                             const steps = m.steps.map(s => {
                                 if (s.type === 'confirm-request' && s.toolCallId === data.tool_call_id) {
-                                    return {
-                                        ...s,
-                                        confirmStatus: data.confirmed ? 'confirmed' : 'rejected',
-                                    } as MessageStep;
+                                    return { ...s, confirmStatus: data.confirmed ? 'confirmed' : 'rejected' } as MessageStep;
                                 }
                                 return s;
                             });
@@ -424,53 +427,39 @@ export class RealChatClient implements ChatClient {
                         }
                         return m;
                     });
-                    // Keep thinking if confirmed (tool will execute), stop if rejected
                     onUpdate({ messages: this.messages, isThinking: data.confirmed });
                 } catch (e) {
                     console.warn('Failed to parse confirm_response event data', e);
                 }
             });
 
-            // Listen for 'client_tool_call' events (for CLIENT_SIDE tools)
             eventSource.addEventListener('client_tool_call', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Client tool call received:', data);
-
-                    // Execute the tool based on tool_name
                     this.executeClientTool(data.tool_call_id, data.tool_name, data.arguments)
-                        .then(() => {
-                            console.log('Client tool executed successfully:', data.tool_name);
-                        })
-                        .catch((error) => {
-                            console.error('Client tool execution failed:', error);
-                        });
+                        .then(() => console.log('Client tool executed successfully:', data.tool_name))
+                        .catch((error) => console.error('Client tool execution failed:', error));
                 } catch (e) {
                     console.warn('Failed to parse client_tool_call event data', e);
                 }
             });
 
-            // Listen for 'suspended' events (when job waits for tool execution)
             eventSource.addEventListener('suspended', (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Job suspended, waiting for tools:', data.pending_tools);
-                    // Job is suspended waiting for tool results - keep connection open
-                    // Backend will handle tool execution and resume
                 } catch (e) {
                     console.warn('Failed to parse suspended event data', e);
                 }
             });
 
-            // Listen for 'complete' event to close connection
             eventSource.addEventListener('complete', () => {
                 isStreaming = false;
                 if (deltaCheckInterval) {
                     clearInterval(deltaCheckInterval);
                     deltaCheckInterval = null;
                 }
-                
-                // Mark thinking step as finished if it exists
                 if (thinkingContent) {
                     this.messages = this.messages.map(m => {
                         if (m.id === assistantMsgId && m.steps) {
@@ -485,12 +474,11 @@ export class RealChatClient implements ChatClient {
                         return m;
                     });
                 }
-                
                 eventSource.close();
                 onUpdate({ messages: this.messages, isThinking: false, isWaitingForDeltas: false });
+                resolve();
             });
 
-            // Handle errors
             eventSource.onerror = (err) => {
                 isStreaming = false;
                 if (deltaCheckInterval) {
@@ -499,29 +487,15 @@ export class RealChatClient implements ChatClient {
                 }
                 console.error('EventSource failed:', err);
                 eventSource.close();
-
                 if (fullContent.length === 0) {
                     this.messages = this.messages.map(m =>
                         m.id === assistantMsgId ? { ...m, content: 'Error: Connection to stream failed.' } : m
                     );
                 }
                 onUpdate({ messages: this.messages, isThinking: false, isWaitingForDeltas: false });
+                resolve();
             };
-
-
-
-        } catch (error: any) {
-            console.error('RealChatClient Error:', error);
-
-            // Add error message as assistant response for visibility
-            const errorMsg: MessageProps = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: `Error: ${error.message || 'Unknown error occurred.'}`
-            };
-            this.messages = [...this.messages, errorMsg];
-            onUpdate({ messages: this.messages, isThinking: false });
-        }
+        });
     }
 
     reset(onUpdate: (state: ChatState) => void): void {
@@ -1163,6 +1137,9 @@ export class RealChatClient implements ChatClient {
 
     async loadConversation(id: string, onUpdate: (state: ChatState) => void): Promise<void> {
         if (!this.accessToken) throw new Error('No access token available');
+
+        // Keep track of the updater used for this conversation
+        this.lastOnUpdate = onUpdate;
         const response = await fetch(
             `${this.apiBaseUrl}/v1/conversations/${id}`,
             { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
@@ -1207,6 +1184,16 @@ export class RealChatClient implements ChatClient {
                         contentType: att.content_type,
                     }));
                 }
+
+                // Branch metadata
+                if (m.parent_message_id) userMsg.parentMessageId = m.parent_message_id;
+                if (m.branch_point) userMsg.branchPoint = m.branch_point;
+                if (m.branch_count != null) userMsg.branchCount = m.branch_count;
+                if (m.active_branch_index != null) userMsg.activeBranchIndex = m.active_branch_index;
+                if (m.branch_ids) userMsg.branchIds = m.branch_ids;
+
+                // Reply metadata
+                if (m.reply_to_message_id) userMsg.replyToMessageId = m.reply_to_message_id;
 
                 msgs.push(userMsg);
             } else if (m.role === 'assistant') {
@@ -1267,6 +1254,13 @@ export class RealChatClient implements ChatClient {
                         steps: steps.length > 0 ? steps : undefined,
                         shouldAnimate: false,
                     };
+                    // Branch metadata on assistant messages
+                    if (m.parent_message_id) currentAssistantMsg.parentMessageId = m.parent_message_id;
+                    if (m.branch_point) currentAssistantMsg.branchPoint = m.branch_point;
+                    if (m.branch_count != null) currentAssistantMsg.branchCount = m.branch_count;
+                    if (m.active_branch_index != null) currentAssistantMsg.activeBranchIndex = m.active_branch_index;
+                    if (m.branch_ids) currentAssistantMsg.branchIds = m.branch_ids;
+
                     currentJobId = m.job_id;
                 }
             }
@@ -1281,6 +1275,129 @@ export class RealChatClient implements ChatClient {
         this.conversationId = id;
         this.currentJobId = null;
         onUpdate({ messages: this.messages, isThinking: false });
+    }
+
+    async editMessage(messageId: string, content: string): Promise<void> {
+        if (!this.accessToken || !this.conversationId) {
+            throw new Error('No access token or conversation ID available');
+        }
+
+        // Only persisted backend messages (UUIDs) can be edited.
+        if (!RealChatClient.isUuid(messageId)) {
+            console.warn(
+                'editMessage called with non-UUID messageId; ignoring',
+                messageId,
+            );
+            return;
+        }
+
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations/${this.conversationId}/edit-message`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.accessToken}`,
+                },
+                body: JSON.stringify({
+                    message_id: messageId,
+                    content,
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            let errorDetails = response.statusText;
+            try {
+                const errorJson = await response.json();
+                errorDetails = errorJson.detail || JSON.stringify(errorJson);
+            } catch (e) { /* ignore */ }
+            throw new Error(`Edit message failed: ${response.status} - ${errorDetails}`);
+        }
+
+        // The response contains stream_url for the new branch's assistant response
+        const data = await response.json();
+        console.log('Edit branch created:', data);
+
+        // Track the new job so confirm/tool result APIs work
+        if (data.job_id) {
+            this.currentJobId = data.job_id;
+        }
+        if (data.conversation_id) {
+            this.conversationId = data.conversation_id;
+        }
+
+        // If we don't have a state updater (e.g. not used from Chatbot), nothing more to do
+        if (!data.stream_url || !data.conversation_id || !this.lastOnUpdate) {
+            return;
+        }
+
+        const onUpdate = this.lastOnUpdate;
+
+        // Update the edited user message in-place: swap to new branch ID,
+        // update content, trim everything after it (old branch), and apply
+        // branch metadata so the BranchNavigator renders immediately.
+        const editedMsgIndex = this.messages.findIndex(m => m.id === messageId);
+        if (editedMsgIndex >= 0) {
+            this.messages = this.messages.slice(0, editedMsgIndex + 1).map(m =>
+                m.id === messageId ? {
+                    ...m,
+                    id: data.branch_message_id,
+                    content,
+                    branchPoint: true,
+                    branchCount: data.branch_count,
+                    activeBranchIndex: data.active_branch_index,
+                    branchIds: data.branch_ids,
+                    parentMessageId: data.parent_message_id || m.parentMessageId,
+                } : m
+            );
+        }
+
+        // Create placeholder assistant message for live streaming
+        const assistantMsgId = (Date.now() + 1).toString();
+        const assistantMsg: MessageProps = {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: ''
+        };
+        this.messages = [...this.messages, assistantMsg];
+        onUpdate({ messages: this.messages, isThinking: true });
+
+        // Stream the assistant response live — content stays visible after completion
+        await this._streamAssistantResponse(data.stream_url, assistantMsgId, onUpdate);
+    }
+
+    async switchBranch(branchPointMessageId: string, targetChildMessageId: string): Promise<void> {
+        if (!this.accessToken || !this.conversationId) {
+            throw new Error('No access token or conversation ID available');
+        }
+
+        const response = await fetch(
+            `${this.apiBaseUrl}/v1/conversations/${this.conversationId}/switch-branch`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.accessToken}`,
+                },
+                body: JSON.stringify({
+                    branch_point_message_id: branchPointMessageId,
+                    target_child_message_id: targetChildMessageId,
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            let errorDetails = response.statusText;
+            try {
+                const errorJson = await response.json();
+                errorDetails = errorJson.detail || JSON.stringify(errorJson);
+            } catch (e) { /* ignore */ }
+            throw new Error(`Switch branch failed: ${response.status} - ${errorDetails}`);
+        }
+
+        // The Chatbot component will reload the conversation after this returns
+        console.log('Branch switched successfully');
     }
 
     async deleteConversation(id: string): Promise<void> {

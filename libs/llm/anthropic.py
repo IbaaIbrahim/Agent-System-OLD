@@ -30,7 +30,7 @@ class AnthropicProvider(LLMProvider):
     def __init__(
         self,
         api_key: str,
-        default_model: str = "claude-sonnet-4-20250514",
+        default_model: str = "claude-sonnet-4-5",
         timeout: int = 60,
     ) -> None:
         super().__init__(api_key, default_model, timeout)

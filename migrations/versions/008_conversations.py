@@ -114,7 +114,7 @@ def upgrade() -> None:
         ["id"],
         source_schema="jobs",
         referent_schema="jobs",
-        ondelete="SET NULL",
+        ondelete="CASCADE",
     )
     op.create_index(
         "ix_jobs_conversation_id",

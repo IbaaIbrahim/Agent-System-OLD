@@ -1,10 +1,12 @@
 import React from 'react';
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 import './MessageBubble.css';
 import { ToolInvocation } from '../ToolInvocation/ToolInvocation';
 import { ConfirmButtons, ConfirmStatus } from '../ConfirmButtons/ConfirmButtons';
 import { AuthenticatedImage } from '../AuthenticatedImage/AuthenticatedImage';
 import { BlinkingIndicator } from '../BlinkingIndicator/BlinkingIndicator';
+import { MessageActions } from '../MessageActions/MessageActions';
+import { BranchNavigator } from '../BranchNavigator/BranchNavigator';
 import { useChatbotContext } from '../../context/ChatbotContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -57,6 +59,20 @@ export interface MessageProps {
     onReject?: (toolCallId: string) => void;
     onToolCall?: Record<string, (data: any) => Promise<any> | void>;
     isWaitingForDeltas?: boolean; // Show blinking indicator when waiting for deltas
+    // Message actions
+    onReply?: (message: MessageProps) => void;
+    onEdit?: (messageId: string, content: string) => void;
+    onSwitchBranch?: (branchPointMessageId: string, targetChildMessageId: string) => void;
+    // Reply display
+    replyToMessageId?: string;
+    replyToContent?: string;
+    replyToRole?: string;
+    // Branching
+    parentMessageId?: string;
+    branchPoint?: boolean;
+    branchCount?: number;
+    activeBranchIndex?: number;
+    branchIds?: string[];
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -205,14 +221,70 @@ const AttachmentList: React.FC<{ attachments: Attachment[] }> = ({ attachments }
 );
 
 export const MessageBubble: React.FC<MessageProps> = (props) => {
-    const {
-        role,
-        steps,
-        shouldAnimate = true
-    } = props;
+    const { role, steps, shouldAnimate = true } = props;
+
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState('');
+
+    const getStepsTextContent = (): string => {
+        if (!steps || steps.length === 0) return props.content || '';
+        const fromSteps = steps
+            .filter(s => s.type === 'text')
+            .map(s => s.content || '')
+            .join('\n\n');
+        return fromSteps || props.content || '';
+    };
+
+    const handleStartEdit = useCallback((messageId: string, content: string) => {
+        setEditText(content);
+        setIsEditing(true);
+    }, []);
+
+    const handleCancelEdit = useCallback(() => {
+        setIsEditing(false);
+        setEditText('');
+    }, []);
+
+    const handleSaveEdit = useCallback(() => {
+        if (editText.trim() && props.onEdit) {
+            props.onEdit(props.id, editText.trim());
+            setIsEditing(false);
+            setEditText('');
+        }
+    }, [editText, props.onEdit, props.id]);
+
+    const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSaveEdit();
+        }
+        if (e.key === 'Escape') {
+            handleCancelEdit();
+        }
+    }, [handleSaveEdit, handleCancelEdit]);
+
+    const handlePrevBranch = useCallback(() => {
+        if (props.onSwitchBranch && props.branchIds && props.activeBranchIndex != null && props.activeBranchIndex > 0) {
+            const parentId = props.parentMessageId;
+            if (parentId) {
+                props.onSwitchBranch(parentId, props.branchIds[props.activeBranchIndex - 1]);
+            }
+        }
+    }, [props.onSwitchBranch, props.branchIds, props.activeBranchIndex, props.parentMessageId]);
+
+    const handleNextBranch = useCallback(() => {
+        if (props.onSwitchBranch && props.branchIds && props.activeBranchIndex != null && props.activeBranchIndex < (props.branchCount || 0) - 1) {
+            const parentId = props.parentMessageId;
+            if (parentId) {
+                props.onSwitchBranch(parentId, props.branchIds[props.activeBranchIndex + 1]);
+            }
+        }
+    }, [props.onSwitchBranch, props.branchIds, props.activeBranchIndex, props.branchCount, props.parentMessageId]);
 
     // If steps are present, use steps rendering
     if (steps && steps.length > 0) {
+        const textContent = getStepsTextContent();
+
         return (
             <div className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
                 {role === 'assistant' && (
@@ -223,74 +295,126 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                     </div>
                 )}
 
-                <div className="cb-message-content-wrapper" style={{ width: '100%' }}>
+                <div className="cb-message-content-wrapper" style={{ width: '100%', position: 'relative' }}>
                     {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
+
+                    {props.branchPoint && props.branchCount && props.branchCount > 1 && (
+                        <BranchNavigator
+                            branchCount={props.branchCount}
+                            activeBranchIndex={props.activeBranchIndex ?? 0}
+                            onPrevBranch={handlePrevBranch}
+                            onNextBranch={handleNextBranch}
+                        />
+                    )}
+
+                    {props.replyToContent && (
+                        <div className="cb-reply-indicator">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="9 17 4 12 9 7" />
+                                <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                            </svg>
+                            <span className="cb-reply-indicator-text">
+                                {props.replyToContent.length > 80
+                                    ? props.replyToContent.slice(0, 80) + '...'
+                                    : props.replyToContent}
+                            </span>
+                        </div>
+                    )}
 
                     {role === 'user' && props.attachments && props.attachments.length > 0 && (
                         <AttachmentList attachments={props.attachments} />
                     )}
 
-                    <div className="cb-steps-container">
-                        {steps.map((step, index) => {
-                            const isLast = index === steps.length - 1;
+                    {isEditing && role === 'user' ? (
+                        <div className="cb-edit-container">
+                            <textarea
+                                className="cb-edit-textarea"
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                onKeyDown={handleEditKeyDown}
+                                autoFocus
+                                rows={3}
+                            />
+                            <div className="cb-edit-actions">
+                                <button className="cb-edit-cancel" onClick={handleCancelEdit}>Cancel</button>
+                                <button className="cb-edit-save" onClick={handleSaveEdit} disabled={!editText.trim()}>Send</button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="cb-steps-container">
+                            {steps.map((step, index) => {
+                                const isLast = index === steps.length - 1;
 
-                            if (step.type === 'thinking') {
-                                return (
-                                    <ThinkingBlock
-                                        key={step.id}
-                                        step={step}
-                                    />
-                                );
-                            }
-
-                            if (step.type === 'tool-call') {
-                                const toolHandler = step.toolName ? props.onToolCall?.[step.toolName] : undefined;
-                                return (
-                                    <div key={step.id} className="cb-step-tool" style={{ marginBottom: 8 }}>
-                                        <ToolInvocation
-                                            toolName={step.toolName || 'Tool'}
-                                            args={step.toolArgs}
-                                            status={step.toolStatus as any}
-                                            result={step.toolResult}
-                                            onAction={toolHandler}
+                                if (step.type === 'thinking') {
+                                    return (
+                                        <ThinkingBlock
+                                            key={step.id}
+                                            step={step}
                                         />
-                                    </div>
-                                );
-                            }
+                                    );
+                                }
 
-                            if (step.type === 'confirm-request') {
-                                return (
-                                    <div key={step.id} className="cb-step-confirm" style={{ marginBottom: 8 }}>
-                                        <ConfirmButtons
-                                            toolCallId={step.toolCallId || step.id}
-                                            toolName={step.toolName || 'Tool'}
-                                            label={step.confirmLabel || step.toolName || 'Confirm Action'}
-                                            description={step.confirmDescription}
-                                            status={step.confirmStatus || 'pending'}
-                                            onConfirm={props.onConfirm || (() => { })}
-                                            onReject={props.onReject || (() => { })}
-                                        />
-                                    </div>
-                                );
-                            }
+                                if (step.type === 'tool-call') {
+                                    const toolHandler = step.toolName ? props.onToolCall?.[step.toolName] : undefined;
+                                    return (
+                                        <div key={step.id} className="cb-step-tool" style={{ marginBottom: 8 }}>
+                                            <ToolInvocation
+                                                toolName={step.toolName || 'Tool'}
+                                                args={step.toolArgs}
+                                                status={step.toolStatus as any}
+                                                result={step.toolResult}
+                                                onAction={toolHandler}
+                                            />
+                                        </div>
+                                    );
+                                }
 
-                            if (step.type === 'text') {
-                                return (
-                                    <div key={step.id} className={`cb-message-bubble ${role}`} style={{ marginBottom: 8, maxWidth: '100%' }}>
-                                        <TypewriterText
-                                            content={step.content || ''}
-                                            shouldAnimate={shouldAnimate && isLast}
-                                            onComplete={isLast ? props.onAnimationComplete : undefined}
-                                        />
-                                        {isLast && props.isWaitingForDeltas && (!step.content || step.content.trim().length === 0) && (
-                                            <BlinkingIndicator />
-                                        )}
-                                    </div>
-                                );
-                            }
-                            return null;
-                        })}
-                    </div>
+                                if (step.type === 'confirm-request') {
+                                    return (
+                                        <div key={step.id} className="cb-step-confirm" style={{ marginBottom: 8 }}>
+                                            <ConfirmButtons
+                                                toolCallId={step.toolCallId || step.id}
+                                                toolName={step.toolName || 'Tool'}
+                                                label={step.confirmLabel || step.toolName || 'Confirm Action'}
+                                                description={step.confirmDescription}
+                                                status={step.confirmStatus || 'pending'}
+                                                onConfirm={props.onConfirm || (() => { })}
+                                                onReject={props.onReject || (() => { })}
+                                            />
+                                        </div>
+                                    );
+                                }
+
+                                if (step.type === 'text') {
+                                    return (
+                                        <div key={step.id} className={`cb-message-bubble ${role}`} style={{ marginBottom: 8, maxWidth: '100%' }}>
+                                            <TypewriterText
+                                                content={step.content || ''}
+                                                shouldAnimate={shouldAnimate && isLast}
+                                                onComplete={isLast ? props.onAnimationComplete : undefined}
+                                            />
+                                            {isLast && props.isWaitingForDeltas && (!step.content || step.content.trim().length === 0) && (
+                                                <BlinkingIndicator />
+                                            )}
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })}
+                        </div>
+                    )}
+
+                    {textContent && !isEditing && (
+                        <MessageActions
+                            content={textContent}
+                            role={role as 'user' | 'assistant'}
+                            messageId={props.id}
+                            onReply={props.onReply ? () => props.onReply!(props) : undefined}
+                            onEdit={props.onEdit && role === 'user'
+                                ? () => handleStartEdit(props.id, textContent)
+                                : undefined}
+                        />
+                    )}
                 </div>
             </div>
         );
@@ -437,15 +561,11 @@ const TypewriterText = ({ content, shouldAnimate, onComplete }: { content: strin
 
 // Legacy path for simple content without steps
 const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
-    const {
-        role,
-        content,
-        attachments,
-        toolInvocation,
-        shouldAnimate = true
-    } = props;
+    const { role, content, attachments, toolInvocation, shouldAnimate = true } = props;
 
     const [displayContent, setDisplayContent] = useState('');
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState('');
     const hasFiredCompleteRef = useRef(false);
 
     useEffect(() => {
@@ -499,6 +619,52 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
         };
     }, [content, role, shouldAnimate]);
 
+    const handleStartEdit = useCallback(() => {
+        setEditText(content || '');
+        setIsEditing(true);
+    }, [content]);
+
+    const handleCancelEdit = useCallback(() => {
+        setIsEditing(false);
+        setEditText('');
+    }, []);
+
+    const handleSaveEdit = useCallback(() => {
+        if (editText.trim() && props.onEdit) {
+            props.onEdit(props.id, editText.trim());
+            setIsEditing(false);
+            setEditText('');
+        }
+    }, [editText, props.onEdit, props.id]);
+
+    const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSaveEdit();
+        }
+        if (e.key === 'Escape') {
+            handleCancelEdit();
+        }
+    }, [handleSaveEdit, handleCancelEdit]);
+
+    const handlePrevBranch = useCallback(() => {
+        if (props.onSwitchBranch && props.branchIds && props.activeBranchIndex != null && props.activeBranchIndex > 0) {
+            const parentId = props.parentMessageId;
+            if (parentId) {
+                props.onSwitchBranch(parentId, props.branchIds[props.activeBranchIndex - 1]);
+            }
+        }
+    }, [props.onSwitchBranch, props.branchIds, props.activeBranchIndex, props.parentMessageId]);
+
+    const handleNextBranch = useCallback(() => {
+        if (props.onSwitchBranch && props.branchIds && props.activeBranchIndex != null && props.activeBranchIndex < (props.branchCount || 0) - 1) {
+            const parentId = props.parentMessageId;
+            if (parentId) {
+                props.onSwitchBranch(parentId, props.branchIds[props.activeBranchIndex + 1]);
+            }
+        }
+    }, [props.onSwitchBranch, props.branchIds, props.activeBranchIndex, props.branchCount, props.parentMessageId]);
+
     if (toolInvocation) {
         return (
             <div className="cb-message-row cb-row-assistant" style={{ marginBottom: '8px' }}>
@@ -529,24 +695,78 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                 </div>
             )}
 
-            <div className="cb-message-content-wrapper">
+            <div className="cb-message-content-wrapper" style={{ position: 'relative' }}>
                 {role === 'user' ? null : <div className="cb-sender-name">Assistant</div>}
+
+                {props.branchPoint && props.branchCount && props.branchCount > 1 && (
+                    <BranchNavigator
+                        branchCount={props.branchCount}
+                        activeBranchIndex={props.activeBranchIndex ?? 0}
+                        onPrevBranch={handlePrevBranch}
+                        onNextBranch={handleNextBranch}
+                    />
+                )}
+
+                {props.replyToContent && (
+                    <div className="cb-reply-indicator">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="9 17 4 12 9 7" />
+                            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                        </svg>
+                        <span className="cb-reply-indicator-text">
+                            {props.replyToContent.length > 80
+                                ? props.replyToContent.slice(0, 80) + '...'
+                                : props.replyToContent}
+                        </span>
+                    </div>
+                )}
+
                 {attachments && attachments.length > 0 && (
                     <AttachmentList attachments={attachments} />
                 )}
-                <div className={`cb-message-bubble ${role}`}>
-                    <div className="cb-markdown-content">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {displayContent}
-                        </ReactMarkdown>
-                        {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
-                            <span className="cb-cursor">|</span>
-                        )}
-                        {role === 'assistant' && props.isWaitingForDeltas && (!content || content.trim().length === 0) && (
-                            <BlinkingIndicator />
-                        )}
+
+                {isEditing && role === 'user' ? (
+                    <div className="cb-edit-container">
+                        <textarea
+                            className="cb-edit-textarea"
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            onKeyDown={handleEditKeyDown}
+                            autoFocus
+                            rows={3}
+                        />
+                        <div className="cb-edit-actions">
+                            <button className="cb-edit-cancel" onClick={handleCancelEdit}>Cancel</button>
+                            <button className="cb-edit-save" onClick={handleSaveEdit} disabled={!editText.trim()}>Send</button>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className={`cb-message-bubble ${role}`}>
+                        <div className="cb-markdown-content">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {displayContent}
+                            </ReactMarkdown>
+                            {role === 'assistant' && shouldAnimate && content && displayContent.length < content.length && (
+                                <span className="cb-cursor">|</span>
+                            )}
+                            {role === 'assistant' && props.isWaitingForDeltas && (!content || content.trim().length === 0) && (
+                                <BlinkingIndicator />
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {content && !isEditing && (
+                    <MessageActions
+                        content={content}
+                        role={role as 'user' | 'assistant'}
+                        messageId={props.id}
+                        onReply={props.onReply ? () => props.onReply!(props) : undefined}
+                        onEdit={props.onEdit && role === 'user'
+                            ? handleStartEdit
+                            : undefined}
+                    />
+                )}
             </div>
         </div>
     );

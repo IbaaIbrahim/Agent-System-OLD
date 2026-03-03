@@ -16,10 +16,12 @@ from libs.llm.openai import OpenAIProvider
 # Vision-capable models by provider
 VISION_MODELS = {
     "anthropic": [
-        "claude-3-5-sonnet-20241022",
-        "claude-3-opus-20240229",
-        "claude-3-sonnet-20240229",
-        "claude-3-haiku-20240307",
+        "claude-haiku-4",
+        "claude-sonnet-4",
+        "claude-opus-4",
+        "claude-haiku-4-5",
+        "claude-sonnet-4-5",
+        "claude-opus-4-5",
     ],
     "openai": [
         "gpt-4-vision-preview",
@@ -27,8 +29,7 @@ VISION_MODELS = {
         "gpt-4-turbo-2024-04-09",
         "gpt-4o",
         "gpt-4o-mini",
-        "gpt-4o-2024-05-13",
-        "gpt-4o-2024-08-06",
+        "o4-mini"
     ],
 }
 
