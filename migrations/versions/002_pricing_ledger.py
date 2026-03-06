@@ -117,13 +117,15 @@ def upgrade() -> None:
         INSERT INTO billing.model_pricing
         (id, provider, model_id, display_name, input_price_per_1k, output_price_per_1k, context_window)
         VALUES
-        (gen_random_uuid(), 'anthropic', 'claude-sonnet-4-20250514', 'Claude Sonnet 4', 0.003, 0.015, 200000),
-        (gen_random_uuid(), 'anthropic', 'claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet', 0.003, 0.015, 200000),
-        (gen_random_uuid(), 'anthropic', 'claude-3-opus-20240229', 'Claude 3 Opus', 0.015, 0.075, 200000),
-        (gen_random_uuid(), 'anthropic', 'claude-3-haiku-20240307', 'Claude 3 Haiku', 0.00025, 0.00125, 200000),
-        (gen_random_uuid(), 'openai', 'gpt-4-turbo-preview', 'GPT-4 Turbo', 0.01, 0.03, 128000),
+        (gen_random_uuid(), 'anthropic', 'claude-sonnet-4-5', 'Claude Sonnet 4', 0.003, 0.015, 200000),
+        (gen_random_uuid(), 'anthropic', 'claude-haiku-4-5', 'Claude Haiku 4', 0.003, 0.015, 200000),
+        (gen_random_uuid(), 'anthropic', 'claude-opus-4-5', 'Claude Opus 4', 0.015, 0.075, 200000),
+        (gen_random_uuid(), 'openai', 'gpt-4-vision-preview', 'GPT-4 Vision Preview', 0.01, 0.03, 128000),
+        (gen_random_uuid(), 'openai', 'gpt-4-turbo', 'GPT-4 Turbo', 0.005, 0.015, 128000),
+        (gen_random_uuid(), 'openai', 'gpt-4-turbo-2024-04-09', 'GPT-4 Turbo 2024-04-09', 0.00015, 0.0006, 128000),
         (gen_random_uuid(), 'openai', 'gpt-4o', 'GPT-4o', 0.005, 0.015, 128000),
-        (gen_random_uuid(), 'openai', 'gpt-4o-mini', 'GPT-4o Mini', 0.00015, 0.0006, 128000)
+        (gen_random_uuid(), 'openai', 'gpt-4o-mini', 'GPT-4o Mini', 0.00015, 0.0006, 128000),
+        (gen_random_uuid(), 'openai', 'o4-mini', 'O4 Mini', 0.00015, 0.0006, 128000)
         ON CONFLICT DO NOTHING;
     """)
 
