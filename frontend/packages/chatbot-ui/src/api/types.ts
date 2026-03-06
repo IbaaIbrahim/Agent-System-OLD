@@ -51,6 +51,13 @@ export interface ConversationMessage {
     attachments?: ConversationAttachment[];
     tool_calls?: ConversationToolCall[];
     tool_results?: ConversationToolResult[];
+    reply_to_message_id?: string;
+    // Branching
+    parent_message_id?: string;
+    branch_point?: boolean;
+    branch_count?: number;
+    active_branch_index?: number;
+    branch_ids?: string[];
 }
 
 export interface ConversationDetail {
@@ -69,7 +76,7 @@ export interface ConversationListResponse {
 }
 
 export interface ChatClient {
-    sendMessage: (content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: AttachedFile[]) => Promise<void>;
+    sendMessage: (content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: AttachedFile[], replyToMessageId?: string) => Promise<void>;
     reset: (onUpdate: (state: ChatState) => void) => void;
     setModel: (model: string | null) => void;
     setEnabledTools: (tools: string[]) => void;
@@ -88,4 +95,8 @@ export interface ChatClient {
     searchConversations?: (query: string, offset?: number, limit?: number) => Promise<ConversationListResponse>;
     setConversationId?: (id: string | null) => void;
     getConversationId?: () => string | null;
+
+    // Branching
+    editMessage?: (messageId: string, content: string) => Promise<void>;
+    switchBranch?: (branchPointMessageId: string, targetChildMessageId: string) => Promise<void>;
 }

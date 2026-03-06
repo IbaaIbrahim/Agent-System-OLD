@@ -122,6 +122,11 @@ class PhaseExecutor:
             tool_count=len(tool_results),
         )
 
+        # Tool results already emitted by resume handler as they arrived
+        already_emitted = set(
+            state.metadata.get("emitted_tool_result_ids", [])
+        )
+
         # Inject tool results into matching sub-tasks
         for tc in state.pending_tool_calls:
             result = tool_results.get(tc.id, "Error: Tool result not available")
@@ -140,12 +145,16 @@ class PhaseExecutor:
                     })
                     break
 
-            # Emit tool_result event
-            await self._emit_event(state, "tool_result", {
-                "tool_call_id": tc.id,
-                "tool_name": tc.name,
-                "result": result,
-            })
+            # Emit tool_result event only if not already emitted partially
+            if tc.id not in already_emitted:
+                await self._emit_event(state, "tool_result", {
+                    "tool_call_id": tc.id,
+                    "tool_name": tc.name,
+                    "result": result,
+                })
+
+        # Clean up partial emission tracking
+        state.metadata.pop("emitted_tool_result_ids", None)
 
         # Clear pending tools
         state.pending_tool_calls = []

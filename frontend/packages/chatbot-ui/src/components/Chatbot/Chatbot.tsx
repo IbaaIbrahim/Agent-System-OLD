@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChatContainer, ChatMode } from '../ChatContainer/ChatContainer';
-import { MessageBubble } from '../MessageBubble/MessageBubble';
-import { Composer } from '../Composer/Composer';
+import { MessageBubble, MessageProps } from '../MessageBubble/MessageBubble';
+import { Composer, ReplyingTo } from '../Composer/Composer';
 import { NavigationSidebar, SidebarItem } from '../NavigationSidebar/NavigationSidebar';
 import { WelcomeScreen } from '../WelcomeScreen/WelcomeScreen';
 import { PendingMessageList } from '../PendingMessageList/PendingMessageList';
@@ -138,6 +138,45 @@ export const Chatbot: React.FC<ChatbotProps> = ({
         conversationId,
         reset
     } = useChat({ client, onToolCall });
+
+    // Reply state
+    const [replyingTo, setReplyingTo] = React.useState<ReplyingTo | null>(null);
+
+    const handleReply = React.useCallback((message: MessageProps) => {
+        const content = message.content
+            || (message.steps || []).filter(s => s.type === 'text').map(s => s.content || '').join('\n\n')
+            || '';
+        setReplyingTo({
+            id: message.id,
+            role: message.role,
+            content,
+        });
+    }, []);
+
+    const handleEdit = React.useCallback(async (messageId: string, content: string) => {
+        const c = clientRef.current;
+        if (!c?.editMessage) return;
+        try {
+            await c.editMessage(messageId, content);
+        } catch (err) {
+            console.error('Failed to edit message:', err);
+        }
+    }, []);
+
+    const handleSwitchBranch = React.useCallback(async (branchPointMessageId: string, targetChildMessageId: string) => {
+        const c = clientRef.current;
+        if (!c?.switchBranch) return;
+        try {
+            await c.switchBranch(branchPointMessageId, targetChildMessageId);
+            // Reload the conversation to get the switched branch
+            const convId = c.getConversationId?.();
+            if (convId) {
+                await loadConversation(convId);
+            }
+        } catch (err) {
+            console.error('Failed to switch branch:', err);
+        }
+    }, [loadConversation]);
 
     const handleConfirm = (toolCallId: string) => {
         client?.sendConfirmResponse?.(toolCallId, true);
@@ -304,6 +343,8 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                                 pageContextEnabled={pageContextEnabled}
                                 onPageContextChange={setPageContext}
                                 onFileUpload={handleFileUpload}
+                                replyingTo={replyingTo}
+                                onDismissReply={() => setReplyingTo(null)}
                             />
                         </div>
                     )
@@ -322,6 +363,9 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                                 onConfirm={handleConfirm}
                                 onReject={handleReject}
                                 onToolCall={onToolCall}
+                                onReply={handleReply}
+                                onEdit={handleEdit}
+                                onSwitchBranch={handleSwitchBranch}
                                 isWaitingForDeltas={
                                     isWaitingForDeltas &&
                                     msg.role === 'assistant' &&

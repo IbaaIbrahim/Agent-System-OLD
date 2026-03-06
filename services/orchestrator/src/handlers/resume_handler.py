@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from libs.common import get_logger
+from libs.common.tool_catalog import get_tool_metadata
 from libs.llm import ToolCall
 from libs.messaging.redis import RedisPubSub, RedisStreams, get_redis_client
 
@@ -117,7 +118,52 @@ class ResumeHandler:
             )
 
             if missing_tools:
-                # Release lock and wait for other tools to complete
+                # Emit tool_result events for newly completed tools
+                # so the UI updates immediately instead of waiting for all
+                emitted_ids = set(
+                    state.metadata.get("emitted_tool_result_ids", [])
+                )
+                newly_completed = [
+                    tc_id for tc_id in completed_ids
+                    if tc_id not in emitted_ids
+                ]
+
+                if newly_completed:
+                    for tc_id in newly_completed:
+                        tc = next(
+                            (t for t in state.pending_tool_calls if t.id == tc_id),
+                            None,
+                        )
+                        if tc is None:
+                            continue
+
+                        result = tool_results[tc_id]
+                        if self._should_emit_tool_event(tc.name):
+                            await self._publish_event(
+                                job_id=job_id,
+                                event_type="tool_result",
+                                data={
+                                    "tool_call_id": tc.id,
+                                    "tool_name": tc.name,
+                                    "result": result,
+                                },
+                            )
+                        emitted_ids.add(tc_id)
+
+                    # Persist emitted IDs so subsequent resume signals
+                    # don't re-emit the same results
+                    state.metadata["emitted_tool_result_ids"] = list(
+                        emitted_ids
+                    )
+                    await self.snapshot_service.save_snapshot(state)
+
+                    logger.info(
+                        "Partial tool results emitted",
+                        job_id=str(job_id),
+                        emitted=len(newly_completed),
+                        remaining=len(missing_tools),
+                    )
+
                 return
 
             logger.info(
@@ -283,6 +329,13 @@ class ResumeHandler:
                 )
 
         return results
+
+    def _should_emit_tool_event(self, tool_name: str) -> bool:
+        """Check if a tool's events should be emitted to the client."""
+        metadata = get_tool_metadata(tool_name)
+        if metadata is None:
+            return True
+        return metadata.emit_events
 
     async def _publish_event(
         self,
