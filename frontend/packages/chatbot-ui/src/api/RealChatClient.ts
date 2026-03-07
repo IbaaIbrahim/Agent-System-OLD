@@ -476,6 +476,17 @@ export class RealChatClient implements ChatClient {
                 }
             });
 
+            eventSource.addEventListener('title_update', (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.title) {
+                        onUpdate({ messages: this.messages, isThinking: true, conversationTitle: data.title });
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse title_update event data', e);
+                }
+            });
+
             eventSource.addEventListener('complete', () => {
                 isStreaming = false;
                 if (deltaCheckInterval) {

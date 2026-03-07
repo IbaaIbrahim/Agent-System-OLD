@@ -125,7 +125,7 @@ restart-and-migrate: down up migrate
 
 # Infrastructure only (for local development)
 infra:
-	docker compose up -d postgres redis zookeeper kafka kafka-init pgadmin
+	docker compose up -d postgres redis zookeeper kafka kafka-init pgadmin milvus-etcd milvus-minio milvus
 	@echo "Infrastructure services started"
 
 # ===================

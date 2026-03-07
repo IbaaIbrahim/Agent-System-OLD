@@ -130,6 +130,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
         messages,
         isThinking,
         isWaitingForDeltas,
+        conversationTitle,
         messageQueue,
         sendMessage,
         removeQueueItem,
@@ -213,6 +214,27 @@ export const Chatbot: React.FC<ChatbotProps> = ({
             fetchConversations();
         }
     }, [isThinking, messages.length, isDrawerOpen, fetchConversations]);
+
+    // Update conversation title when auto-generated title arrives via SSE
+    React.useEffect(() => {
+        if (conversationTitle && conversationId) {
+            setConversations(prev =>
+                prev.map(c =>
+                    c.id === conversationId ? { ...c, title: conversationTitle } : c
+                )
+            );
+        }
+    }, [conversationTitle, conversationId]);
+
+    // Delayed refetch after completion to pick up auto-generated titles
+    React.useEffect(() => {
+        if (!isThinking && messages.length > 0) {
+            const timer = setTimeout(() => {
+                fetchConversations();
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [isThinking, messages.length, fetchConversations]);
 
     const handleLoadConversation = React.useCallback(async (convId: string) => {
         await loadConversation(convId);

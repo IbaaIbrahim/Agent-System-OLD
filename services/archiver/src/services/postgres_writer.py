@@ -1,15 +1,21 @@
 """PostgreSQL batch writer for archiving events."""
 
+from __future__ import annotations
+
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 
 from libs.common import get_logger
 from libs.db import get_session_context
-from libs.db.models import ChatMessage, Job, JobStatus, MessageRole
+from libs.db.models import ChatMessage, Conversation, Job, JobStatus, MessageRole
+from libs.messaging.redis.pubsub import RedisPubSub
+
+if TYPE_CHECKING:
+    from .title_generator import TitleGenerator
 
 logger = get_logger(__name__)
 
@@ -21,6 +27,7 @@ class PostgresWriter:
         self,
         batch_size: int = 100,
         flush_interval: int = 5,
+        title_generator: TitleGenerator | None = None,
     ) -> None:
         self.batch_size = batch_size
         self.flush_interval = flush_interval
@@ -28,6 +35,7 @@ class PostgresWriter:
         self._lock = asyncio.Lock()
         self._flush_task: asyncio.Task | None = None
         self._running = False
+        self._title_generator = title_generator
 
     async def start(self) -> None:
         """Start the periodic flush task."""
@@ -210,6 +218,15 @@ class PostgresWriter:
                             job.total_input_tokens = data.get("total_input_tokens", 0)
                             job.total_output_tokens = data.get("total_output_tokens", 0)
 
+                            # Schedule title generation for first completion
+                            if self._title_generator and job.conversation_id:
+                                asyncio.create_task(
+                                    self._maybe_generate_title(
+                                        job_id=job_id,
+                                        conversation_id=job.conversation_id,
+                                    )
+                                )
+
                     elif event_type == "error":
                         if job:
                             job.status = JobStatus.FAILED
@@ -273,6 +290,131 @@ class PostgresWriter:
             event_count=len(events),
             job_count=len(job_events),
         )
+
+    async def _maybe_generate_title(
+        self,
+        job_id: UUID,
+        conversation_id: UUID,
+    ) -> None:
+        """Generate a smart title for the conversation if this is the first completed job."""
+        try:
+            async with get_session_context() as session:
+                # Load conversation and check if title was already generated
+                conv = (
+                    await session.execute(
+                        select(Conversation).where(Conversation.id == conversation_id)
+                    )
+                ).scalar_one_or_none()
+
+                if not conv:
+                    return
+
+                metadata = conv.metadata_ or {}
+                if metadata.get("title_generated"):
+                    return
+
+                # Check if this is the first completed job
+                completed_count = (
+                    await session.execute(
+                        text("""
+                            SELECT COUNT(*) FROM jobs.jobs
+                            WHERE conversation_id = :conv_id
+                            AND status = 'completed'
+                        """),
+                        {"conv_id": conversation_id},
+                    )
+                ).scalar() or 0
+
+                if completed_count > 1:
+                    # Not the first completion — set flag and skip
+                    metadata["title_generated"] = True
+                    await session.execute(
+                        update(Conversation)
+                        .where(Conversation.id == conversation_id)
+                        .values(metadata_=metadata)
+                    )
+                    return
+
+                # Fetch first user message and first assistant message
+                first_user = (
+                    await session.execute(
+                        text("""
+                            SELECT cm.content FROM jobs.chat_messages cm
+                            JOIN jobs.jobs j ON cm.job_id = j.id
+                            WHERE j.conversation_id = :conv_id
+                            AND cm.role = 'user'
+                            ORDER BY j.created_at ASC, cm.sequence_num ASC
+                            LIMIT 1
+                        """),
+                        {"conv_id": conversation_id},
+                    )
+                ).scalar()
+
+                first_assistant = (
+                    await session.execute(
+                        text("""
+                            SELECT cm.content FROM jobs.chat_messages cm
+                            JOIN jobs.jobs j ON cm.job_id = j.id
+                            WHERE j.conversation_id = :conv_id
+                            AND cm.role = 'assistant'
+                            ORDER BY j.created_at ASC, cm.sequence_num ASC
+                            LIMIT 1
+                        """),
+                        {"conv_id": conversation_id},
+                    )
+                ).scalar()
+
+                if not first_user or not first_assistant:
+                    return
+
+                # Generate title via LLM
+                assert self._title_generator is not None
+                new_title = await self._title_generator.generate_title(
+                    user_message=first_user,
+                    assistant_response=first_assistant,
+                )
+
+                # Update conversation
+                metadata["title_generated"] = True
+                update_values: dict[str, Any] = {"metadata_": metadata}
+                if new_title:
+                    update_values["title"] = new_title
+
+                await session.execute(
+                    update(Conversation)
+                    .where(Conversation.id == conversation_id)
+                    .values(**update_values)
+                )
+
+            # Notify frontend via Redis Pub/Sub
+            if new_title:
+                try:
+                    pubsub = RedisPubSub()
+                    await pubsub.publish(
+                        f"job:{job_id}",
+                        {
+                            "type": "title_update",
+                            "data": {
+                                "conversation_id": str(conversation_id),
+                                "title": new_title,
+                            },
+                        },
+                    )
+                except Exception:
+                    logger.debug("Failed to publish title_update event", exc_info=True)
+
+                logger.info(
+                    "Conversation title generated",
+                    conversation_id=str(conversation_id),
+                    title=new_title,
+                )
+
+        except Exception:
+            logger.warning(
+                "Failed to generate conversation title",
+                conversation_id=str(conversation_id),
+                exc_info=True,
+            )
 
     def _map_role(self, role: str) -> MessageRole:
         """Map role string to MessageRole enum."""

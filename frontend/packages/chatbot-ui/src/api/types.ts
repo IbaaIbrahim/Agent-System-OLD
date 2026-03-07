@@ -12,6 +12,7 @@ export interface ChatState {
     messages: MessageProps[];
     isThinking: boolean;
     isWaitingForDeltas?: boolean; // True when job is running but no deltas received recently
+    conversationTitle?: string; // Auto-generated title from first user-assistant exchange
 }
 
 export interface ConversationSummary {

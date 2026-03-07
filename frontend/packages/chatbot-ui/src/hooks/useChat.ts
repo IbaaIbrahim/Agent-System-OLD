@@ -125,6 +125,7 @@ export const useChat = ({ client, onToolCall }: UseChatOptions) => {
         isThinking: chatState.isThinking || isProcessing,
         isWaitingForDeltas: chatState.isWaitingForDeltas || false,
         isTyping,
+        conversationTitle: chatState.conversationTitle,
         messageQueue: messageQueue.map(m => m.text),
         sendMessage: handleSend,
         removeQueueItem: handleRemoveQueueItem,

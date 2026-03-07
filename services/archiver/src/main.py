@@ -33,9 +33,17 @@ async def main() -> None:
     await get_redis_client()
 
     # Create components
+    title_generator = None
+    if config.title_generation_enabled:
+        from .services.title_generator import TitleGenerator
+
+        title_generator = TitleGenerator(provider_type=config.default_llm_provider)
+        logger.info("Title generation enabled")
+
     writer = PostgresWriter(
         batch_size=config.batch_size,
         flush_interval=config.flush_interval,
+        title_generator=title_generator,
     )
     reader = RedisStreamReader(
         writer=writer,

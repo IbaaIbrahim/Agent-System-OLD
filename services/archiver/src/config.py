@@ -24,6 +24,9 @@ class ArchiverConfig(Settings):
     stream_retention_hours: int = 24
     cleanup_interval: int = 3600  # 1 hour
 
+    # Title generation
+    title_generation_enabled: bool = True
+
 
 @lru_cache
 def get_config() -> ArchiverConfig:
