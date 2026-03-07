@@ -97,7 +97,7 @@ export class RealChatClient implements ChatClient {
     }
 
 
-    async sendMessage(content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: import('./types').AttachedFile[], replyToMessageId?: string): Promise<void> {
+    async sendMessage(content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: import('./types').AttachedFile[], replyToMessageId?: string, replyToContent?: string, replyToRole?: string, replyToSelectedText?: string): Promise<void> {
         if (!this.accessToken) {
             console.error('No access token available');
             return;
@@ -121,7 +121,12 @@ export class RealChatClient implements ChatClient {
                 size: f.size_bytes,
                 contentType: f.content_type,
                 localUrl: f.localBlobUrl,
-            }))
+            })),
+            ...(replyToMessageId ? {
+                replyToMessageId,
+                replyToContent: replyToContent || '',
+                replyToRole: replyToRole || 'assistant',
+            } : {}),
         };
         this.messages = [...this.messages, userMsg];
         onUpdate({ messages: this.messages, isThinking: true });
@@ -144,6 +149,9 @@ export class RealChatClient implements ChatClient {
             }
             if (replyToMessageId) {
                 metadata.reply_to_message_id = replyToMessageId;
+                if (replyToContent) metadata.reply_to_content = replyToContent;
+                if (replyToRole) metadata.reply_to_role = replyToRole;
+                if (replyToSelectedText) metadata.reply_to_selected_text = replyToSelectedText;
             }
 
             // 3. Make the API Call
@@ -1206,8 +1214,17 @@ export class RealChatClient implements ChatClient {
                 if (m.active_branch_index != null) userMsg.activeBranchIndex = m.active_branch_index;
                 if (m.branch_ids) userMsg.branchIds = m.branch_ids;
 
-                // Reply metadata
-                if (m.reply_to_message_id) userMsg.replyToMessageId = m.reply_to_message_id;
+                // Reply metadata — resolve display content from already-loaded messages
+                if (m.reply_to_message_id) {
+                    userMsg.replyToMessageId = m.reply_to_message_id;
+                    const repliedMsg = msgs.find(prev => prev.id === m.reply_to_message_id);
+                    if (repliedMsg) {
+                        userMsg.replyToContent = repliedMsg.content
+                            || (repliedMsg.steps?.filter(s => s.type === 'text').map(s => s.content || '').join('\n\n'))
+                            || '';
+                        userMsg.replyToRole = repliedMsg.role;
+                    }
+                }
 
                 msgs.push(userMsg);
             } else if (m.role === 'assistant') {

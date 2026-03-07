@@ -487,6 +487,31 @@
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Floating reply button on text selection */
+.cb-selection-reply-popup {
+    position: absolute;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--cb-bg-secondary, rgba(30, 30, 30, 0.95));
+    border: 1px solid var(--cb-border-subtle, rgba(255, 255, 255, 0.15));
+    border-radius: 6px;
+    color: var(--cb-text-primary, rgba(255, 255, 255, 0.95));
+    font-size: 12px;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    white-space: nowrap;
+    transition: background 0.15s;
+    user-select: none;
+}
+
+.cb-selection-reply-popup:hover {
+    background: var(--cb-bg-tertiary, rgba(50, 50, 50, 0.95));
+}
+
 .cb-edit-textarea::placeholder {
     color: rgba(255, 255, 255, 0.3);
 }

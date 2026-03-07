@@ -4,18 +4,20 @@ import './ReplyPreview.css';
 interface ReplyPreviewProps {
     role: string;
     content: string;
+    selectedText?: string;
     onDismiss: () => void;
 }
 
-export const ReplyPreview: React.FC<ReplyPreviewProps> = ({ role, content, onDismiss }) => {
-    const snippet = content.length > 120 ? content.slice(0, 120) + '...' : content;
+export const ReplyPreview: React.FC<ReplyPreviewProps> = ({ role, content, selectedText, onDismiss }) => {
+    const displayText = selectedText || content;
+    const snippet = displayText.length > 120 ? displayText.slice(0, 120) + '...' : displayText;
 
     return (
         <div className="cb-reply-preview">
             <div className="cb-reply-preview-bar" />
             <div className="cb-reply-preview-content">
                 <span className="cb-reply-preview-label">
-                    Replying to {role === 'user' ? 'yourself' : 'Assistant'}
+                    Replying to {role === 'user' ? 'yourself' : 'Assistant'}{selectedText ? ' (selected text)' : ''}
                 </span>
                 <span className="cb-reply-preview-snippet">{snippet}</span>
             </div>

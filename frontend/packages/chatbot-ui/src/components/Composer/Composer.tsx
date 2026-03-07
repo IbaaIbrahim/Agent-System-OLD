@@ -1,5 +1,5 @@
 import React from 'react';
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect, useCallback, useImperativeHandle } = React;
 import './Composer.css';
 import { ReasoningMenu, PlusMenu, EffortLevel } from '../ComposerMenu/ComposerMenu';
 import { ReplyPreview } from '../ReplyPreview/ReplyPreview';
@@ -9,10 +9,15 @@ export interface ReplyingTo {
     id: string;
     role: string;
     content: string;
+    selectedText?: string;
+}
+
+export interface ComposerHandle {
+    focus: () => void;
 }
 
 export interface ComposerProps {
-    onSend?: (text: string, fileIds?: string[], attachedFiles?: AttachedFile[], replyToMessageId?: string) => void;
+    onSend?: (text: string, fileIds?: string[], attachedFiles?: AttachedFile[], replyToMessageId?: string, replyToContent?: string, replyToRole?: string, replyToSelectedText?: string) => void;
     disabled?: boolean;
     placeholder?: string;
     effortLevel?: EffortLevel;
@@ -53,7 +58,7 @@ const getFileIcon = (contentType: string): string => {
     return '📎';
 };
 
-export const Composer: React.FC<ComposerProps> = ({
+export const Composer = React.forwardRef<ComposerHandle, ComposerProps>(({
     onSend,
     disabled = false,
     placeholder = "Ask, @mention, or / for actions",
@@ -66,7 +71,7 @@ export const Composer: React.FC<ComposerProps> = ({
     onFileUpload,
     replyingTo,
     onDismissReply
-}) => {
+}, ref) => {
     const [input, setInput] = useState('');
     const [activeMenu, setActiveMenu] = useState<'plus' | 'reasoning' | null>(null);
     const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -76,6 +81,10 @@ export const Composer: React.FC<ComposerProps> = ({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const composerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    useImperativeHandle(ref, () => ({
+        focus: () => textareaRef.current?.focus(),
+    }));
 
     const adjustHeight = useCallback(() => {
         const textarea = textareaRef.current;
@@ -103,11 +112,12 @@ export const Composer: React.FC<ComposerProps> = ({
     const handleSendMessage = useCallback(() => {
         if ((input.trim() || attachedFiles.length > 0) && !disabled) {
             const fileIds = attachedFiles.length > 0 ? attachedFiles.map(f => f.file_id) : undefined;
-            onSend?.(input, fileIds, attachedFiles.length > 0 ? [...attachedFiles] : undefined, replyingTo?.id);
+            onSend?.(input, fileIds, attachedFiles.length > 0 ? [...attachedFiles] : undefined, replyingTo?.id, replyingTo?.content, replyingTo?.role, replyingTo?.selectedText);
             setInput('');
             setAttachedFiles([]);
             setUploadError(null);
             onDismissReply?.();
+            requestAnimationFrame(() => textareaRef.current?.focus());
         }
     }, [input, attachedFiles, disabled, onSend, replyingTo, onDismissReply]);
 
@@ -281,6 +291,7 @@ export const Composer: React.FC<ComposerProps> = ({
                     <ReplyPreview
                         role={replyingTo.role}
                         content={replyingTo.content}
+                        selectedText={replyingTo.selectedText}
                         onDismiss={onDismissReply}
                     />
                 )}
@@ -392,4 +403,6 @@ export const Composer: React.FC<ComposerProps> = ({
             </div>
         </div>
     );
-};
+});
+
+Composer.displayName = 'Composer';

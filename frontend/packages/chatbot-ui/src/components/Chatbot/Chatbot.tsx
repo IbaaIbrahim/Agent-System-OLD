@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChatContainer, ChatMode } from '../ChatContainer/ChatContainer';
 import { MessageBubble, MessageProps } from '../MessageBubble/MessageBubble';
-import { Composer, ReplyingTo } from '../Composer/Composer';
+import { Composer, ReplyingTo, ComposerHandle } from '../Composer/Composer';
 import { NavigationSidebar, SidebarItem } from '../NavigationSidebar/NavigationSidebar';
 import { WelcomeScreen } from '../WelcomeScreen/WelcomeScreen';
 import { PendingMessageList } from '../PendingMessageList/PendingMessageList';
@@ -69,6 +69,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     const [isLiveMode, setIsLiveMode] = React.useState(false);
     const clientRef = React.useRef(client);
     clientRef.current = client;
+    const composerRef = React.useRef<ComposerHandle>(null);
 
     // Conversation state
     const [conversations, setConversations] = React.useState<ConversationSummary[]>([]);
@@ -142,7 +143,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     // Reply state
     const [replyingTo, setReplyingTo] = React.useState<ReplyingTo | null>(null);
 
-    const handleReply = React.useCallback((message: MessageProps) => {
+    const handleReply = React.useCallback((message: MessageProps, selectedText?: string) => {
         const content = message.content
             || (message.steps || []).filter(s => s.type === 'text').map(s => s.content || '').join('\n\n')
             || '';
@@ -150,7 +151,9 @@ export const Chatbot: React.FC<ChatbotProps> = ({
             id: message.id,
             role: message.role,
             content,
+            selectedText,
         });
+        requestAnimationFrame(() => composerRef.current?.focus());
     }, []);
 
     const handleEdit = React.useCallback(async (messageId: string, content: string) => {
@@ -214,11 +217,13 @@ export const Chatbot: React.FC<ChatbotProps> = ({
     const handleLoadConversation = React.useCallback(async (convId: string) => {
         await loadConversation(convId);
         setIsDrawerOpen(false);
+        requestAnimationFrame(() => composerRef.current?.focus());
     }, [loadConversation]);
 
     const startNewChat = () => {
         reset();
         setIsDrawerOpen(false);
+        requestAnimationFrame(() => composerRef.current?.focus());
     };
 
     // Debounced search
@@ -333,6 +338,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({
                                 onDelete={removeQueueItem}
                             />
                             <Composer
+                                ref={composerRef}
                                 onSend={sendMessage}
                                 disabled={false}
                                 placeholder={messageQueue.length > 0 ? "Queued..." : "Type a message..."}

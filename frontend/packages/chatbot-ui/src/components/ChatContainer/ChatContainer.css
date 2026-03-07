@@ -251,7 +251,6 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 20px;
-    scroll-behavior: smooth;
 }
 
 .cb-scroll-view::-webkit-scrollbar {

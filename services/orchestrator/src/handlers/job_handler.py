@@ -129,6 +129,48 @@ class JobHandler:
                         )
                     })
             
+            # Reply context injection — tell the LLM what message is being replied to
+            job_metadata = message.get("metadata", {})
+            reply_to_message_id = job_metadata.get("reply_to_message_id")
+            if reply_to_message_id:
+                reply_to_content = job_metadata.get("reply_to_content", "")
+                reply_to_role = job_metadata.get("reply_to_role", "assistant")
+                reply_to_selected = job_metadata.get("reply_to_selected_text")
+
+                if reply_to_content:
+                    truncated = reply_to_content[:2000]
+                    if len(reply_to_content) > 2000:
+                        truncated += "..."
+
+                    if reply_to_selected:
+                        reply_context = (
+                            f'[This message is a reply to a specific section of a previous '
+                            f'{reply_to_role} message.\n'
+                            f'Selected section: "{reply_to_selected}"\n'
+                            f'Full message: "{truncated}"]'
+                        )
+                    else:
+                        reply_context = (
+                            f'[This message is a reply to a previous '
+                            f'{reply_to_role} message: "{truncated}"]'
+                        )
+
+                    # Prepend to last user message
+                    if message["messages"] and message["messages"][-1]["role"] == "user":
+                        last_msg = message["messages"][-1]
+                        original = last_msg.get("content") or ""
+                        if isinstance(original, str):
+                            last_msg["content"] = reply_context + "\n\n" + original
+                        elif isinstance(original, list):
+                            last_msg["content"].insert(0, {"type": "text", "text": reply_context})
+
+                    logger.info(
+                        "Injected reply context",
+                        job_id=str(job_id),
+                        reply_to_message_id=reply_to_message_id,
+                        has_selected_text=bool(reply_to_selected),
+                    )
+
             # Create agent state
             state = self.state_manager.create_state(
                 job_id=job_id,

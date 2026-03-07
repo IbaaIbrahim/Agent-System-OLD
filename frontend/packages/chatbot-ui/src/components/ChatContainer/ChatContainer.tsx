@@ -46,14 +46,26 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     const scrollRef = useRef<HTMLDivElement>(null);
     const [scrollProgress, setScrollProgress] = useState(0);
     const [isAtBottom, setIsAtBottom] = useState(true);
+    const isProgrammaticScroll = useRef(false);
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
-    // Auto-scroll logic: Check if we should stick to bottom on content change
-    // Auto-scroll logic: Check if we should stick to bottom on content change
-    const scrollToBottom = () => {
+    // Instant scroll for auto-scroll during streaming (no animation conflicts)
+    const scrollToBottomInstant = () => {
+        if (scrollRef.current) {
+            isProgrammaticScroll.current = true;
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            requestAnimationFrame(() => {
+                isProgrammaticScroll.current = false;
+            });
+        }
+    };
+
+    // Smooth scroll for manual "scroll to bottom" button — also re-enables auto-scroll
+    const scrollToBottomSmooth = () => {
+        setIsAtBottom(true);
         scrollEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
@@ -70,8 +82,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         // Show button if we are more than 100px from bottom
         setShowScrollBtn(distFromBottom > 100);
 
-        // Track if we are "at bottom" (allow some margin of error)
-        setIsAtBottom(distFromBottom < 50);
+        // Only update isAtBottom on user-initiated scrolls
+        if (!isProgrammaticScroll.current) {
+            setIsAtBottom(distFromBottom < 50);
+        }
     };
 
     const contentRef = useRef<HTMLDivElement>(null);
@@ -80,7 +94,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     // Whenever children change (new messages), if we were at bottom, scroll to bottom
     useLayoutEffect(() => {
         if (isAtBottom) {
-            scrollToBottom();
+            scrollToBottomInstant();
         }
     }, [children, isAtBottom]);
 
@@ -88,15 +102,28 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     useLayoutEffect(() => {
         if (!contentRef.current) return;
 
+        let rafId: number | null = null;
+
         const observer = new ResizeObserver(() => {
             if (isAtBottom) {
-                scrollToBottom();
+                if (rafId !== null) {
+                    cancelAnimationFrame(rafId);
+                }
+                rafId = requestAnimationFrame(() => {
+                    scrollToBottomInstant();
+                    rafId = null;
+                });
             }
         });
 
         observer.observe(contentRef.current);
 
-        return () => observer.disconnect();
+        return () => {
+            observer.disconnect();
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+            }
+        };
     }, [isAtBottom]);
 
     if (!mounted) return null;
@@ -171,7 +198,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                         {/* Scroll To Bottom Button */}
                         <button
                             className={`cb-scroll-bottom-btn ${showScrollBtn ? 'visible' : ''}`}
-                            onClick={scrollToBottom}
+                            onClick={scrollToBottomSmooth}
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
                         </button>

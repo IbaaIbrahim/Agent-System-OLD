@@ -76,7 +76,7 @@ export interface ConversationListResponse {
 }
 
 export interface ChatClient {
-    sendMessage: (content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: AttachedFile[], replyToMessageId?: string) => Promise<void>;
+    sendMessage: (content: string, onUpdate: (state: ChatState) => void, fileIds?: string[], attachedFiles?: AttachedFile[], replyToMessageId?: string, replyToContent?: string, replyToRole?: string, replyToSelectedText?: string) => Promise<void>;
     reset: (onUpdate: (state: ChatState) => void) => void;
     setModel: (model: string | null) => void;
     setEnabledTools: (tools: string[]) => void;

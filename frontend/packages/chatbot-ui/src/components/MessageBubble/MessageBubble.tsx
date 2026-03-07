@@ -60,7 +60,7 @@ export interface MessageProps {
     onToolCall?: Record<string, (data: any) => Promise<any> | void>;
     isWaitingForDeltas?: boolean; // Show blinking indicator when waiting for deltas
     // Message actions
-    onReply?: (message: MessageProps) => void;
+    onReply?: (message: MessageProps, selectedText?: string) => void;
     onEdit?: (messageId: string, content: string) => void;
     onSwitchBranch?: (branchPointMessageId: string, targetChildMessageId: string) => void;
     // Reply display
@@ -281,12 +281,50 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
         }
     }, [props.onSwitchBranch, props.branchIds, props.activeBranchIndex, props.branchCount, props.parentMessageId]);
 
+    const bubbleRef = useRef<HTMLDivElement>(null);
+    const [selectionPopup, setSelectionPopup] = useState<{ text: string; top: number; left: number } | null>(null);
+
+    useEffect(() => {
+        const handleMouseUp = () => {
+            const selection = window.getSelection();
+            if (!selection || !selection.toString().trim()) {
+                setSelectionPopup(null);
+                return;
+            }
+            const el = bubbleRef.current;
+            if (!el || !selection.anchorNode || !el.contains(selection.anchorNode)) {
+                return;
+            }
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            const bubbleRect = el.getBoundingClientRect();
+            setSelectionPopup({
+                text: selection.toString().trim(),
+                top: rect.top - bubbleRect.top - 36,
+                left: rect.left - bubbleRect.left + rect.width / 2,
+            });
+        };
+
+        const handleMouseDown = (e: MouseEvent) => {
+            if (selectionPopup && !(e.target as HTMLElement)?.closest?.('.cb-selection-reply-popup')) {
+                setSelectionPopup(null);
+            }
+        };
+
+        document.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener('mousedown', handleMouseDown);
+        return () => {
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('mousedown', handleMouseDown);
+        };
+    }, [selectionPopup]);
+
     // If steps are present, use steps rendering
     if (steps && steps.length > 0) {
         const textContent = getStepsTextContent();
 
         return (
-            <div className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
+            <div ref={bubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
                 {role === 'assistant' && (
                     <div className="cb-avatar-container">
                         <div className="cb-avatar-assistant">
@@ -422,6 +460,26 @@ export const MessageBubble: React.FC<MessageProps> = (props) => {
                         />
                     )}
                 </div>
+
+                {selectionPopup && props.onReply && (
+                    <div
+                        className="cb-selection-reply-popup"
+                        style={{ top: selectionPopup.top, left: selectionPopup.left }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            props.onReply!(props, selectionPopup.text);
+                            setSelectionPopup(null);
+                            window.getSelection()?.removeAllRanges();
+                        }}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="9 17 4 12 9 7" />
+                            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                        </svg>
+                        Reply
+                    </div>
+                )}
             </div>
         );
     }
@@ -573,6 +631,43 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState('');
     const hasFiredCompleteRef = useRef(false);
+    const legacyBubbleRef = useRef<HTMLDivElement>(null);
+    const [selectionPopup, setSelectionPopup] = useState<{ text: string; top: number; left: number } | null>(null);
+
+    useEffect(() => {
+        const handleMouseUp = () => {
+            const selection = window.getSelection();
+            if (!selection || !selection.toString().trim()) {
+                setSelectionPopup(null);
+                return;
+            }
+            const el = legacyBubbleRef.current;
+            if (!el || !selection.anchorNode || !el.contains(selection.anchorNode)) {
+                return;
+            }
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            const bubbleRect = el.getBoundingClientRect();
+            setSelectionPopup({
+                text: selection.toString().trim(),
+                top: rect.top - bubbleRect.top - 36,
+                left: rect.left - bubbleRect.left + rect.width / 2,
+            });
+        };
+
+        const handleMouseDown = (e: MouseEvent) => {
+            if (selectionPopup && !(e.target as HTMLElement)?.closest?.('.cb-selection-reply-popup')) {
+                setSelectionPopup(null);
+            }
+        };
+
+        document.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener('mousedown', handleMouseDown);
+        return () => {
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('mousedown', handleMouseDown);
+        };
+    }, [selectionPopup]);
 
     useEffect(() => {
         hasFiredCompleteRef.current = false;
@@ -692,7 +787,7 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
     }
 
     return (
-        <div className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
+        <div ref={legacyBubbleRef} className={`cb-message-row ${role === 'user' ? 'cb-row-user' : 'cb-row-assistant'}`}>
             {role === 'assistant' && (
                 <div className="cb-avatar-container">
                     <div className="cb-avatar-assistant">
@@ -780,6 +875,26 @@ const LegacyMessageBubble: React.FC<MessageProps> = (props) => {
                     />
                 )}
             </div>
+
+            {selectionPopup && props.onReply && (
+                <div
+                    className="cb-selection-reply-popup"
+                    style={{ top: selectionPopup.top, left: selectionPopup.left }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        props.onReply!(props, selectionPopup.text);
+                        setSelectionPopup(null);
+                        window.getSelection()?.removeAllRanges();
+                    }}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="9 17 4 12 9 7" />
+                        <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                    </svg>
+                    Reply
+                </div>
+            )}
         </div>
     );
 };
