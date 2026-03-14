@@ -623,6 +623,14 @@ class SessionManager:
 
     async def close_all(self) -> None:
         """End all active sessions."""
-        tasks = [self.end_session(session_id) for session_id in list(self._sessions.keys())]
+        session_ids = list(self._sessions.keys())
+        tasks = [self.end_session(session_id) for session_id in session_ids]
         if tasks:
-            await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for session_id, result in zip(session_ids, results):
+                if isinstance(result, Exception):
+                    logger.error(
+                        "Failed to end live session during close_all",
+                        session_id=session_id,
+                        error=str(result),
+                    )
