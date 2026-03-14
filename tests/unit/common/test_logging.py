@@ -1,7 +1,7 @@
 """Unit tests for logging utilities."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,7 +10,7 @@ from libs.common.logging import add_service_info, add_timestamp
 
 
 def test_add_timestamp() -> None:
-    """Test that add_timestamp adds a valid ISO 8601 timestamp."""
+    """Test that add_timestamp adds a valid ISO 8601 UTC timestamp."""
     event_dict = {"event": "test_event"}
     logger = MagicMock(spec=logging.Logger)
 
@@ -19,11 +19,14 @@ def test_add_timestamp() -> None:
     assert "timestamp" in result
     assert result["event"] == "test_event"
 
-    # Verify it's a valid ISO format string
+    # Verify it's a valid ISO format string and that it is timezone-aware UTC
     try:
-        datetime.fromisoformat(result["timestamp"])
+        parsed = datetime.fromisoformat(result["timestamp"])
     except ValueError:
         pytest.fail("timestamp is not in valid ISO format")
+
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == timedelta(0)
 
 
 def test_add_service_info() -> None:
