@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, FieldValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -96,6 +96,22 @@ class Settings(BaseSettings):
         default=["*"],
         description="Allowed CORS origins",
     )
+
+    @field_validator("allowed_origins")
+    @classmethod
+    def validate_allowed_origins(
+        cls, allowed_origins: list[str], info: FieldValidationInfo
+    ) -> list[str]:
+        """Ensure CORS configuration is not overly permissive in production."""
+        environment = info.data.get("environment")
+        if environment == "production":
+            # In production we require explicit, non-wildcard origins.
+            if not allowed_origins or "*" in allowed_origins:
+                raise ValueError(
+                    "In production, 'allowed_origins' must be explicitly set and "
+                    "cannot include '*' (wildcard)."
+                )
+        return allowed_origins
 
     # Rate Limiting
     rate_limit_rpm: int = Field(default=60, ge=1)
