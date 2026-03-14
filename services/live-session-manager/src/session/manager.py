@@ -623,5 +623,6 @@ class SessionManager:
 
     async def close_all(self) -> None:
         """End all active sessions."""
-        for session_id in list(self._sessions.keys()):
-            await self.end_session(session_id)
+        tasks = [self.end_session(session_id) for session_id in list(self._sessions.keys())]
+        if tasks:
+            await asyncio.gather(*tasks)
