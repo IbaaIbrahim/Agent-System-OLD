@@ -11,12 +11,15 @@ GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8000")
 TENANT_API_KEY = os.getenv("TENANT_API_KEY", "test-api-key")
 USER_ID = os.getenv("USER_ID", "test-user-id")
 
+# CORS Configuration
+ALLOWED_ORIGINS = [i.strip() for i in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
+
 app = FastAPI(title="Auth Broker", version="1.0.0")
 
 # Add CORS middleware to allow browser requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

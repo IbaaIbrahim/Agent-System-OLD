@@ -91,6 +91,12 @@ class Settings(BaseSettings):
         description="TTL in seconds for file download one-time tokens",
     )
 
+    # CORS
+    allowed_origins: list[str] = Field(
+        default=["*"],
+        description="Allowed CORS origins",
+    )
+
     # Rate Limiting
     rate_limit_rpm: int = Field(default=60, ge=1)
     rate_limit_tpm: int = Field(default=100000, ge=1)
@@ -127,6 +133,13 @@ class Settings(BaseSettings):
     def validate_redis_url(cls, v: str) -> str:
         if not v.startswith("redis://"):
             raise ValueError("Redis URL must start with redis://")
+        return v
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
         return v
 
     @property
