@@ -155,7 +155,8 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
+            # Split on commas, strip whitespace, and drop any empty entries
+            return [i.strip() for i in v.split(",") if i.strip()]
         return v
 
     @property
