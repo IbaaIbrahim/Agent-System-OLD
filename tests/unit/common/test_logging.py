@@ -51,3 +51,4 @@ def test_add_service_info_updates_existing() -> None:
     result = processor(logger, "info", event_dict)
 
     assert result["service"] == service_name
+    assert result["event"] == "test_event"
