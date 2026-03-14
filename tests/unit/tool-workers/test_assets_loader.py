@@ -2,18 +2,20 @@
 
 import json
 import importlib.util
+import importlib
+import sys
 from unittest.mock import patch, mock_open
 import pytest
 
 def get_loader_module():
-    """Safely load the asset loader module without triggering other imports."""
+    """Load the asset loader module via sys.path to match other tool-worker tests."""
     module_name = "src.tools.assets.loader"
-    file_path = "services/tool-workers/src/tools/assets/loader.py"
+    tools_root = "services/tool-workers"
 
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    loader_mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(loader_mod)
-    return loader_mod
+    if tools_root not in sys.path:
+        sys.path.insert(0, tools_root)
+
+    return importlib.import_module(module_name)
 
 class TestAssetLoader:
     """Tests for asset loader functions."""
